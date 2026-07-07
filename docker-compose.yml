@@ -1,0 +1,12 @@
+services:
+  raindropai:
+    build:
+      context: .
+      dockerfile: src/RaindropAI.Worker/Dockerfile
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      DOTNET_ENVIRONMENT: Production
+    volumes:
+      - ./data:/data
