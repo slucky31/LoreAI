@@ -30,8 +30,8 @@ Copier `.env.example` en `.env` et renseigner les valeurs (voir commentaires dan
 ## Lancer en local
 
 ```bash
-dotnet build RaindropAI.sln
-dotnet test RaindropAI.sln
+dotnet build RaindropAI.slnx
+dotnet test RaindropAI.slnx
 dotnet run --project src/RaindropAI.Worker
 ```
 
@@ -66,5 +66,5 @@ VALUES (1, <id_du_dernier_raindrop_a_ignorer>, '<date_ISO8601_UTC>', '<date_ISO8
 ## Tests
 
 ```bash
-dotnet test RaindropAI.sln
+dotnet test RaindropAI.slnx
 ```

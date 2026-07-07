@@ -1,32 +1,35 @@
 using Microsoft.Extensions.Options;
 using RaindropAI.Core.Models;
 using RaindropAI.Infrastructure.Raindrop;
-using RichardSzalay.MockHttp;
+using WireMock.RequestBuilders;
+using WireMock.ResponseBuilders;
+using WireMock.Server;
 
 namespace RaindropAI.Infrastructure.Tests.Raindrop;
 
 public class RaindropClientTests
 {
-    private const string BaseUrl = "https://api.raindrop.io/rest/v1";
-
     [Fact]
     public async Task GetNewRaindropsAsync_NoPriorState_ReturnsAllItemsOldestFirst()
     {
-        var mockHttp = new MockHttpMessageHandler();
-        mockHttp.When($"{BaseUrl}/raindrops/0")
-            .WithQueryString("page", "0")
-            .Respond("application/json", """
-                {
-                  "result": true,
-                  "count": 2,
-                  "items": [
-                    { "_id": 102, "title": "B", "link": "https://b.example", "tags": [], "domain": "b.example", "type": "article", "created": "2026-01-02T00:00:00Z" },
-                    { "_id": 101, "title": "A", "link": "https://a.example", "tags": [], "domain": "a.example", "type": "article", "created": "2026-01-01T00:00:00Z" }
-                  ]
-                }
-                """);
+        using var server = WireMockServer.Start();
+        server
+            .Given(Request.Create().WithPath("/rest/v1/raindrops/0").UsingGet().WithParam("page", "0"))
+            .RespondWith(Response.Create()
+                .WithStatusCode(200)
+                .WithHeader("Content-Type", "application/json")
+                .WithBody("""
+                    {
+                      "result": true,
+                      "count": 2,
+                      "items": [
+                        { "_id": 102, "title": "B", "link": "https://b.example", "tags": [], "domain": "b.example", "type": "article", "created": "2026-01-02T00:00:00Z" },
+                        { "_id": 101, "title": "A", "link": "https://a.example", "tags": [], "domain": "a.example", "type": "article", "created": "2026-01-01T00:00:00Z" }
+                      ]
+                    }
+                    """));
 
-        var client = CreateClient(mockHttp, pageSize: 50);
+        var client = CreateClient(server, pageSize: 50);
 
         var items = await client.GetNewRaindropsAsync(PollingState.Initial, CancellationToken.None);
 
@@ -38,21 +41,24 @@ public class RaindropClientTests
     [Fact]
     public async Task GetNewRaindropsAsync_StopsAtAlreadyKnownItem()
     {
-        var mockHttp = new MockHttpMessageHandler();
-        mockHttp.When($"{BaseUrl}/raindrops/0")
-            .WithQueryString("page", "0")
-            .Respond("application/json", """
-                {
-                  "result": true,
-                  "count": 2,
-                  "items": [
-                    { "_id": 102, "title": "Nouveau", "link": "https://b.example", "tags": [], "domain": "b.example", "type": "article", "created": "2026-01-02T00:00:00Z" },
-                    { "_id": 101, "title": "Connu", "link": "https://a.example", "tags": [], "domain": "a.example", "type": "article", "created": "2026-01-01T00:00:00Z" }
-                  ]
-                }
-                """);
+        using var server = WireMockServer.Start();
+        server
+            .Given(Request.Create().WithPath("/rest/v1/raindrops/0").UsingGet().WithParam("page", "0"))
+            .RespondWith(Response.Create()
+                .WithStatusCode(200)
+                .WithHeader("Content-Type", "application/json")
+                .WithBody("""
+                    {
+                      "result": true,
+                      "count": 2,
+                      "items": [
+                        { "_id": 102, "title": "Nouveau", "link": "https://b.example", "tags": [], "domain": "b.example", "type": "article", "created": "2026-01-02T00:00:00Z" },
+                        { "_id": 101, "title": "Connu", "link": "https://a.example", "tags": [], "domain": "a.example", "type": "article", "created": "2026-01-01T00:00:00Z" }
+                      ]
+                    }
+                    """));
 
-        var client = CreateClient(mockHttp, pageSize: 50);
+        var client = CreateClient(server, pageSize: 50);
         var lastState = new PollingState(101, DateTimeOffset.Parse("2026-01-01T00:00:00Z"), DateTimeOffset.UtcNow);
 
         var items = await client.GetNewRaindropsAsync(lastState, CancellationToken.None);
@@ -64,32 +70,38 @@ public class RaindropClientTests
     [Fact]
     public async Task GetNewRaindropsAsync_PaginatesAcrossFullPages()
     {
-        var mockHttp = new MockHttpMessageHandler();
-        mockHttp.When($"{BaseUrl}/raindrops/0")
-            .WithQueryString("page", "0")
-            .Respond("application/json", """
-                {
-                  "result": true,
-                  "count": 2,
-                  "items": [
-                    { "_id": 103, "title": "C", "link": "https://c.example", "tags": [], "domain": "c.example", "type": "article", "created": "2026-01-03T00:00:00Z" },
-                    { "_id": 102, "title": "B", "link": "https://b.example", "tags": [], "domain": "b.example", "type": "article", "created": "2026-01-02T00:00:00Z" }
-                  ]
-                }
-                """);
-        mockHttp.When($"{BaseUrl}/raindrops/0")
-            .WithQueryString("page", "1")
-            .Respond("application/json", """
-                {
-                  "result": true,
-                  "count": 1,
-                  "items": [
-                    { "_id": 101, "title": "A", "link": "https://a.example", "tags": [], "domain": "a.example", "type": "article", "created": "2026-01-01T00:00:00Z" }
-                  ]
-                }
-                """);
+        using var server = WireMockServer.Start();
+        server
+            .Given(Request.Create().WithPath("/rest/v1/raindrops/0").UsingGet().WithParam("page", "0"))
+            .RespondWith(Response.Create()
+                .WithStatusCode(200)
+                .WithHeader("Content-Type", "application/json")
+                .WithBody("""
+                    {
+                      "result": true,
+                      "count": 2,
+                      "items": [
+                        { "_id": 103, "title": "C", "link": "https://c.example", "tags": [], "domain": "c.example", "type": "article", "created": "2026-01-03T00:00:00Z" },
+                        { "_id": 102, "title": "B", "link": "https://b.example", "tags": [], "domain": "b.example", "type": "article", "created": "2026-01-02T00:00:00Z" }
+                      ]
+                    }
+                    """));
+        server
+            .Given(Request.Create().WithPath("/rest/v1/raindrops/0").UsingGet().WithParam("page", "1"))
+            .RespondWith(Response.Create()
+                .WithStatusCode(200)
+                .WithHeader("Content-Type", "application/json")
+                .WithBody("""
+                    {
+                      "result": true,
+                      "count": 1,
+                      "items": [
+                        { "_id": 101, "title": "A", "link": "https://a.example", "tags": [], "domain": "a.example", "type": "article", "created": "2026-01-01T00:00:00Z" }
+                      ]
+                    }
+                    """));
 
-        var client = CreateClient(mockHttp, pageSize: 2);
+        var client = CreateClient(server, pageSize: 2);
 
         var items = await client.GetNewRaindropsAsync(PollingState.Initial, CancellationToken.None);
 
@@ -100,23 +112,30 @@ public class RaindropClientTests
     [Fact]
     public async Task UpdateRaindropAsync_SendsPutToExpectedEndpoint()
     {
-        var mockHttp = new MockHttpMessageHandler();
-        mockHttp.Expect(HttpMethod.Put, $"{BaseUrl}/raindrop/42")
-            .Respond("application/json", """{ "result": true }""");
+        using var server = WireMockServer.Start();
+        server
+            .Given(Request.Create().WithPath("/rest/v1/raindrop/42").UsingPut())
+            .RespondWith(Response.Create()
+                .WithStatusCode(200)
+                .WithHeader("Content-Type", "application/json")
+                .WithBody("""{ "result": true }"""));
 
-        var client = CreateClient(mockHttp, pageSize: 50);
+        var client = CreateClient(server, pageSize: 50);
 
         await client.UpdateRaindropAsync(42, ["dotnet"], "note", CancellationToken.None);
 
-        mockHttp.VerifyNoOutstandingExpectation();
+        var logEntry = Assert.Single(server.LogEntries);
+        Assert.NotNull(logEntry.RequestMessage);
+        Assert.Equal("/rest/v1/raindrop/42", logEntry.RequestMessage.Path);
+        Assert.Equal("PUT", logEntry.RequestMessage.Method);
     }
 
-    private static RaindropClient CreateClient(MockHttpMessageHandler mockHttp, int pageSize)
+    private static RaindropClient CreateClient(WireMockServer server, int pageSize)
     {
-        var httpClient = mockHttp.ToHttpClient();
+        var httpClient = new HttpClient();
         var options = Options.Create(new RaindropApiOptions
         {
-            BaseUrl = BaseUrl,
+            BaseUrl = $"{server.Urls[0]}/rest/v1",
             Token = "test-token",
             CollectionId = 0,
             PageSize = pageSize,

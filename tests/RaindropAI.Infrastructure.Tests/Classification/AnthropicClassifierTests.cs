@@ -3,35 +3,39 @@ using Microsoft.Extensions.Options;
 using RaindropAI.Core.Enums;
 using RaindropAI.Core.Models;
 using RaindropAI.Infrastructure.Classification;
-using RichardSzalay.MockHttp;
+using WireMock.RequestBuilders;
+using WireMock.ResponseBuilders;
+using WireMock.Server;
 
 namespace RaindropAI.Infrastructure.Tests.Classification;
 
 public class AnthropicClassifierTests
 {
-    private const string BaseUrl = "https://api.anthropic.com";
-
     [Fact]
     public async Task ClassifyAsync_ValidToolUseResponse_MapsToClassificationResult()
     {
-        var mockHttp = new MockHttpMessageHandler();
-        mockHttp.When(HttpMethod.Post, $"{BaseUrl}/v1/messages")
-            .Respond("application/json", """
-                {
-                  "id": "msg_1",
-                  "type": "message",
-                  "content": [
+        using var server = WireMockServer.Start();
+        server
+            .Given(Request.Create().WithPath("/v1/messages").UsingPost())
+            .RespondWith(Response.Create()
+                .WithStatusCode(200)
+                .WithHeader("Content-Type", "application/json")
+                .WithBody("""
                     {
-                      "type": "tool_use",
-                      "id": "toolu_1",
-                      "name": "classify",
-                      "input": { "category": "ClaudeIA", "action": "ATester", "priority": "Haute", "reason": "Nouvel outil Claude à essayer." }
+                      "id": "msg_1",
+                      "type": "message",
+                      "content": [
+                        {
+                          "type": "tool_use",
+                          "id": "toolu_1",
+                          "name": "classify",
+                          "input": { "category": "ClaudeIA", "action": "ATester", "priority": "Haute", "reason": "Nouvel outil Claude à essayer." }
+                        }
+                      ]
                     }
-                  ]
-                }
-                """);
+                    """));
 
-        var classifier = CreateClassifier(mockHttp);
+        var classifier = CreateClassifier(server);
         var result = await classifier.ClassifyAsync(CreateItem(), CancellationToken.None);
 
         Assert.Equal(Category.ClaudeIA, result.Category);
@@ -43,11 +47,15 @@ public class AnthropicClassifierTests
     [Fact]
     public async Task ClassifyAsync_HttpFailure_ReturnsFallback()
     {
-        var mockHttp = new MockHttpMessageHandler();
-        mockHttp.When(HttpMethod.Post, $"{BaseUrl}/v1/messages")
-            .Respond(System.Net.HttpStatusCode.InternalServerError, "application/json", """{ "error": "boom" }""");
+        using var server = WireMockServer.Start();
+        server
+            .Given(Request.Create().WithPath("/v1/messages").UsingPost())
+            .RespondWith(Response.Create()
+                .WithStatusCode(500)
+                .WithHeader("Content-Type", "application/json")
+                .WithBody("""{ "error": "boom" }"""));
 
-        var classifier = CreateClassifier(mockHttp);
+        var classifier = CreateClassifier(server);
         var result = await classifier.ClassifyAsync(CreateItem(), CancellationToken.None);
 
         Assert.Equal(Category.Autre, result.Category);
@@ -58,24 +66,28 @@ public class AnthropicClassifierTests
     [Fact]
     public async Task ClassifyAsync_MissingToolUseBlock_ReturnsFallback()
     {
-        var mockHttp = new MockHttpMessageHandler();
-        mockHttp.When(HttpMethod.Post, $"{BaseUrl}/v1/messages")
-            .Respond("application/json", """{ "id": "msg_1", "type": "message", "content": [] }""");
+        using var server = WireMockServer.Start();
+        server
+            .Given(Request.Create().WithPath("/v1/messages").UsingPost())
+            .RespondWith(Response.Create()
+                .WithStatusCode(200)
+                .WithHeader("Content-Type", "application/json")
+                .WithBody("""{ "id": "msg_1", "type": "message", "content": [] }"""));
 
-        var classifier = CreateClassifier(mockHttp);
+        var classifier = CreateClassifier(server);
         var result = await classifier.ClassifyAsync(CreateItem(), CancellationToken.None);
 
         Assert.Equal(Category.Autre, result.Category);
     }
 
-    private static AnthropicClassifier CreateClassifier(MockHttpMessageHandler mockHttp)
+    private static AnthropicClassifier CreateClassifier(WireMockServer server)
     {
-        var httpClient = mockHttp.ToHttpClient();
+        var httpClient = new HttpClient();
         var options = Options.Create(new ClassifierOptions
         {
             ApiKey = "test-key",
             Model = "claude-haiku-4-5",
-            BaseUrl = BaseUrl,
+            BaseUrl = server.Urls[0],
             AnthropicVersion = "2023-06-01",
         });
 
