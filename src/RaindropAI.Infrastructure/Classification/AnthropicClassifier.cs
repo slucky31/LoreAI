@@ -38,9 +38,9 @@ public sealed class AnthropicClassifier : IClassifier
         _httpClient.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
     }
 
-    public async Task<ClassificationResult> ClassifyAsync(RaindropItem item, CancellationToken cancellationToken)
+    public async Task<ClassificationResult> ClassifyAsync(RaindropItem item, RaindropTaxonomy taxonomy, CancellationToken cancellationToken)
     {
-        var requestBody = BuildRequestBody(item);
+        var requestBody = BuildRequestBody(item, taxonomy);
         var rawResponseBody = string.Empty;
 
         try
@@ -59,22 +59,22 @@ public sealed class AnthropicClassifier : IClassifier
         }
     }
 
-    private object BuildRequestBody(RaindropItem item) => new
+    private object BuildRequestBody(RaindropItem item, RaindropTaxonomy taxonomy) => new
     {
         model = _options.Model,
         max_tokens = MaxTokens,
         system = ClassificationPromptBuilder.SystemPrompt,
         messages = new[]
         {
-            new { role = "user", content = ClassificationPromptBuilder.BuildUserMessage(item) }
+            new { role = "user", content = ClassificationPromptBuilder.BuildUserMessage(item, taxonomy) }
         },
         tools = new[]
         {
             new
             {
                 name = ClassificationPromptBuilder.ToolName,
-                description = "Classe un article Raindrop selon sa catégorie, l'action recommandée et sa priorité.",
-                input_schema = JsonSerializer.Deserialize<JsonElement>(ClassificationPromptBuilder.BuildToolInputSchemaJson())
+                description = "Classe un article Raindrop \"Non trié\" : collection existante correspondante (ou aucune), tags, action recommandée, priorité.",
+                input_schema = JsonSerializer.Deserialize<JsonElement>(ClassificationPromptBuilder.BuildToolInputSchemaJson(taxonomy))
             }
         },
         tool_choice = new { type = "tool", name = ClassificationPromptBuilder.ToolName }

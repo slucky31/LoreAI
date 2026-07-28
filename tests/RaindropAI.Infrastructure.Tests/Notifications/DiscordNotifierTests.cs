@@ -22,7 +22,7 @@ public class DiscordNotifierTests
 
         var notifier = CreateNotifier(server);
         var item = new RaindropItem(1, "Un outil à tester", "https://example.com/tool", null, null, [], null, null, null, DateTimeOffset.UtcNow, null);
-        var classification = new ClassificationResult(Category.DotNet, RecommendedAction.ATester, Priority.Haute, "Très prometteur", "model", "raw");
+        var classification = new ClassificationResult(".NET", ["dotnet"], RecommendedAction.ATester, Priority.Haute, "Très prometteur", "model", "raw");
 
         await notifier.NotifyAsync(item, classification, CancellationToken.None);
 
@@ -32,6 +32,8 @@ public class DiscordNotifierTests
         Assert.Contains("Un outil à tester", content);
         Assert.Contains("https://example.com/tool", content);
         Assert.Contains("Très prometteur", content);
+        Assert.Contains(".NET", content);
+        Assert.Contains("dotnet", content);
     }
 
     [Fact]
@@ -44,7 +46,7 @@ public class DiscordNotifierTests
 
         var notifier = CreateNotifier(server);
         var item = new RaindropItem(1, "Titre", "https://example.com", null, null, [], null, null, null, DateTimeOffset.UtcNow, null);
-        var classification = new ClassificationResult(Category.Autre, RecommendedAction.Reference, Priority.Basse, "raison", "model", "raw");
+        var classification = new ClassificationResult(null, [], RecommendedAction.Reference, Priority.Basse, "raison", "model", "raw");
 
         var exception = await Record.ExceptionAsync(() => notifier.NotifyAsync(item, classification, CancellationToken.None));
 

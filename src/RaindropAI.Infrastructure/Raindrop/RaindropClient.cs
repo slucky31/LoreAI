@@ -68,11 +68,48 @@ public sealed class RaindropClient : IRaindropClient
         return collected;
     }
 
-    public async Task UpdateRaindropAsync(long raindropId, IReadOnlyCollection<string> tags, string note, CancellationToken cancellationToken)
+    public async Task<RaindropTaxonomy> GetTaxonomyAsync(CancellationToken cancellationToken)
     {
-        var body = new { tags, note };
+        var rootCollections = await GetCollectionsAsync("collections", cancellationToken);
+        var nestedCollections = await GetCollectionsAsync("collections/childrens", cancellationToken);
+        var collections = rootCollections
+            .Concat(nestedCollections)
+            .Select(dto => new RaindropCollection(dto.Id, dto.Title))
+            .ToList();
+
+        var tagsResponse = await _httpClient.GetAsync("tags", cancellationToken);
+        tagsResponse.EnsureSuccessStatusCode();
+        var tagsPayload = await tagsResponse.Content.ReadFromJsonAsync<TagsPageDto>(cancellationToken: cancellationToken)
+            ?? throw new InvalidOperationException("Réponse Raindrop /tags vide ou invalide.");
+        var tags = tagsPayload.Items.Select(t => new RaindropTag(t.Id, t.Count)).ToList();
+
+        return new RaindropTaxonomy(collections, tags);
+    }
+
+    public async Task UpdateRaindropAsync(long raindropId, IReadOnlyCollection<string> tags, string note, long? collectionId, CancellationToken cancellationToken)
+    {
+        var body = new Dictionary<string, object?>
+        {
+            ["tags"] = tags,
+            ["note"] = note,
+        };
+
+        if (collectionId is not null)
+        {
+            body["collection"] = new Dictionary<string, object> { ["$id"] = collectionId.Value };
+        }
+
         var response = await _httpClient.PutAsJsonAsync($"raindrop/{raindropId}", body, cancellationToken);
         response.EnsureSuccessStatusCode();
+    }
+
+    private async Task<List<CollectionDto>> GetCollectionsAsync(string path, CancellationToken cancellationToken)
+    {
+        var response = await _httpClient.GetAsync(path, cancellationToken);
+        response.EnsureSuccessStatusCode();
+        var payload = await response.Content.ReadFromJsonAsync<CollectionsPageDto>(cancellationToken: cancellationToken)
+            ?? throw new InvalidOperationException($"Réponse Raindrop /{path} vide ou invalide.");
+        return payload.Items;
     }
 
     private static bool IsAlreadyKnown(RaindropDto dto, PollingState lastState)

@@ -10,8 +10,12 @@ public interface IRaindropClient
     /// </summary>
     Task<IReadOnlyList<RaindropItem>> GetNewRaindropsAsync(PollingState lastState, CancellationToken cancellationToken);
 
+    /// <summary>Apprend les collections et tags réellement en place dans le compte de l'utilisateur.</summary>
+    Task<RaindropTaxonomy> GetTaxonomyAsync(CancellationToken cancellationToken);
+
     /// <summary>
-    /// Met à jour un raindrop existant (tags/note) — utilisé uniquement si l'écriture en retour est activée.
+    /// Met à jour un raindrop existant : tags et note (fusionnés côté appelant, jamais écrasés ici),
+    /// et déplacement optionnel vers une autre collection si <paramref name="collectionId"/> est fourni.
     /// </summary>
-    Task UpdateRaindropAsync(long raindropId, IReadOnlyCollection<string> tags, string note, CancellationToken cancellationToken);
+    Task UpdateRaindropAsync(long raindropId, IReadOnlyCollection<string> tags, string note, long? collectionId, CancellationToken cancellationToken);
 }

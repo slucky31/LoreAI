@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS Articles (
     Link TEXT NOT NULL,
     Excerpt TEXT,
     Note TEXT,
-    Tags TEXT,
+    OriginalTags TEXT,
     CollectionId INTEGER,
     Domain TEXT,
     RaindropType TEXT,
@@ -19,7 +19,8 @@ CREATE TABLE IF NOT EXISTS Articles (
     RaindropLastUpdateUtc TEXT,
     FetchedAtUtc TEXT NOT NULL,
 
-    Category TEXT NOT NULL,
+    SuggestedCollection TEXT,
+    SuggestedTags TEXT,
     RecommendedAction TEXT NOT NULL,
     Priority TEXT NOT NULL,
     Reason TEXT,
@@ -27,9 +28,11 @@ CREATE TABLE IF NOT EXISTS Articles (
     ClassificationRawResponse TEXT,
     ClassifiedAtUtc TEXT,
 
+    Moved INTEGER NOT NULL DEFAULT 0,
+    WriteBackStatus TEXT,
+    WriteBackAtUtc TEXT,
     DiscordNotifiedAtUtc TEXT,
-    EmailDigestSentAtUtc TEXT,
-    WriteBackStatus TEXT
+    EmailDigestSentAtUtc TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_articles_digest_pending ON Articles (EmailDigestSentAtUtc);

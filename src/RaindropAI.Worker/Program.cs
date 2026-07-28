@@ -51,7 +51,7 @@ try
         .AddStandardResilienceHandler();
 
     builder.Services.AddScheduler();
-    builder.Services.AddTransient<RaindropPollingJob>();
+    builder.Services.AddTransient<UnsortedClassificationJob>();
     builder.Services.AddTransient<DigestNotificationJob>();
 
     var host = builder.Build();
@@ -59,9 +59,9 @@ try
     var workerOptions = host.Services.GetRequiredService<IOptions<WorkerOptions>>().Value;
     host.Services.UseScheduler(scheduler =>
     {
-        scheduler.Schedule<RaindropPollingJob>()
+        scheduler.Schedule<UnsortedClassificationJob>()
             .Cron(workerOptions.PollingCronExpression)
-            .PreventOverlapping(nameof(RaindropPollingJob));
+            .PreventOverlapping(nameof(UnsortedClassificationJob));
 
         scheduler.Schedule<DigestNotificationJob>()
             .Cron(workerOptions.DigestCronExpression)

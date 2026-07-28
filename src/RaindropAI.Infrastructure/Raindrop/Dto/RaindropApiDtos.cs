@@ -31,3 +31,31 @@ internal sealed class RaindropCollectionRefDto
     [JsonPropertyName("$id")]
     public long Id { get; set; }
 }
+
+internal sealed class CollectionsPageDto
+{
+    public bool Result { get; set; }
+    public List<CollectionDto> Items { get; set; } = [];
+}
+
+internal sealed class CollectionDto
+{
+    [JsonPropertyName("_id")]
+    public long Id { get; set; }
+
+    public string Title { get; set; } = string.Empty;
+}
+
+internal sealed class TagsPageDto
+{
+    public bool Result { get; set; }
+    public List<TagDto> Items { get; set; } = [];
+}
+
+internal sealed class TagDto
+{
+    [JsonPropertyName("_id")]
+    public string Id { get; set; } = string.Empty;
+
+    public int Count { get; set; }
+}

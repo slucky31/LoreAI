@@ -20,27 +20,30 @@ public sealed class ArticleRepository : IArticleRepository
         await using var connection = await _connectionFactory.OpenConnectionAsync(cancellationToken);
         const string sql = """
             INSERT INTO Articles (
-                Id, Title, Link, Excerpt, Note, Tags, CollectionId, Domain, RaindropType,
+                Id, Title, Link, Excerpt, Note, OriginalTags, CollectionId, Domain, RaindropType,
                 RaindropCreatedUtc, RaindropLastUpdateUtc, FetchedAtUtc,
-                Category, RecommendedAction, Priority, Reason, ClassificationModel, ClassificationRawResponse, ClassifiedAtUtc
+                SuggestedCollection, SuggestedTags, RecommendedAction, Priority, Reason,
+                ClassificationModel, ClassificationRawResponse, ClassifiedAtUtc
             ) VALUES (
-                @Id, @Title, @Link, @Excerpt, @Note, @Tags, @CollectionId, @Domain, @RaindropType,
+                @Id, @Title, @Link, @Excerpt, @Note, @OriginalTags, @CollectionId, @Domain, @RaindropType,
                 @RaindropCreatedUtc, @RaindropLastUpdateUtc, @FetchedAtUtc,
-                @Category, @RecommendedAction, @Priority, @Reason, @ClassificationModel, @ClassificationRawResponse, @ClassifiedAtUtc
+                @SuggestedCollection, @SuggestedTags, @RecommendedAction, @Priority, @Reason,
+                @ClassificationModel, @ClassificationRawResponse, @ClassifiedAtUtc
             )
             ON CONFLICT(Id) DO UPDATE SET
                 Title = excluded.Title,
                 Link = excluded.Link,
                 Excerpt = excluded.Excerpt,
                 Note = excluded.Note,
-                Tags = excluded.Tags,
+                OriginalTags = excluded.OriginalTags,
                 CollectionId = excluded.CollectionId,
                 Domain = excluded.Domain,
                 RaindropType = excluded.RaindropType,
                 RaindropCreatedUtc = excluded.RaindropCreatedUtc,
                 RaindropLastUpdateUtc = excluded.RaindropLastUpdateUtc,
                 FetchedAtUtc = excluded.FetchedAtUtc,
-                Category = excluded.Category,
+                SuggestedCollection = excluded.SuggestedCollection,
+                SuggestedTags = excluded.SuggestedTags,
                 RecommendedAction = excluded.RecommendedAction,
                 Priority = excluded.Priority,
                 Reason = excluded.Reason,
@@ -56,14 +59,15 @@ public sealed class ArticleRepository : IArticleRepository
             item.Link,
             item.Excerpt,
             item.Note,
-            Tags = JsonSerializer.Serialize(item.Tags),
+            OriginalTags = JsonSerializer.Serialize(item.Tags),
             item.CollectionId,
             item.Domain,
             item.RaindropType,
             RaindropCreatedUtc = item.CreatedUtc.UtcDateTime.ToString("O"),
             RaindropLastUpdateUtc = item.LastUpdateUtc?.UtcDateTime.ToString("O"),
             FetchedAtUtc = DateTimeOffset.UtcNow.ToString("O"),
-            Category = classification.Category.ToString(),
+            classification.SuggestedCollection,
+            SuggestedTags = JsonSerializer.Serialize(classification.Tags),
             RecommendedAction = classification.Action.ToString(),
             Priority = classification.Priority.ToString(),
             classification.Reason,
@@ -71,6 +75,22 @@ public sealed class ArticleRepository : IArticleRepository
             ClassificationRawResponse = classification.RawResponse,
             ClassifiedAtUtc = classifiedAtUtc.UtcDateTime.ToString("O"),
         }, cancellationToken: cancellationToken));
+    }
+
+    public async Task RecordWriteBackAsync(long articleId, bool success, bool moved, DateTimeOffset atUtc, CancellationToken cancellationToken)
+    {
+        await using var connection = await _connectionFactory.OpenConnectionAsync(cancellationToken);
+        const string sql = "UPDATE Articles SET WriteBackStatus = @Status, Moved = @Moved, WriteBackAtUtc = @AtUtc WHERE Id = @Id";
+        await connection.ExecuteAsync(new CommandDefinition(
+            sql,
+            new
+            {
+                Id = articleId,
+                Status = success ? "Done" : "Failed",
+                Moved = moved ? 1 : 0,
+                AtUtc = atUtc.UtcDateTime.ToString("O"),
+            },
+            cancellationToken: cancellationToken));
     }
 
     public async Task<IReadOnlyList<ClassifiedArticle>> GetUnsentDigestItemsAsync(CancellationToken cancellationToken)
@@ -114,7 +134,7 @@ public sealed class ArticleRepository : IArticleRepository
             row.Link,
             row.Excerpt,
             row.Note,
-            string.IsNullOrEmpty(row.Tags) ? [] : JsonSerializer.Deserialize<string[]>(row.Tags) ?? [],
+            string.IsNullOrEmpty(row.OriginalTags) ? [] : JsonSerializer.Deserialize<string[]>(row.OriginalTags) ?? [],
             row.CollectionId,
             row.Domain,
             row.RaindropType,
@@ -122,7 +142,8 @@ public sealed class ArticleRepository : IArticleRepository
             row.RaindropLastUpdateUtc is null ? null : DateTimeOffset.Parse(row.RaindropLastUpdateUtc));
 
         var classification = new ClassificationResult(
-            Enum.Parse<Category>(row.Category),
+            row.SuggestedCollection,
+            string.IsNullOrEmpty(row.SuggestedTags) ? [] : JsonSerializer.Deserialize<string[]>(row.SuggestedTags) ?? [],
             Enum.Parse<RecommendedAction>(row.RecommendedAction),
             Enum.Parse<Priority>(row.Priority),
             row.Reason ?? string.Empty,
@@ -133,6 +154,7 @@ public sealed class ArticleRepository : IArticleRepository
             item,
             classification,
             row.ClassifiedAtUtc is null ? DateTimeOffset.UtcNow : DateTimeOffset.Parse(row.ClassifiedAtUtc),
+            row.Moved != 0,
             row.DiscordNotifiedAtUtc is null ? null : DateTimeOffset.Parse(row.DiscordNotifiedAtUtc),
             row.EmailDigestSentAtUtc is null ? null : DateTimeOffset.Parse(row.EmailDigestSentAtUtc));
     }
@@ -144,20 +166,22 @@ public sealed class ArticleRepository : IArticleRepository
         public required string Link { get; init; }
         public string? Excerpt { get; init; }
         public string? Note { get; init; }
-        public string? Tags { get; init; }
+        public string? OriginalTags { get; init; }
         public long? CollectionId { get; init; }
         public string? Domain { get; init; }
         public string? RaindropType { get; init; }
         public required string RaindropCreatedUtc { get; init; }
         public string? RaindropLastUpdateUtc { get; init; }
         public required string FetchedAtUtc { get; init; }
-        public required string Category { get; init; }
+        public string? SuggestedCollection { get; init; }
+        public string? SuggestedTags { get; init; }
         public required string RecommendedAction { get; init; }
         public required string Priority { get; init; }
         public string? Reason { get; init; }
         public string? ClassificationModel { get; init; }
         public string? ClassificationRawResponse { get; init; }
         public string? ClassifiedAtUtc { get; init; }
+        public int Moved { get; init; }
         public string? DiscordNotifiedAtUtc { get; init; }
         public string? EmailDigestSentAtUtc { get; init; }
         public string? WriteBackStatus { get; init; }

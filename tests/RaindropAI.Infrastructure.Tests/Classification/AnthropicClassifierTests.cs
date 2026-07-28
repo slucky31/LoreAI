@@ -11,6 +11,10 @@ namespace RaindropAI.Infrastructure.Tests.Classification;
 
 public class AnthropicClassifierTests
 {
+    private static readonly RaindropTaxonomy SampleTaxonomy = new(
+        [new RaindropCollection(1, "Claude")],
+        [new RaindropTag("claude", 5)]);
+
     [Fact]
     public async Task ClassifyAsync_ValidToolUseResponse_MapsToClassificationResult()
     {
@@ -29,16 +33,17 @@ public class AnthropicClassifierTests
                           "type": "tool_use",
                           "id": "toolu_1",
                           "name": "classify",
-                          "input": { "category": "ClaudeIA", "action": "ATester", "priority": "Haute", "reason": "Nouvel outil Claude à essayer." }
+                          "input": { "suggestedCollection": "Claude", "tags": ["claude"], "action": "ATester", "priority": "Haute", "reason": "Nouvel outil Claude à essayer." }
                         }
                       ]
                     }
                     """));
 
         var classifier = CreateClassifier(server);
-        var result = await classifier.ClassifyAsync(CreateItem(), CancellationToken.None);
+        var result = await classifier.ClassifyAsync(CreateItem(), SampleTaxonomy, CancellationToken.None);
 
-        Assert.Equal(Category.ClaudeIA, result.Category);
+        Assert.Equal("Claude", result.SuggestedCollection);
+        Assert.Equal(["claude"], result.Tags);
         Assert.Equal(RecommendedAction.ATester, result.Action);
         Assert.Equal(Priority.Haute, result.Priority);
         Assert.Equal("Nouvel outil Claude à essayer.", result.Reason);
@@ -56,9 +61,10 @@ public class AnthropicClassifierTests
                 .WithBody("""{ "error": "boom" }"""));
 
         var classifier = CreateClassifier(server);
-        var result = await classifier.ClassifyAsync(CreateItem(), CancellationToken.None);
+        var result = await classifier.ClassifyAsync(CreateItem(), SampleTaxonomy, CancellationToken.None);
 
-        Assert.Equal(Category.Autre, result.Category);
+        Assert.Null(result.SuggestedCollection);
+        Assert.Empty(result.Tags);
         Assert.Equal(RecommendedAction.Reference, result.Action);
         Assert.Equal(Priority.Basse, result.Priority);
     }
@@ -75,9 +81,9 @@ public class AnthropicClassifierTests
                 .WithBody("""{ "id": "msg_1", "type": "message", "content": [] }"""));
 
         var classifier = CreateClassifier(server);
-        var result = await classifier.ClassifyAsync(CreateItem(), CancellationToken.None);
+        var result = await classifier.ClassifyAsync(CreateItem(), SampleTaxonomy, CancellationToken.None);
 
-        Assert.Equal(Category.Autre, result.Category);
+        Assert.Null(result.SuggestedCollection);
     }
 
     private static AnthropicClassifier CreateClassifier(WireMockServer server)

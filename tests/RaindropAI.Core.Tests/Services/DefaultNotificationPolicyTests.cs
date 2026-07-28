@@ -15,7 +15,7 @@ public class DefaultNotificationPolicyTests
     public void ShouldNotifyImmediately_AppliesDefaultThreshold(RecommendedAction action, Priority priority, bool expected)
     {
         var policy = new DefaultNotificationPolicy();
-        var classification = new ClassificationResult(Category.DotNet, action, priority, "raison", "model", "raw");
+        var classification = new ClassificationResult(null, [], action, priority, "raison", "model", "raw");
 
         var result = policy.ShouldNotifyImmediately(classification);
 
@@ -29,7 +29,7 @@ public class DefaultNotificationPolicyTests
             triggerActions: new HashSet<RecommendedAction> { RecommendedAction.ALire },
             minimumPriority: Priority.Moyenne);
 
-        var classification = new ClassificationResult(Category.Formation, RecommendedAction.ALire, Priority.Moyenne, "raison", "model", "raw");
+        var classification = new ClassificationResult("Formation", [], RecommendedAction.ALire, Priority.Moyenne, "raison", "model", "raw");
 
         Assert.True(policy.ShouldNotifyImmediately(classification));
     }

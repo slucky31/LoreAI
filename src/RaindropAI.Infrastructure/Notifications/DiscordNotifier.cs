@@ -37,9 +37,14 @@ public sealed class DiscordNotifier : IImmediateNotifier
         }
     }
 
-    private static string FormatMessage(RaindropItem item, ClassificationResult classification) =>
-        $"**[{classification.Action}] {item.Title}**\n" +
-        $"Catégorie : {classification.Category} — Priorité : {classification.Priority}\n" +
-        $"{classification.Reason}\n" +
-        $"{item.Link}";
+    private static string FormatMessage(RaindropItem item, ClassificationResult classification)
+    {
+        var collection = classification.SuggestedCollection ?? "(non déplacé)";
+        var tags = classification.Tags.Count > 0 ? string.Join(", ", classification.Tags) : "(aucun)";
+
+        return $"**[{classification.Action}] {item.Title}**\n" +
+               $"Collection : {collection} — Tags : {tags} — Priorité : {classification.Priority}\n" +
+               $"{classification.Reason}\n" +
+               $"{item.Link}";
+    }
 }

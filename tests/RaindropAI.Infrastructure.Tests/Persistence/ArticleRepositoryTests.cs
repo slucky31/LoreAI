@@ -60,10 +60,34 @@ public class ArticleRepositoryTests : IDisposable
     }
 
     [Fact]
-    public async Task UpsertAsync_RoundTripsTagsAndEnums()
+    public async Task RecordWriteBackAsync_Moved_SetsMovedFlag()
+    {
+        await _repository.UpsertAsync(CreateItem(1, "A"), CreateClassification(), DateTimeOffset.UtcNow, CancellationToken.None);
+
+        await _repository.RecordWriteBackAsync(1, success: true, moved: true, DateTimeOffset.UtcNow, CancellationToken.None);
+
+        var pending = await _repository.GetUnsentDigestItemsAsync(CancellationToken.None);
+        var single = Assert.Single(pending);
+        Assert.True(single.Moved);
+    }
+
+    [Fact]
+    public async Task RecordWriteBackAsync_TagsOnly_LeavesMovedFalse()
+    {
+        await _repository.UpsertAsync(CreateItem(1, "A"), CreateClassification(), DateTimeOffset.UtcNow, CancellationToken.None);
+
+        await _repository.RecordWriteBackAsync(1, success: true, moved: false, DateTimeOffset.UtcNow, CancellationToken.None);
+
+        var pending = await _repository.GetUnsentDigestItemsAsync(CancellationToken.None);
+        var single = Assert.Single(pending);
+        Assert.False(single.Moved);
+    }
+
+    [Fact]
+    public async Task UpsertAsync_RoundTripsTagsAndSuggestedCollection()
     {
         var item = CreateItem(1, "A") with { Tags = ["dotnet", "claude"] };
-        var classification = new ClassificationResult(Category.ClaudeIA, RecommendedAction.ATester, Priority.Haute, "raison", "claude-haiku-4-5", "{}");
+        var classification = new ClassificationResult("Claude", ["claude", "ia"], RecommendedAction.ATester, Priority.Haute, "raison", "claude-haiku-4-5", "{}");
 
         await _repository.UpsertAsync(item, classification, DateTimeOffset.UtcNow, CancellationToken.None);
 
@@ -71,9 +95,24 @@ public class ArticleRepositoryTests : IDisposable
         var single = Assert.Single(pending);
 
         Assert.Equal(["dotnet", "claude"], single.Item.Tags);
-        Assert.Equal(Category.ClaudeIA, single.Classification.Category);
+        Assert.Equal("Claude", single.Classification.SuggestedCollection);
+        Assert.Equal(["claude", "ia"], single.Classification.Tags);
         Assert.Equal(RecommendedAction.ATester, single.Classification.Action);
         Assert.Equal(Priority.Haute, single.Classification.Priority);
+    }
+
+    [Fact]
+    public async Task UpsertAsync_NullSuggestedCollection_RoundTripsAsNull()
+    {
+        var item = CreateItem(1, "A");
+        var classification = CreateClassification();
+
+        await _repository.UpsertAsync(item, classification, DateTimeOffset.UtcNow, CancellationToken.None);
+
+        var pending = await _repository.GetUnsentDigestItemsAsync(CancellationToken.None);
+        var single = Assert.Single(pending);
+
+        Assert.Null(single.Classification.SuggestedCollection);
     }
 
     private static RaindropItem CreateItem(long id, string title) => new(
@@ -90,7 +129,7 @@ public class ArticleRepositoryTests : IDisposable
         null);
 
     private static ClassificationResult CreateClassification() =>
-        new(Category.DotNet, RecommendedAction.ALire, Priority.Moyenne, "raison", "model", "raw");
+        new(null, [], RecommendedAction.ALire, Priority.Moyenne, "raison", "model", "raw");
 
     public void Dispose()
     {

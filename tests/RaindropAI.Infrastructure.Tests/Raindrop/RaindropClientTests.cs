@@ -110,7 +110,7 @@ public class RaindropClientTests
     }
 
     [Fact]
-    public async Task UpdateRaindropAsync_SendsPutToExpectedEndpoint()
+    public async Task UpdateRaindropAsync_WithoutCollectionId_DoesNotIncludeCollectionInBody()
     {
         using var server = WireMockServer.Start();
         server
@@ -122,12 +122,68 @@ public class RaindropClientTests
 
         var client = CreateClient(server, pageSize: 50);
 
-        await client.UpdateRaindropAsync(42, ["dotnet"], "note", CancellationToken.None);
+        await client.UpdateRaindropAsync(42, ["dotnet"], "note", null, CancellationToken.None);
 
         var logEntry = Assert.Single(server.LogEntries);
         Assert.NotNull(logEntry.RequestMessage);
         Assert.Equal("/rest/v1/raindrop/42", logEntry.RequestMessage.Path);
         Assert.Equal("PUT", logEntry.RequestMessage.Method);
+        Assert.DoesNotContain("collection", logEntry.RequestMessage.Body);
+    }
+
+    [Fact]
+    public async Task UpdateRaindropAsync_WithCollectionId_IncludesCollectionReferenceInBody()
+    {
+        using var server = WireMockServer.Start();
+        server
+            .Given(Request.Create().WithPath("/rest/v1/raindrop/42").UsingPut())
+            .RespondWith(Response.Create()
+                .WithStatusCode(200)
+                .WithHeader("Content-Type", "application/json")
+                .WithBody("""{ "result": true }"""));
+
+        var client = CreateClient(server, pageSize: 50);
+
+        await client.UpdateRaindropAsync(42, ["dotnet"], "note", 7, CancellationToken.None);
+
+        var logEntry = Assert.Single(server.LogEntries);
+        Assert.NotNull(logEntry.RequestMessage);
+        Assert.Contains("\"$id\":7", logEntry.RequestMessage.Body);
+    }
+
+    [Fact]
+    public async Task GetTaxonomyAsync_MergesRootAndNestedCollectionsWithTags()
+    {
+        using var server = WireMockServer.Start();
+        server
+            .Given(Request.Create().WithPath("/rest/v1/collections").UsingGet())
+            .RespondWith(Response.Create()
+                .WithStatusCode(200)
+                .WithHeader("Content-Type", "application/json")
+                .WithBody("""{ "result": true, "items": [ { "_id": 1, "title": ".NET" } ] }"""));
+        server
+            .Given(Request.Create().WithPath("/rest/v1/collections/childrens").UsingGet())
+            .RespondWith(Response.Create()
+                .WithStatusCode(200)
+                .WithHeader("Content-Type", "application/json")
+                .WithBody("""{ "result": true, "items": [ { "_id": 2, "title": "Formations" } ] }"""));
+        server
+            .Given(Request.Create().WithPath("/rest/v1/tags").UsingGet())
+            .RespondWith(Response.Create()
+                .WithStatusCode(200)
+                .WithHeader("Content-Type", "application/json")
+                .WithBody("""{ "result": true, "items": [ { "_id": "dotnet", "count": 10 } ] }"""));
+
+        var client = CreateClient(server, pageSize: 50);
+
+        var taxonomy = await client.GetTaxonomyAsync(CancellationToken.None);
+
+        Assert.Equal(2, taxonomy.Collections.Count);
+        Assert.Contains(taxonomy.Collections, c => c.Title == ".NET");
+        Assert.Contains(taxonomy.Collections, c => c.Title == "Formations");
+        var tag = Assert.Single(taxonomy.Tags);
+        Assert.Equal("dotnet", tag.Name);
+        Assert.Equal(10, tag.Count);
     }
 
     private static RaindropClient CreateClient(WireMockServer server, int pageSize)

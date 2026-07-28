@@ -1,7 +1,7 @@
 # 0004 — Moteur de classification LLM
 
 ## Statut
-Acceptée
+Acceptée — la taxonomie fixe (`Category`) mentionnée ci-dessous a été remplacée par une taxonomie apprise dynamiquement (voir [ADR 0007](0007-apprentissage-taxonomie-non-trie.md)) ; le choix du fournisseur LLM et le mécanisme de tool-use forcé restent inchangés.
 
 ## Contexte
 Chaque nouvel article doit être classifié (catégorie, action recommandée, priorité, justification) par un LLM. Deux fournisseurs étaient envisagés : Claude Haiku (Anthropic) et GPT-4o-mini (OpenAI), avec un coût réel négligeable dans les deux cas au volume d'un usage personnel.

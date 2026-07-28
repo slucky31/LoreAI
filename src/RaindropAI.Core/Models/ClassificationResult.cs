@@ -3,7 +3,8 @@ using RaindropAI.Core.Enums;
 namespace RaindropAI.Core.Models;
 
 public sealed record ClassificationResult(
-    Category Category,
+    string? SuggestedCollection,
+    IReadOnlyList<string> Tags,
     RecommendedAction Action,
     Priority Priority,
     string Reason,
@@ -11,5 +12,5 @@ public sealed record ClassificationResult(
     string RawResponse)
 {
     public static ClassificationResult Fallback(string model, string reason, string rawResponse) =>
-        new(Category.Autre, RecommendedAction.Reference, Priority.Basse, reason, model, rawResponse);
+        new(null, [], RecommendedAction.Reference, Priority.Basse, reason, model, rawResponse);
 }
