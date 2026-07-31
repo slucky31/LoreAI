@@ -11,6 +11,8 @@ jobs:
     permissions:
       contents: read
       checks: write
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@v4
 
@@ -20,6 +22,10 @@ jobs:
 
       - name: Restore
         run: dotnet restore RaindropAI.slnx
+
+      - name: Get version
+        id: version
+        run: echo "version=$(dotnet build src/RaindropAI.Worker/RaindropAI.Worker.csproj -getProperty:Version --nologo)" >> "$GITHUB_OUTPUT"
 
       - name: Build
         run: dotnet build RaindropAI.slnx -c Release --no-restore
@@ -67,6 +73,7 @@ jobs:
           tags: |
             type=sha,prefix=
             type=raw,value=latest
+            type=raw,value=${{ needs.build.outputs.version }}
 
       - name: Push raindropai-worker
         uses: docker/build-push-action@v6
