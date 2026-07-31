@@ -1,5 +1,5 @@
-# Configuration de l'app GitHub "Semantic Pull Requests"
-# https://github.com/apps/semantic-pull-requests
+# Configuration de l'app GitHub "Semantic PRs"
+# https://github.com/apps/semantic-prs
 titleOnly: true
 
 types:
