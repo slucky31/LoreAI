@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 RaindropAI is a personal .NET 9 tool that auto-triages the backlog of the **"Non trié"** ("Unsorted", collection id `-1`) collection in Raindrop.io. Each cycle it learns the user's real collections/tags via the Raindrop API, classifies each new unsorted article with Claude Haiku against that learned taxonomy, and writes the result straight back — no human-in-the-loop validation step. Everything outside "Non trié" is considered already sorted by the user and is never touched.
 
-Read `docs/adr/` before making architectural changes — decisions and their rationale are recorded there, not duplicated here. Most relevant: [0007](docs/adr/0007-apprentissage-taxonomie-non-trie.md) (learned taxonomy, why manual validation was rejected) and [0001](docs/adr/0001-architecture-generale.md) (why this stays a simple 3-project split, not Clean Architecture/CQRS/MediatR).
+Read `docs/adr/` before making architectural changes — decisions and their rationale are recorded there, not duplicated here. Most relevant: [0007](docs/adr/0007-apprentissage-taxonomie-non-trie.md) (learned taxonomy, why manual validation was rejected), [0001](docs/adr/0001-architecture-generale.md) (why this stays a simple 3-project split, not Clean Architecture/CQRS/MediatR), and [0008](docs/adr/0008-versioning-semver-conventional-commits.md) (SemVer versioning via Conventional Commits).
 
 ## Commands
 
@@ -61,3 +61,4 @@ With no prior `PollingState` row, the first cycle backfills the *entire* history
 - `Directory.Build.props` sets `TreatWarningsAsErrors` solution-wide.
 - Config keys follow .NET's `Section__Property` env-var convention (e.g. `Raindrop__Token`, `Worker__WriteBackToRaindrop`); see `.env.example` for the full list.
 - Tests: xUnit.v3 (Microsoft.Testing.Platform runner) + NSubstitute for doubles + WireMock.Net for HTTP fakes (chosen over RichardSzalay.MockHttp for being actively maintained and exercising a real network stack).
+- Versioning is fully automatic (ADR 0008): open a branch, commit, push, open a PR titled per [Conventional Commits](https://www.conventionalcommits.org/fr/v1.0.0/) (`feat:`, `fix:`, `chore:`, ... — validated by the Semantic PRs app, required to merge) and squash-merge it (the only merge method allowed on `main`). The `cd.yml` `release` job then runs [Versionize](https://github.com/versionize/versionize) to bump `<Version>` in `Directory.Build.props` (the single source of truth — no per-`.csproj` version), commit, tag (`vX.Y.Z`) and push straight to `main`; `build`/`docker`/`github-release` only run when that produced a real release. No `CHANGELOG.md` is committed — release notes live solely in GitHub Releases, generated from merged PRs.
