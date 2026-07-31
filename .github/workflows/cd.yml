@@ -14,9 +14,13 @@ jobs:
       released: ${{ steps.versionize.outputs.released }}
       version: ${{ steps.versionize.outputs.version }}
     steps:
+      # Le GITHUB_TOKEN par défaut ne peut pas pousser sur main : la branch protection
+      # exige des status checks qui ne s'exécutent que sur les PR, jamais sur un push direct.
+      # RELEASE_TOKEN est un PAT d'un compte admin du repo, exempté via enforce_admins=false.
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          token: ${{ secrets.RELEASE_TOKEN }}
 
       - uses: actions/setup-dotnet@v4
         with:
