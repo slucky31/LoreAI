@@ -1,7 +1,6 @@
 FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
 WORKDIR /src
 
-COPY RaindropAI.sln .
 COPY src/RaindropAI.Core/RaindropAI.Core.csproj src/RaindropAI.Core/
 COPY src/RaindropAI.Infrastructure/RaindropAI.Infrastructure.csproj src/RaindropAI.Infrastructure/
 COPY src/RaindropAI.Worker/RaindropAI.Worker.csproj src/RaindropAI.Worker/
