@@ -103,3 +103,4 @@ Aucune vraie clé nécessaire : les appels Raindrop/Anthropic/Discord sont simul
 8. Vérifier la réception Discord (si le raindrop test matche le seuil ATester/Haute) et le digest email (regroupement par collection puis action).
 
 ⚠️ Ce test réel consomme de vrais appels à l'API Anthropic (coût minime mais réel) et modifie votre vrai compte Raindrop dès que `WriteBackToRaindrop=true`.
+
