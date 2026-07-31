@@ -1,0 +1,16 @@
+**/bin/
+**/obj/
+.vs/
+.idea/
+
+**/[Tt]est[Rr]esult*/
+*.trx
+coverage-report/
+
+.git/
+.env
+data/
+*.db
+*.db-shm
+*.db-wal
+logs/

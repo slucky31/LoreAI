@@ -1,0 +1,64 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    name: Build & Test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+
+      - name: Restore
+        run: dotnet restore RaindropAI.slnx
+
+      - name: Build
+        run: dotnet build RaindropAI.slnx -c Release --no-restore
+
+      - name: Test
+        run: dotnet test RaindropAI.slnx -c Release --no-build -- --coverage --coverage-output-format cobertura
+
+      - name: Install ReportGenerator
+        run: dotnet tool install -g dotnet-reportgenerator-globaltool
+
+      - name: Generate coverage report
+        run: |
+          reportgenerator \
+            "-reports:**/TestResults/*.cobertura.xml" \
+            "-targetdir:coverage-report" \
+            "-reporttypes:Html;MarkdownSummaryGithub" \
+            "-assemblyfilters:-*Tests*"
+          cat coverage-report/SummaryGithub.md >> $GITHUB_STEP_SUMMARY
+
+      - name: PR Coverage Comment
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          recreate: true
+          path: coverage-report/SummaryGithub.md
+
+  docker:
+    name: Docker Build
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build raindropai-worker
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: src/RaindropAI.Worker/Dockerfile
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

@@ -12,6 +12,7 @@ obj/
 ## Test results
 [Tt]est[Rr]esult*/
 *.trx
+coverage-report/
 
 ## Runtime data / secrets
 .env
