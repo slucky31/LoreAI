@@ -4,7 +4,7 @@ Outil .NET 9 qui trie automatiquement le backlog de la collection **« Non trié
 
 Tout ce qui se trouve **en dehors** de « Non trié » est considéré comme déjà classé par vos soins et n'est jamais retouché.
 
-Voir [docs/adr/](docs/adr/) pour le détail des décisions d'architecture, notamment [0007](docs/adr/0007-apprentissage-taxonomie-non-trie.md) pour la logique d'apprentissage de la taxonomie.
+Voir [docs/adr/](docs/adr/) pour le détail des décisions d'architecture, notamment [0007](docs/adr/0007-apprentissage-taxonomie-non-trie.md) pour la logique d'apprentissage de la taxonomie. Pour contribuer, voir [docs/versioning.md](docs/versioning.md) : le titre des Pull Requests suit SemVer via Conventional Commits et pilote la version publiée automatiquement.
 
 ## Architecture
 
