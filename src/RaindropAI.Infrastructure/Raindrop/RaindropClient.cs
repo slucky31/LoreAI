@@ -134,14 +134,15 @@ public sealed class RaindropClient : IRaindropClient
         return payload.Items;
     }
 
+    /// <summary>
+    /// Les deux critères sont évalués indépendamment. Auparavant un <c>LastRaindropId</c> nul court-circuitait
+    /// la fonction avant même le test de date : un état de polling amorcé avec la seule date — le cas naturel
+    /// (« ignorer tout ce qui est antérieur à aujourd'hui », sans avoir à retrouver l'id du dernier raindrop) —
+    /// était donc totalement ignoré, et l'historique complet remonté.
+    /// </summary>
     private static bool IsAlreadyKnown(RaindropDto dto, PollingState lastState)
     {
-        if (lastState.LastRaindropId is null)
-        {
-            return false;
-        }
-
-        if (dto.Id == lastState.LastRaindropId)
+        if (lastState.LastRaindropId is not null && dto.Id == lastState.LastRaindropId)
         {
             return true;
         }

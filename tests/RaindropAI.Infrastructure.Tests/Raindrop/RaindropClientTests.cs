@@ -145,6 +145,41 @@ public class RaindropClientTests
         Assert.Empty(await client.GetNewRaindropsAsync(PollingState.Initial, CancellationToken.None));
     }
 
+    /// <summary>
+    /// F-13 : amorcer l'état de polling avec la seule date est le geste naturel décrit par le README
+    /// (« ignorer tout ce qui précède »), sans avoir à retrouver l'id du dernier raindrop.
+    /// </summary>
+    [Fact]
+    public async Task GetNewRaindropsAsync_StateWithDateButNoId_FiltersOnDate()
+    {
+        using var server = WireMockServer.Start();
+        GivenPage(server, 0, $"{Item(103, "2026-01-03T00:00:00Z")}, {Item(102, "2026-01-02T00:00:00Z")}, {Item(101, "2026-01-01T00:00:00Z")}");
+
+        var client = CreateClient(server, pageSize: 50);
+        var dateOnlyState = new PollingState(null, DateTimeOffset.Parse("2026-01-02T00:00:00Z"), DateTimeOffset.UtcNow);
+
+        var items = await client.GetNewRaindropsAsync(dateOnlyState, CancellationToken.None);
+
+        // Seul le 103 est postérieur à la date d'amorçage ; avant F-13 les trois remontaient.
+        var single = Assert.Single(items);
+        Assert.Equal(103, single.Id);
+    }
+
+    [Fact]
+    public async Task GetNewRaindropsAsync_StateWithIdButNoDate_StopsOnThatId()
+    {
+        using var server = WireMockServer.Start();
+        GivenPage(server, 0, $"{Item(103, "2026-01-03T00:00:00Z")}, {Item(102, "2026-01-02T00:00:00Z")}, {Item(101, "2026-01-01T00:00:00Z")}");
+
+        var client = CreateClient(server, pageSize: 50);
+        var idOnlyState = new PollingState(102, null, DateTimeOffset.UtcNow);
+
+        var items = await client.GetNewRaindropsAsync(idOnlyState, CancellationToken.None);
+
+        var single = Assert.Single(items);
+        Assert.Equal(103, single.Id);
+    }
+
     [Fact]
     public async Task UpdateRaindropAsync_WithoutCollectionId_DoesNotIncludeCollectionInBody()
     {

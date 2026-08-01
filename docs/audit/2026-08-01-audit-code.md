@@ -7,8 +7,8 @@
 | **Périmètre** | Revue générale · Architecture .NET · Design patterns · Sécurité |
 | **État build** | ✅ `dotnet build -c Release` — 0 warning, 0 erreur |
 | **État tests à l'audit** | ✅ 45/45 (6 Core + 39 Infrastructure) |
-| **État tests après correctifs** | ✅ 84/84 (14 Core + 50 Infrastructure + 20 Worker) |
-| **Avancement** | 11 findings corrigés (F-01 → F-10, F-26), 15 ouverts |
+| **État tests après correctifs** | ✅ 88/88 (14 Core + 54 Infrastructure + 20 Worker) |
+| **Avancement** | 13 findings corrigés (F-01 → F-13, F-26), 13 ouverts |
 
 ## Comment reprendre ce document
 
@@ -25,14 +25,16 @@ Statuts possibles : `ouvert` · `en cours` · `corrigé` · `refusé (raison)` �
 |---|---|---|---|
 | 🔴 Critique | 3 | F-01, F-02, F-26 | ✅ corrigés |
 | 🟠 Élevé | 5 | F-03, F-04, F-05, F-06, F-07 | ✅ corrigés |
-| 🟡 Moyen | 8 | F-08, F-09, F-10 ✅ · F-11 → F-15 ⏳ | partiel |
+| 🟡 Moyen | 8 | F-08 → F-10, F-12, F-13 ✅ · F-11, F-14, F-15 ⏳ | partiel |
 | ⚪ Faible | 10 | F-16 → F-25 | ⏳ ouverts |
 
-**Tout ce qui est critique et élevé est corrigé**, ainsi que **les cinq findings de sécurité** (F-02, F-08,
-F-09, F-10 ; F-11 reste ouvert). Un commit par finding, `fix: … (F-xx)`.
+**Tout ce qui est critique et élevé est corrigé**, ainsi que les findings de sécurité (F-02, F-08, F-09,
+F-10 ; seul F-11, prompt injection, reste ouvert) et les deux pertes silencieuses d'articles à la pagination
+(F-12, F-13). Un commit par finding, `fix: … (F-xx)`.
 
-Restent ouverts : F-11 à F-15 (moyen) et F-16 à F-25 (faible). Les plus proches d'un vrai impact
-fonctionnel sont **F-12 et F-13**, qui font perdre des articles silencieusement à la pagination.
+Restent ouverts : F-11, F-14, F-15 (moyen) et F-16 à F-25 (faible). Le plus rentable ensuite est sans doute
+**F-14** (résilience HTTP non calibrée pour un LLM : des appels Haiku retentés et refacturés à cause d'un
+timeout par tentative de 10 s), puis **F-11** (filtrage des tags produits par le modèle).
 
 **Répartition par axe** — Correction : 9 · Architecture : 7 · Sécurité : 5 · Design patterns : 3 · Tests : 1
 
@@ -46,9 +48,9 @@ fonctionnel sont **F-12 et F-13**, qui font perdre des articles silencieusement 
 4. ✅ **F-07** — filet de sécurité pour les corrections précédentes (l'orchestration n'avait aucun test).
 5. ✅ **F-08 + F-09 + F-10** — les trois findings de sécurité restants (injection HTML dans le digest,
    SMTP en clair, conteneur en root).
-6. ⏳ **F-12 + F-13** — perte silencieuse d'articles à la pagination : les plus proches d'un vrai impact
-   fonctionnel parmi ce qui reste.
-7. ⏳ Le reste au fil de l'eau.
+6. ✅ **F-26** — image publiée amd64 uniquement, donc indémarrable sur le Pi (découvert en cours de route).
+7. ✅ **F-12 + F-13** — les deux pertes silencieuses d'articles à la pagination.
+8. ⏳ Le reste au fil de l'eau, en commençant par F-14 puis F-11.
 
 Note sur l'ordre suivi : F-07 est passé en dernier comme prévu, donc F-01 → F-06 ont été écrits sans filet.
 Les tests de F-07 ont été validés *a posteriori* par mutation (réintroduction des défauts) pour vérifier
@@ -527,7 +529,7 @@ l'ancien algorithme demandait. Validé par mutation — restaurer `|| Items.Coun
 
 ### F-13 — Le seed de `PollingState` par date seule est ignoré
 
-- **Axe** : Correction · **Statut** : `ouvert`
+- **Axe** : Correction · **Statut** : ✅ `corrigé` (commit `f-13`)
 - **Localisation** : `src/RaindropAI.Infrastructure/Raindrop/RaindropClient.cs:115-128`
 
 ```csharp
@@ -546,6 +548,16 @@ est plus fragile qu'il n'y paraît, et l'échec est silencieux et destructif (cf
 
 **Correctif** : évaluer les deux critères indépendamment (`id connu` **ou** `created <= LastCreatedUtc`).
 Ajouter un test `GetNewRaindropsAsync_WithDateOnlyState_FiltersByDate`.
+
+**Correction appliquée.** Les deux critères sont désormais évalués indépendamment ; le court-circuit sur
+`LastRaindropId is null` disparaît. Deux tests ajoutés, un par amorçage partiel (date seule, id seul).
+Validé par mutation : restaurer le court-circuit fait échouer
+`GetNewRaindropsAsync_StateWithDateButNoId_FiltersOnDate`, et rien d'autre.
+
+Ce correctif a un second effet, plus important que le cas d'amorçage manuel : en régime établi, l'article qui
+sert de high-water mark est **déplacé hors de « Non trié » par notre propre write-back**. Il n'est donc plus
+dans la collection au cycle suivant, et la reconnaissance par id ne peut plus fonctionner — c'est le critère
+de date qui prend le relais. Le rendre inconditionnel fiabilise donc le cas nominal, pas seulement le seed.
 
 ---
 
