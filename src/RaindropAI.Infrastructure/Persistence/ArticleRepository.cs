@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.Json;
 using Dapper;
+using Microsoft.Extensions.Logging;
 using RaindropAI.Core.Enums;
 using RaindropAI.Core.Interfaces;
 using RaindropAI.Core.Models;
@@ -13,10 +14,12 @@ public sealed class ArticleRepository : IArticleRepository
     private const int BatchSize = 500;
 
     private readonly SqliteConnectionFactory _connectionFactory;
+    private readonly ILogger<ArticleRepository> _logger;
 
-    public ArticleRepository(SqliteConnectionFactory connectionFactory)
+    public ArticleRepository(SqliteConnectionFactory connectionFactory, ILogger<ArticleRepository> logger)
     {
         _connectionFactory = connectionFactory;
+        _logger = logger;
     }
 
     public async Task UpsertAsync(RaindropItem item, ClassificationResult classification, DateTimeOffset classifiedAtUtc, CancellationToken cancellationToken)
@@ -85,7 +88,7 @@ public sealed class ArticleRepository : IArticleRepository
     {
         await using var connection = await _connectionFactory.OpenConnectionAsync(cancellationToken);
         const string sql = "UPDATE Articles SET WriteBackStatus = @Status, Moved = @Moved, WriteBackAtUtc = @AtUtc WHERE Id = @Id";
-        await connection.ExecuteAsync(new CommandDefinition(
+        var affected = await connection.ExecuteAsync(new CommandDefinition(
             sql,
             new
             {
@@ -95,6 +98,13 @@ public sealed class ArticleRepository : IArticleRepository
                 AtUtc = atUtc.UtcDateTime.ToString("O", CultureInfo.InvariantCulture),
             },
             cancellationToken: cancellationToken));
+
+        // Zéro ligne touchée signalerait un article jamais persisté : l'UPDATE serait sinon parfaitement
+        // silencieux, et l'audit du write-back perdrait sa trace sans que rien ne l'indique.
+        if (affected == 0)
+        {
+            _logger.LogWarning("Write-back non enregistré : aucun article {ArticleId} en base.", articleId);
+        }
     }
 
     public async Task<IReadOnlyList<ClassifiedArticle>> GetUnsentDigestItemsAsync(CancellationToken cancellationToken)
@@ -114,7 +124,10 @@ public sealed class ArticleRepository : IArticleRepository
             ORDER BY RaindropCreatedUtc
             """;
         var rows = await connection.QueryAsync<ArticleRow>(new CommandDefinition(sql, cancellationToken: cancellationToken));
-        return rows.Select(MapToClassifiedArticle).ToList();
+        var articles = rows.Select(MapToClassifiedArticle).ToList();
+
+        _logger.LogDebug("{Count} articles en attente de digest.", articles.Count);
+        return articles;
     }
 
     public async Task MarkDiscordNotifiedAsync(long articleId, DateTimeOffset notifiedAtUtc, CancellationToken cancellationToken)

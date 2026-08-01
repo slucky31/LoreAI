@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Options;
 using RaindropAI.Core.Enums;
@@ -15,7 +16,7 @@ public class ArticleRepositoryTests : IDisposable
     {
         _dbPath = Path.Combine(Path.GetTempPath(), $"raindropai-test-{Guid.NewGuid():N}.db");
         var factory = new SqliteConnectionFactory(Options.Create(new SqliteOptions { ConnectionString = $"Data Source={_dbPath}" }));
-        _repository = new ArticleRepository(factory);
+        _repository = new ArticleRepository(factory, NullLogger<ArticleRepository>.Instance);
     }
 
     [Fact]
