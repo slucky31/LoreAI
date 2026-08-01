@@ -247,7 +247,7 @@ tournait auparavant en échouant en silence. C'est l'objet même du finding, mai
 
 ### F-06 — `CancellationToken.None` : aucun arrêt gracieux
 
-- **Axe** : Architecture · **Statut** : `ouvert`
+- **Axe** : Architecture · **Statut** : ✅ `corrigé` (commit `f-06`)
 - **Localisation** : `UnsortedClassificationJob.cs:48` · `DigestNotificationJob.cs:22`
 
 **Constat.** Les deux jobs ouvrent sur `var cancellationToken = CancellationToken.None;` et propagent ce
@@ -264,6 +264,28 @@ redémarre régulièrement, ce n'est pas un cas théorique.
 **Correctif proposé.** Implémenter `ICancellableInvocable` sur les deux jobs et utiliser `CancellationToken`
 au lieu de `CancellationToken.None`. Vérifier au passage que le `catch (Exception ex)` global ne transforme
 pas une annulation en erreur (`catch (OperationCanceledException) { throw; }` ou filtre `when`).
+
+**Correction appliquée.** Les deux jobs implémentent `ICancellableInvocable` et propagent le token de Coravel.
+Une annulation est loggée en `Information` (arrêt normal) et non plus en `Error`, via des filtres
+`when (cancellationToken.IsCancellationRequested)` posés au niveau de l'item et du cycle.
+
+Comportement de Coravel vérifié avant d'écrire le correctif, plutôt que supposé :
+
+```
+Token injecté et annulable ? True
+Token annulé après StopAsync ? True
+warn: Coravel.Scheduling.HostedService.SchedulerHost[0]
+      … there are tasks still running. App closing (in background) will be prevented until all tasks are completed.
+```
+
+Ce warning confirme l'autre moitié du problème : sans annulation, Coravel **bloque** la fermeture jusqu'à la
+fin du cycle, et c'est Docker qui tranche au SIGKILL.
+
+**Deux écritures sont volontairement laissées non annulables** (`CancellationToken.None`, commenté dans le
+code) : l'avancement du `PollingState` et le `MarkDigestSentAsync`. Ce sont des points de non-retour — des
+raindrops ont déjà été modifiés, l'email est déjà parti. Les annuler ferait rejouer tout le batch ou renvoyer
+le digest au redémarrage, c'est-à-dire exactement le dommage que ce finding cherche à éviter. Ce sont des
+écritures SQLite locales, elles ne retardent pas l'arrêt de façon perceptible.
 
 ---
 

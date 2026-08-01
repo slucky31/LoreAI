@@ -13,7 +13,7 @@ namespace RaindropAI.Worker.Services;
 /// (tags fusionnés + déplacement de collection si une correspondance existe) — sans étape de validation.
 /// Tout ce qui est en dehors de "Non trié" est considéré comme déjà classé et n'est jamais retouché.
 /// </summary>
-public sealed class UnsortedClassificationJob : IInvocable
+public sealed class UnsortedClassificationJob : IInvocable, ICancellableInvocable
 {
     private readonly IRaindropClient _raindropClient;
     private readonly IPollingStateRepository _pollingStateRepository;
@@ -44,9 +44,12 @@ public sealed class UnsortedClassificationJob : IInvocable
         _logger = logger;
     }
 
+    /// <summary>Alimenté par Coravel, annulé à l'arrêt de l'application (SIGTERM, <c>docker compose down</c>).</summary>
+    public CancellationToken CancellationToken { get; set; }
+
     public async Task Invoke()
     {
-        var cancellationToken = CancellationToken.None;
+        var cancellationToken = CancellationToken;
 
         try
         {
@@ -113,6 +116,13 @@ public sealed class UnsortedClassificationJob : IInvocable
                     processedCount++;
                     lastProcessed = item;
                 }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    _logger.LogInformation(
+                        "Arrêt de l'application demandé — cycle interrompu proprement avant le raindrop {RaindropId}.",
+                        item.Id);
+                    break;
+                }
                 catch (Exception ex)
                 {
                     // Sans ce filet, l'exception remontait au catch du cycle et court-circuitait l'avancement
@@ -128,9 +138,12 @@ public sealed class UnsortedClassificationJob : IInvocable
 
             if (lastProcessed is not null)
             {
+                // Volontairement non annulable : à ce stade des raindrops réels ont déjà été modifiés.
+                // Utiliser le token d'arrêt ferait échouer cette écriture pendant un shutdown et rejouerait
+                // tout le batch au redémarrage. C'est une écriture SQLite locale, elle ne retarde pas l'arrêt.
                 await _pollingStateRepository.UpdateAsync(
                     new PollingState(lastProcessed.Id, lastProcessed.CreatedUtc, DateTimeOffset.UtcNow),
-                    cancellationToken);
+                    CancellationToken.None);
             }
 
             _logger.LogInformation(
@@ -139,6 +152,10 @@ public sealed class UnsortedClassificationJob : IInvocable
                 newItems.Count,
                 movedCount,
                 notifiedCount);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            _logger.LogInformation("Cycle de classification interrompu par l'arrêt de l'application.");
         }
         catch (Exception ex)
         {
