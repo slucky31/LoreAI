@@ -8,7 +8,7 @@
 | **État build** | ✅ `dotnet build -c Release` — 0 warning, 0 erreur |
 | **État tests à l'audit** | ✅ 45/45 (6 Core + 39 Infrastructure) |
 | **État tests après correctifs** | ✅ 84/84 (14 Core + 50 Infrastructure + 20 Worker) |
-| **Avancement** | 10 findings corrigés (F-01 → F-10), 15 ouverts |
+| **Avancement** | 11 findings corrigés (F-01 → F-10, F-26), 15 ouverts |
 
 ## Comment reprendre ce document
 
@@ -23,7 +23,7 @@ Statuts possibles : `ouvert` · `en cours` · `corrigé` · `refusé (raison)` �
 
 | Sévérité | Nb | IDs | État |
 |---|---|---|---|
-| 🔴 Critique | 2 | F-01, F-02 | ✅ corrigés |
+| 🔴 Critique | 3 | F-01, F-02, F-26 | ✅ corrigés |
 | 🟠 Élevé | 5 | F-03, F-04, F-05, F-06, F-07 | ✅ corrigés |
 | 🟡 Moyen | 8 | F-08, F-09, F-10 ✅ · F-11 → F-15 ⏳ | partiel |
 | ⚪ Faible | 10 | F-16 → F-25 | ⏳ ouverts |
@@ -587,6 +587,49 @@ après quelques jours d'usage, sans recompiler.
 | **F-23** | Sécurité | `.github/workflows/*.yml` | Les actions tierces sont référencées par tag mobile (`@v4`, `@v6`, `marocchino/sticky-pull-request-comment@v2`) et non par SHA. Le workflow `cd.yml` dispose de `contents: write`, `packages: write` et d'un PAT admin (`RELEASE_TOKEN`) : une action compromise s'exécuterait avec ces droits. | Épingler par SHA (Renovate sait les mettre à jour), et restreindre `RELEASE_TOKEN` au strict nécessaire. |
 | **F-24** | Design | `ClassificationResponseParser.cs:13-34` | L'exception est le flux de contrôle nominal : le parser lève systématiquement pour signaler une sortie LLM invalide, et l'unique appelant rattrape via un `catch (Exception)` très large (`AnthropicClassifier.cs:55`) qui masque aussi bien un JSON malformé qu'un bug de programmation. | Exposer un `TryParse(out …)` ou un type résultat ; réserver le `catch` large aux vraies erreurs de transport. |
 | **F-25** | Correction | `RaindropClient` · `ArticleRepository` · `EmailNotifier` | Aucun `ILogger` : rien n'est tracé sur le nombre de pages paginées, la durée des requêtes, le nombre de lignes affectées, ni sur l'envoi SMTP. Le diagnostic repose entièrement sur les logs du job appelant. | Injecter `ILogger<T>` et tracer les points de bascule (pagination, write-back, envoi). |
+
+---
+
+---
+
+## Findings découverts après l'audit initial
+
+### F-26 — L'image publiée était amd64 uniquement, donc indémarrable sur le Raspberry Pi
+
+- **Axe** : Correction / Déploiement · **Sévérité** : 🔴 Critique · **Statut** : ✅ `corrigé` (commit `f-26`)
+- **Localisation** : `.github/workflows/cd.yml` (job `docker`) · `.github/workflows/ci.yml` · `docker-compose.yml`
+
+**Comment il est apparu.** L'audit initial a raisonné sur le modèle décrit par le README — « le build est fait
+directement sur le Pi », auquel cas le multi-arch des images de base suffit. L'utilisateur a précisé que
+l'image est en réalité **construite par GitHub et stockée sur GHCR**, le Pi ne faisant que la tirer. Ce modèle
+change complètement l'analyse, et la documentation ne le décrivait pas.
+
+**Constat.** Le job `docker` de `cd.yml` n'avait ni `platforms:` ni `setup-qemu-action` : `build-push-action`
+produit alors uniquement l'architecture du runner, soit `linux/amd64`. Vérifié sur l'image réellement publiée :
+
+```
+docker manifest inspect ghcr.io/slucky31/raindropai-worker:latest
+  "architecture": "amd64"        ← seule plateforme réelle
+  "architecture": "unknown"      ← attestation buildx, pas une plateforme
+```
+
+`docker-compose.yml` portait par ailleurs encore une section `build:` au lieu d'`image:`, ce qui masquait le
+problème : `docker compose up` reconstruisait localement sur le Pi au lieu d'échouer sur un manifeste absent.
+
+**Impact.** Le déploiement documenté (`docker compose pull` sur un Pi arm64) ne pouvait pas fonctionner —
+`no matching manifest for linux/arm64`. Le worker ne tournait sur le Pi que par l'effet de bord du build local.
+
+**Correction appliquée.** Le Dockerfile **cross-compile** (`FROM --platform=$BUILDPLATFORM` sur l'étage SDK,
+`dotnet publish -a $TARGETARCH`) plutôt que d'émuler le SDK sous QEMU, ce qui serait bien plus lent ;
+l'étage final ne faisant que des `COPY`, aucune émulation n'est nécessaire. BuildKit nomme l'architecture
+`amd64` là où le SDK .NET attend `x64`, d'où la traduction par `sed`.
+
+`platforms: linux/amd64,linux/arm64` ajouté à la CD **et à la CI**, pour qu'une régression arm64 échoue sur la
+PR et non au moment de la release. `docker-compose.yml` passe de `build:` à
+`image: ghcr.io/…:${RAINDROPAI_TAG:-latest}`, et le README décrit le vrai flux (`pull`, pas `build`).
+
+Vérifié localement : build multi-arch complet, puis image **arm64 chargée et démarrée sous QEMU**
+(`Application started`, `/data/logs` écrit en `1654:1654`).
 
 ---
 

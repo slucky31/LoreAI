@@ -106,6 +106,10 @@ jobs:
         with:
           ref: main
 
+      # QEMU n'émule rien pendant le build (le Dockerfile cross-compile), mais buildx en a besoin
+      # pour assembler et inspecter les manifestes des plateformes non natives au runner.
+      - uses: docker/setup-qemu-action@v3
+
       - uses: docker/setup-buildx-action@v3
 
       - name: Login to ghcr.io
@@ -130,6 +134,9 @@ jobs:
           context: .
           file: src/RaindropAI.Worker/Dockerfile
           push: true
+          # arm64 est la cible réelle de déploiement (Raspberry Pi 64-bit) : sans cette ligne
+          # l'image publiée est amd64 uniquement et le Pi ne peut pas la démarrer.
+          platforms: linux/amd64,linux/arm64
           tags: ${{ steps.meta-worker.outputs.tags }}
           cache-from: type=gha
           cache-to: type=gha,mode=max

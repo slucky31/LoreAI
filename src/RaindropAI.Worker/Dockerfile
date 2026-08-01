@@ -1,14 +1,22 @@
-FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
+# --platform=$BUILDPLATFORM : le SDK tourne nativement sur le runner et c'est `dotnet publish -a` qui
+# cible l'architecture voulue. Émuler tout le SDK sous QEMU pour produire l'arm64 serait bien plus lent,
+# et la cross-compilation évite complètement l'émulation (l'étage final ne fait que des COPY).
+FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:9.0 AS build
+ARG TARGETARCH
 WORKDIR /src
 
 COPY Directory.Build.props Directory.Packages.props ./
 COPY src/RaindropAI.Core/RaindropAI.Core.csproj src/RaindropAI.Core/
 COPY src/RaindropAI.Infrastructure/RaindropAI.Infrastructure.csproj src/RaindropAI.Infrastructure/
 COPY src/RaindropAI.Worker/RaindropAI.Worker.csproj src/RaindropAI.Worker/
-RUN dotnet restore src/RaindropAI.Worker/RaindropAI.Worker.csproj
+# BuildKit nomme l'architecture amd64/arm64, le SDK .NET attend x64/arm64.
+RUN DOTNET_ARCH="$(echo "$TARGETARCH" | sed 's/amd64/x64/')" \
+    && dotnet restore src/RaindropAI.Worker/RaindropAI.Worker.csproj -a "$DOTNET_ARCH"
 
 COPY src/ src/
-RUN dotnet publish src/RaindropAI.Worker/RaindropAI.Worker.csproj -c Release -o /app/publish --no-restore
+RUN DOTNET_ARCH="$(echo "$TARGETARCH" | sed 's/amd64/x64/')" \
+    && dotnet publish src/RaindropAI.Worker/RaindropAI.Worker.csproj \
+       -c Release -a "$DOTNET_ARCH" --self-contained false -o /app/publish --no-restore
 
 # L'image finale est « chiselée » : ni shell, ni mkdir, ni chown — aucune instruction RUN n'y est
 # possible. Le squelette de /data est donc préparé ici, puis copié avec la bonne propriété.

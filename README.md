@@ -45,17 +45,25 @@ Le worker **refuse de démarrer** si la configuration est incomplète (token Rai
 
 ## Déploiement sur Raspberry Pi
 
+Rien n'est compilé sur le Pi : l'image est construite et publiée par la CD GitHub sur `ghcr.io`, en multi-arch (`linux/amd64` + `linux/arm64`).
+
 ```bash
-uname -m                            # doit renvoyer aarch64 (Raspberry Pi OS 64-bit)
+uname -m                                        # doit renvoyer aarch64 (Raspberry Pi OS 64-bit)
 mkdir -p data && sudo chown -R 1654:1654 data   # le conteneur tourne en non-root (uid 1654)
-docker compose build
+docker compose pull
 docker compose up -d
 docker compose logs -f
 ```
 
-Le conteneur s'exécute sous l'utilisateur applicatif non-root de l'image .NET (`uid 1654`). Sur un bind mount, c'est la propriété côté hôte qui prime : sans le `chown` ci-dessus, SQLite échoue à créer sa base avec un `Permission denied` sur `/data`. Si vous mettez à jour une installation existante qui tournait en root, appliquez le `chown` sur le dossier `data/` déjà présent.
+Pour épingler une version plutôt que de suivre `latest` : `RAINDROPAI_TAG=0.3.0 docker compose up -d` (ou la variable dans le `.env`).
 
-Le build est fait directement sur le Pi : les images `mcr.microsoft.com/dotnet/*` sont multi-arch, la variante arm64 est récupérée automatiquement.
+Le conteneur s'exécute sous l'utilisateur applicatif non-root de l'image .NET (`uid 1654`), à partir d'une image « chiselée » sans shell ni gestionnaire de paquets. Sur un bind mount, c'est la propriété côté hôte qui prime : sans le `chown` ci-dessus, SQLite échoue à créer sa base avec un `Permission denied` sur `/data`. Si vous mettez à jour une installation existante qui tournait en root, appliquez le `chown` sur le dossier `data/` déjà présent.
+
+Pour reconstruire l'image localement malgré tout (mise au point) :
+
+```bash
+docker build -f src/RaindropAI.Worker/Dockerfile -t raindropai-worker:local .
+```
 
 Le fichier SQLite (`/data/raindropai.db`) et les logs (`/data/logs/`) sont persistés via le volume `./data`.
 
