@@ -33,9 +33,9 @@ public class DigestNotificationJobTests
         await CreateJob().Invoke();
 
         await _digestNotifier.Received(1).SendDigestAsync(
-            Arg.Is<IReadOnlyList<ClassifiedArticle>>(a => a.Count == 2), Arg.Any<CancellationToken>());
+            Arg.Is<IReadOnlyList<ClassifiedArticle>>(a => a!.Count == 2), Arg.Any<CancellationToken>());
         await _articleRepository.Received(1).MarkDigestSentAsync(
-            Arg.Is<IReadOnlyCollection<long>>(ids => ids.Contains(1) && ids.Contains(2)),
+            Arg.Is<IReadOnlyCollection<long>>(ids => ids!.Contains(1) && ids!.Contains(2)),
             Arg.Any<DateTimeOffset>(),
             Arg.Any<CancellationToken>());
     }
