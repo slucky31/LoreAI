@@ -7,8 +7,8 @@
 | **Périmètre** | Revue générale · Architecture .NET · Design patterns · Sécurité |
 | **État build** | ✅ `dotnet build -c Release` — 0 warning, 0 erreur |
 | **État tests à l'audit** | ✅ 45/45 (6 Core + 39 Infrastructure) |
-| **État tests après correctifs** | ✅ 88/88 (14 Core + 54 Infrastructure + 20 Worker) |
-| **Avancement** | 13 findings corrigés (F-01 → F-13, F-26), 13 ouverts |
+| **État tests après correctifs** | ✅ 96/96 (14 Core + 54 Infrastructure + 28 Worker) |
+| **Avancement** | 14 findings corrigés (F-01 → F-14, F-26), 12 ouverts |
 
 ## Comment reprendre ce document
 
@@ -25,16 +25,16 @@ Statuts possibles : `ouvert` · `en cours` · `corrigé` · `refusé (raison)` �
 |---|---|---|---|
 | 🔴 Critique | 3 | F-01, F-02, F-26 | ✅ corrigés |
 | 🟠 Élevé | 5 | F-03, F-04, F-05, F-06, F-07 | ✅ corrigés |
-| 🟡 Moyen | 8 | F-08 → F-10, F-12, F-13 ✅ · F-11, F-14, F-15 ⏳ | partiel |
+| 🟡 Moyen | 8 | F-08 → F-10, F-12 → F-14 ✅ · F-11, F-15 ⏳ | partiel |
 | ⚪ Faible | 10 | F-16 → F-25 | ⏳ ouverts |
 
 **Tout ce qui est critique et élevé est corrigé**, ainsi que les findings de sécurité (F-02, F-08, F-09,
-F-10 ; seul F-11, prompt injection, reste ouvert) et les deux pertes silencieuses d'articles à la pagination
-(F-12, F-13). Un commit par finding, `fix: … (F-xx)`.
+F-10 ; seul F-11, prompt injection, reste ouvert), les deux pertes silencieuses d'articles à la pagination
+(F-12, F-13) et la résilience de l'appel LLM (F-14). Un commit par finding, `fix: … (F-xx)`.
 
-Restent ouverts : F-11, F-14, F-15 (moyen) et F-16 à F-25 (faible). Le plus rentable ensuite est sans doute
-**F-14** (résilience HTTP non calibrée pour un LLM : des appels Haiku retentés et refacturés à cause d'un
-timeout par tentative de 10 s), puis **F-11** (filtrage des tags produits par le modèle).
+Restent ouverts : F-11 et F-15 (moyen), F-16 à F-25 (faible). Le plus rentable ensuite est **F-11**
+(filtrage des tags produits par le modèle, seule sortie libre écrite dans Raindrop), puis le lot
+F-16/F-17/F-21, petits correctifs de robustesse sur la persistance et la taxonomie.
 
 **Répartition par axe** — Correction : 9 · Architecture : 7 · Sécurité : 5 · Design patterns : 3 · Tests : 1
 
@@ -50,7 +50,8 @@ timeout par tentative de 10 s), puis **F-11** (filtrage des tags produits par le
    SMTP en clair, conteneur en root).
 6. ✅ **F-26** — image publiée amd64 uniquement, donc indémarrable sur le Pi (découvert en cours de route).
 7. ✅ **F-12 + F-13** — les deux pertes silencieuses d'articles à la pagination.
-8. ⏳ Le reste au fil de l'eau, en commençant par F-14 puis F-11.
+8. ✅ **F-14** — résilience HTTP calibrée pour l'appel LLM.
+9. ⏳ Le reste au fil de l'eau, en commençant par F-11.
 
 Note sur l'ordre suivi : F-07 est passé en dernier comme prévu, donc F-01 → F-06 ont été écrits sans filet.
 Les tests de F-07 ont été validés *a posteriori* par mutation (réintroduction des défauts) pour vérifier
@@ -563,7 +564,7 @@ de date qui prend le relais. Le rendre inconditionnel fiabilise donc le cas nomi
 
 ### F-14 — Résilience HTTP non calibrée pour un appel LLM
 
-- **Axe** : Architecture · **Statut** : `ouvert`
+- **Axe** : Architecture · **Statut** : ✅ `corrigé` (commit `f-14`)
 - **Localisation** : `src/RaindropAI.Worker/Program.cs:44-51`
 
 `AddStandardResilienceHandler()` est appliqué à l'identique aux trois clients typés. Ses valeurs par défaut
@@ -575,6 +576,31 @@ Anthropic, et à la troisième tentative le timeout total de 30 s tombe ⇒ éch
 **Correctif** : configurer explicitement le handler du classifieur
 (`AttemptTimeout` ≈ 60 s, `TotalRequestTimeout` ≈ 180 s), et vérifier que le retry ne se déclenche que sur
 429/5xx/erreurs réseau, jamais sur un 400 (schéma invalide) qui ne passera jamais.
+
+**Correction appliquée.** Seul le client du classifieur sort des valeurs par défaut, via
+`ClassifierResilience.Configure` (`Worker/Resilience/`) : `AttemptTimeout` 60 s, `TotalRequestTimeout` 3 min.
+Raindrop et Discord gardent les défauts, qui leur conviennent.
+
+Deux points relevés en cours de correction :
+
+- **Le validateur intégré impose `SamplingDuration ≥ 2 × AttemptTimeout`** sur le disjoncteur. Allonger le
+  timeout par tentative sans élargir cette fenêtre fait échouer la création du client. La fenêtre passe donc
+  à 2 min. Ce n'était pas anticipé par le correctif proposé ci-dessus.
+- **La vérification demandée sur le 400 était déjà satisfaite** : le `ShouldHandle` par défaut ne traite que
+  5xx, 408, 429 et les erreurs réseau, et respecte l'en-tête `Retry-After` sur 429. Rien à changer, mais
+  c'est désormais verrouillé par un test.
+
+8 tests ajoutés, qui exercent le **vrai validateur du framework** (construction effective du client via
+`IHttpClientFactory`) et le **vrai prédicat Polly** de retry, plutôt que de relire les constantes. Le test
+`RaisingAttemptTimeoutWithoutWideningTheCircuitBreakerWindow_IsRejected` documente la contrainte du
+disjoncteur et prouve que la validation est bien active.
+
+À noter : 4 tentatives × 60 s dépassent le plafond total de 3 min. C'est voulu — le
+`TotalRequestTimeout` est le vrai budget, et un article qui l'épuise part en repli, ce qui interrompt
+proprement le cycle depuis F-01 au lieu d'écrire n'importe quoi.
+
+Limite : ces options ne sont validées qu'à la création du client typé, donc au premier tick cron et non au
+démarrage. Le test tient lieu de garde-fou.
 
 ---
 

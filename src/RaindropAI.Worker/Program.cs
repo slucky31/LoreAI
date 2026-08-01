@@ -7,6 +7,7 @@ using RaindropAI.Infrastructure.Notifications;
 using RaindropAI.Infrastructure.Persistence;
 using RaindropAI.Infrastructure.Raindrop;
 using RaindropAI.Worker.Options;
+using RaindropAI.Worker.Resilience;
 using RaindropAI.Worker.Services;
 using Serilog;
 
@@ -47,8 +48,9 @@ try
     builder.Services.AddHttpClient<IRaindropClient, RaindropClient>()
         .AddStandardResilienceHandler();
 
+    // Seul l'appel LLM sort des valeurs par défaut, cf. ClassifierResilience.
     builder.Services.AddHttpClient<IClassifier, AnthropicClassifier>()
-        .AddStandardResilienceHandler();
+        .AddStandardResilienceHandler(ClassifierResilience.Configure);
 
     builder.Services.AddHttpClient<IImmediateNotifier, DiscordNotifier>()
         .AddStandardResilienceHandler();
