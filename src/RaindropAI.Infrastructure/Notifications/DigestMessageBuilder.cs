@@ -34,7 +34,7 @@ public static class DigestMessageBuilder
                         : "(aucun)";
 
                     builder.AppendLine(
-                        $"<li><a href=\"{article.Item.Link}\">{WebUtility.HtmlEncode(article.Item.Title)}</a> " +
+                        $"<li>{BuildTitleHtml(article.Item.Title, article.Item.Link)} " +
                         $"— {article.Classification.Priority} — tags : {WebUtility.HtmlEncode(tags)} — {WebUtility.HtmlEncode(article.Classification.Reason)}</li>");
                 }
 
@@ -45,4 +45,24 @@ public static class DigestMessageBuilder
         builder.AppendLine("</body></html>");
         return builder.ToString();
     }
+
+    /// <summary>
+    /// Le lien vient d'une page bookmarkée, donc d'une source non maîtrisée : il est encodé comme le reste
+    /// (un <c>"</c> non échappé fermerait l'attribut <c>href</c> et permettrait d'injecter du balisage dans
+    /// l'email), et seul un schéma http(s) donne droit à une ancre cliquable. Un lien d'un autre schéma
+    /// (<c>javascript:</c>, <c>data:</c>…) reste affiché en texte pour ne rien perdre, mais sans ancre.
+    /// </summary>
+    private static string BuildTitleHtml(string title, string link)
+    {
+        var encodedTitle = WebUtility.HtmlEncode(title);
+        var encodedLink = WebUtility.HtmlEncode(link);
+
+        return IsHttpLink(link)
+            ? $"<a href=\"{encodedLink}\">{encodedTitle}</a>"
+            : $"{encodedTitle} [{encodedLink}]";
+    }
+
+    private static bool IsHttpLink(string link) =>
+        Uri.TryCreate(link, UriKind.Absolute, out var uri)
+        && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps);
 }

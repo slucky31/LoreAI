@@ -349,7 +349,7 @@ Total après correctifs : **75 tests** (14 Core + 41 Infrastructure + 20 Worker)
 
 ### F-08 — Injection HTML dans le digest email : le lien n'est pas encodé
 
-- **Axe** : Sécurité · **Statut** : `ouvert`
+- **Axe** : Sécurité · **Statut** : ✅ `corrigé` (commit `f-08`)
 - **Localisation** : `src/RaindropAI.Infrastructure/Notifications/DigestMessageBuilder.cs:38`
 
 ```csharp
@@ -366,6 +366,12 @@ titre mais pas celui du lien — d'où l'angle mort.
 
 **Correctif** : `WebUtility.HtmlEncode(article.Item.Link)`, et idéalement valider le schéma (`http`/`https`
 uniquement) avant de produire un `href`. Étendre le test existant au lien.
+
+**Correction appliquée.** Le rendu du titre passe par `BuildTitleHtml` : le lien est encodé comme le reste, et
+seul un schéma `http`/`https` (validé via `Uri.TryCreate`) donne droit à une ancre. Un lien d'un autre schéma
+reste affiché en texte entre crochets — l'information n'est pas perdue, mais rien n'est cliquable ni
+injectable. 3 tests ajoutés (ancre normale avec `&` encodé en `&amp;`, tentative de sortie de l'attribut via
+`"`, schéma `javascript:`), validés par mutation : le rendu d'origine les fait tous les trois échouer.
 
 ---
 
