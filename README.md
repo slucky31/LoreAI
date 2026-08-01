@@ -47,6 +47,8 @@ Le worker **refuse de démarrer** si la configuration est incomplète (token Rai
 
 Rien n'est compilé sur le Pi : l'image est construite et publiée par la CD GitHub sur `ghcr.io`, en multi-arch (`linux/amd64` + `linux/arm64`).
 
+Pour un déploiement de zéro sur un Raspberry Pi fraîchement installé (installation de Docker incluse, récupération des secrets, dépannage), voir [docs/deploiement-raspberry-pi.md](docs/deploiement-raspberry-pi.md). Version courte ci-dessous pour une mise à jour ou un Pi déjà équipé de Docker :
+
 ```bash
 uname -m                                        # doit renvoyer aarch64 (Raspberry Pi OS 64-bit)
 mkdir -p data && sudo chown -R 1654:1654 data   # le conteneur tourne en non-root (uid 1654)
