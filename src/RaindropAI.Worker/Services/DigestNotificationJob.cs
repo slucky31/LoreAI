@@ -42,7 +42,10 @@ public sealed class DigestNotificationJob : IInvocable, ICancellableInvocable
                 DateTimeOffset.UtcNow,
                 CancellationToken.None);
 
-            _logger.LogInformation("Digest envoyé avec {Count} articles.", pendingArticles.Count);
+            if (_logger.IsEnabled(LogLevel.Information))
+            {
+                _logger.LogInformation("Digest envoyé avec {Count} articles.", pendingArticles.Count);
+            }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
