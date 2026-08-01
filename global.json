@@ -1,7 +1,7 @@
 {
   "//": "SDK épinglé : les analyseurs .NET sont actifs sous TreatWarningsAsErrors, et leur jeu de règles évolue d'une bande de fonctionnalités à l'autre. Sans épinglage, une nouvelle règle apparue côté runner fait rougir la CI sur un code vert en local. rollForward latestPatch laisse passer les correctifs de sécurité.",
   "sdk": {
-    "version": "9.0.316",
+    "version": "10.0.302",
     "rollForward": "latestPatch"
   },
   "test": {
