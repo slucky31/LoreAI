@@ -1,3 +1,4 @@
+using System.Globalization;
 using Coravel;
 using Microsoft.Extensions.Options;
 using RaindropAI.Core.Interfaces;
@@ -7,45 +8,67 @@ using RaindropAI.Infrastructure.Notifications;
 using RaindropAI.Infrastructure.Persistence;
 using RaindropAI.Infrastructure.Raindrop;
 using RaindropAI.Worker.Options;
+using RaindropAI.Worker.Resilience;
 using RaindropAI.Worker.Services;
 using Serilog;
 
+// Culture invariante sur les sinks : des logs rendus à l'identique quelle que soit la machine, et
+// alignés sur le conteneur, qui tourne de toute façon en mode globalization-invariant.
 Log.Logger = new LoggerConfiguration()
-    .WriteTo.Console()
+    .WriteTo.Console(formatProvider: CultureInfo.InvariantCulture)
     .CreateBootstrapLogger();
 
 try
 {
     var builder = Host.CreateApplicationBuilder(args);
 
+    // Serilog est la seule source de vérité pour les niveaux de log : tout se règle sous `Serilog:`.
+    // Une section `Logging:LogLevel` cohabitait auparavant, filtrée en amont par Microsoft.Extensions.Logging
+    // alors que Serilog applique ensuite son propre minimum — deux réglages pour un seul effet attendu,
+    // dont l'un pouvait rester sans effet visible.
     builder.Services.AddSerilog((services, loggerConfiguration) =>
     {
-        var logFilePath = builder.Configuration["Logging:FilePath"] ?? "logs/raindropai-.log";
+        var logFilePath = builder.Configuration["Serilog:FilePath"] ?? "logs/raindropai-.log";
         loggerConfiguration
             .ReadFrom.Configuration(builder.Configuration)
             .ReadFrom.Services(services)
-            .WriteTo.Console()
-            .WriteTo.File(logFilePath, rollingInterval: Serilog.RollingInterval.Day);
+            .WriteTo.Console(formatProvider: CultureInfo.InvariantCulture)
+            .WriteTo.File(logFilePath, rollingInterval: Serilog.RollingInterval.Day, formatProvider: CultureInfo.InvariantCulture);
     });
 
-    builder.Services.Configure<SqliteOptions>(builder.Configuration.GetSection("Sqlite"));
-    builder.Services.Configure<RaindropApiOptions>(builder.Configuration.GetSection("Raindrop"));
-    builder.Services.Configure<ClassifierOptions>(builder.Configuration.GetSection("Classifier"));
-    builder.Services.Configure<DiscordOptions>(builder.Configuration.GetSection("Discord"));
-    builder.Services.Configure<EmailOptions>(builder.Configuration.GetSection("Email"));
-    builder.Services.Configure<WorkerOptions>(builder.Configuration.GetSection("Worker"));
+    // Validées au démarrage : une configuration incomplète doit arrêter le service tout de suite,
+    // pas produire un worker qui tourne et échoue en silence toutes les 15 minutes.
+    builder.Services
+        .AddValidatedOptions<SqliteOptions>(builder.Configuration, "Sqlite")
+        .AddValidatedOptions<RaindropApiOptions>(builder.Configuration, "Raindrop")
+        .AddValidatedOptions<ClassifierOptions>(builder.Configuration, "Classifier")
+        .AddValidatedOptions<DiscordOptions>(builder.Configuration, "Discord")
+        .AddValidatedOptions<EmailOptions>(builder.Configuration, "Email")
+        .AddValidatedOptions<WorkerOptions>(builder.Configuration, "Worker")
+        .AddValidatedOptions<NotificationOptions>(builder.Configuration, "Notification");
 
     builder.Services.AddSingleton<SqliteConnectionFactory>();
+    builder.Services.AddHostedService<DatabaseInitializer>();
     builder.Services.AddSingleton<IArticleRepository, ArticleRepository>();
     builder.Services.AddSingleton<IPollingStateRepository, PollingStateRepository>();
-    builder.Services.AddSingleton<INotificationPolicy, DefaultNotificationPolicy>();
+    // DefaultNotificationPolicy expose des seuils en paramètres de constructeur ; ils étaient annoncés
+    // « injectables » mais aucun appelant ne les fournissait. On les alimente depuis la configuration ici,
+    // plutôt que de faire dépendre Core de Microsoft.Extensions.Options.
+    builder.Services.AddSingleton<INotificationPolicy>(serviceProvider =>
+    {
+        var notificationOptions = serviceProvider.GetRequiredService<IOptions<NotificationOptions>>().Value;
+        return new DefaultNotificationPolicy(
+            notificationOptions.TriggerActions.ToHashSet(),
+            notificationOptions.MinimumPriority);
+    });
     builder.Services.AddSingleton<IDigestNotifier, EmailNotifier>();
 
     builder.Services.AddHttpClient<IRaindropClient, RaindropClient>()
         .AddStandardResilienceHandler();
 
+    // Seul l'appel LLM sort des valeurs par défaut, cf. ClassifierResilience.
     builder.Services.AddHttpClient<IClassifier, AnthropicClassifier>()
-        .AddStandardResilienceHandler();
+        .AddStandardResilienceHandler(ClassifierResilience.Configure);
 
     builder.Services.AddHttpClient<IImmediateNotifier, DiscordNotifier>()
         .AddStandardResilienceHandler();
@@ -73,6 +96,10 @@ try
 catch (Exception ex)
 {
     Log.Fatal(ex, "RaindropAI.Worker s'est arrêté de façon inattendue.");
+
+    // Sans cela le process sortait avec 0 : un échec de démarrage (configuration invalide, /data non
+    // inscriptible) était indistinguable d'un arrêt normal pour Docker et l'outillage.
+    Environment.ExitCode = 1;
 }
 finally
 {

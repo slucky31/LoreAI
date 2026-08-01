@@ -1,5 +1,5 @@
 using MailKit.Net.Smtp;
-using MailKit.Security;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using MimeKit;
 using RaindropAI.Core.Interfaces;
@@ -14,10 +14,12 @@ namespace RaindropAI.Infrastructure.Notifications;
 public sealed class EmailNotifier : IDigestNotifier
 {
     private readonly EmailOptions _options;
+    private readonly ILogger<EmailNotifier> _logger;
 
-    public EmailNotifier(IOptions<EmailOptions> options)
+    public EmailNotifier(IOptions<EmailOptions> options, ILogger<EmailNotifier> logger)
     {
         _options = options.Value;
+        _logger = logger;
     }
 
     public async Task SendDigestAsync(IReadOnlyList<ClassifiedArticle> articles, CancellationToken cancellationToken)
@@ -36,7 +38,17 @@ public sealed class EmailNotifier : IDigestNotifier
         using var client = new SmtpClient();
         try
         {
-            var secureSocketOptions = _options.UseSsl ? SecureSocketOptions.StartTls : SecureSocketOptions.None;
+            var secureSocketOptions = SmtpSecurityResolver.Resolve(_options.Security, _options.SmtpPort);
+            if (_logger.IsEnabled(LogLevel.Information))
+            {
+                _logger.LogInformation(
+                    "Envoi du digest ({Count} articles) via {Host}:{Port} en {Security}.",
+                    articles.Count,
+                    _options.SmtpHost,
+                    _options.SmtpPort,
+                    secureSocketOptions);
+            }
+
             await client.ConnectAsync(_options.SmtpHost, _options.SmtpPort, secureSocketOptions, cancellationToken);
             await client.AuthenticateAsync(_options.SmtpUser, _options.SmtpPassword, cancellationToken);
             await client.SendAsync(message, cancellationToken);

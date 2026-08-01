@@ -1,12 +1,16 @@
 services:
   raindropai:
-    build:
-      context: .
-      dockerfile: src/RaindropAI.Worker/Dockerfile
+    # Image construite et publiée par la CD GitHub (multi-arch amd64 + arm64), pas de build ici :
+    # `docker compose pull && docker compose up -d` suffit sur le Raspberry Pi.
+    # RAINDROPAI_TAG permet d'épingler une version précise plutôt que de suivre latest.
+    image: ghcr.io/slucky31/raindropai-worker:${RAINDROPAI_TAG:-latest}
     restart: unless-stopped
     env_file:
       - .env
     environment:
       DOTNET_ENVIRONMENT: Production
     volumes:
+      # Le conteneur tourne en non-root (uid 1654). Sur un bind mount c'est la propriété côté hôte
+      # qui prime : ./data doit lui appartenir, sinon SQLite échoue en « Permission denied ».
+      #   mkdir -p data && sudo chown -R 1654:1654 data
       - ./data:/data

@@ -29,6 +29,8 @@ docs/adr/                      Architecture Decision Records
 
 Copier `.env.example` en `.env` et renseigner les valeurs (voir commentaires dans le fichier). Les clés suivent la convention .NET `Section__Propriete` (ex. `Raindrop__Token`, `Email__SmtpHost`).
 
+⚠️ Vérifiez que `Raindrop__CollectionId` vaut bien **`-1`** (« Non trié »). C'est ce réglage qui garantit que l'outil ne touche pas aux raindrops que vous avez déjà rangés : `0` viserait **toute votre bibliothèque**.
+
 ## Lancer en local
 
 ```bash
@@ -39,16 +41,29 @@ dotnet run --project src/RaindropAI.Worker
 
 En local, `appsettings.Development.json` pointe vers un fichier SQLite `raindropai.dev.db` dans le dossier courant et des logs dans `logs/`.
 
+Le worker **refuse de démarrer** si la configuration est incomplète (token Raindrop, clé Anthropic, webhook Discord, SMTP) et indique précisément le champ fautif — par exemple `DataAnnotation validation failed for 'RaindropApiOptions' members: 'Token'`. Renseignez les valeurs via `dotnet user-secrets` ou `.env` avant de lancer.
+
 ## Déploiement sur Raspberry Pi
 
+Rien n'est compilé sur le Pi : l'image est construite et publiée par la CD GitHub sur `ghcr.io`, en multi-arch (`linux/amd64` + `linux/arm64`).
+
 ```bash
-uname -m            # doit renvoyer aarch64 (Raspberry Pi OS 64-bit)
-docker compose build
+uname -m                                        # doit renvoyer aarch64 (Raspberry Pi OS 64-bit)
+mkdir -p data && sudo chown -R 1654:1654 data   # le conteneur tourne en non-root (uid 1654)
+docker compose pull
 docker compose up -d
 docker compose logs -f
 ```
 
-Le build est fait directement sur le Pi : les images `mcr.microsoft.com/dotnet/*` sont multi-arch, la variante arm64 est récupérée automatiquement.
+Pour épingler une version plutôt que de suivre `latest` : `RAINDROPAI_TAG=0.3.0 docker compose up -d` (ou la variable dans le `.env`).
+
+Le conteneur s'exécute sous l'utilisateur applicatif non-root de l'image .NET (`uid 1654`), à partir d'une image « chiselée » sans shell ni gestionnaire de paquets. Sur un bind mount, c'est la propriété côté hôte qui prime : sans le `chown` ci-dessus, SQLite échoue à créer sa base avec un `Permission denied` sur `/data`. Si vous mettez à jour une installation existante qui tournait en root, appliquez le `chown` sur le dossier `data/` déjà présent.
+
+Pour reconstruire l'image localement malgré tout (mise au point) :
+
+```bash
+docker build -f src/RaindropAI.Worker/Dockerfile -t raindropai-worker:local .
+```
 
 Le fichier SQLite (`/data/raindropai.db`) et les logs (`/data/logs/`) sont persistés via le volume `./data`.
 

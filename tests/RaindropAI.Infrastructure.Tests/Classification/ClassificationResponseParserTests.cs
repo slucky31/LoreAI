@@ -85,4 +85,53 @@ public class ClassificationResponseParserTests
 
         Assert.Throws<ClassificationParseException>(() => ClassificationResponseParser.Parse(malformed, "model", "raw"));
     }
+
+    // --- F-11 : les tags sont la seule sortie libre du modèle écrite dans Raindrop ---
+
+    [Fact]
+    public void Parse_OverlyLongTag_IsTruncated()
+    {
+        var json = TagsJson($"\"{new string('a', 200)}\"");
+
+        var tag = Assert.Single(ClassificationResponseParser.Parse(json, "model", "raw").Tags);
+        Assert.Equal(50, tag.Length);
+    }
+
+    [Fact]
+    public void Parse_TooManyTags_IsCapped()
+    {
+        var json = TagsJson(string.Join(", ", Enumerable.Range(1, 40).Select(i => $"\"tag{i}\"")));
+
+        Assert.Equal(10, ClassificationResponseParser.Parse(json, "model", "raw").Tags.Count);
+    }
+
+    [Fact]
+    public void Parse_TagWithNewlinesAndControlCharacters_IsFlattened()
+    {
+        var json = TagsJson("\"dot\\nnet\\u0007\"");
+
+        var tag = Assert.Single(ClassificationResponseParser.Parse(json, "model", "raw").Tags);
+        Assert.Equal("dot net", tag);
+    }
+
+    [Fact]
+    public void Parse_DuplicateTags_AreCollapsedCaseInsensitively()
+    {
+        var json = TagsJson("\"dotnet\", \"DotNet\", \"  dotnet  \"");
+
+        var tag = Assert.Single(ClassificationResponseParser.Parse(json, "model", "raw").Tags);
+        Assert.Equal("dotnet", tag);
+    }
+
+    [Fact]
+    public void Parse_BlankTags_AreDropped()
+    {
+        var json = TagsJson("\"dotnet\", \"\", \"   \", null");
+
+        var tag = Assert.Single(ClassificationResponseParser.Parse(json, "model", "raw").Tags);
+        Assert.Equal("dotnet", tag);
+    }
+
+    private static string TagsJson(string tags) =>
+        $$"""{ "suggestedCollection": null, "tags": [{{tags}}], "action": "ATester", "priority": "Haute", "reason": "x" }""";
 }

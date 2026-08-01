@@ -1,5 +1,6 @@
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using RaindropAI.Core.Interfaces;
 using RaindropAI.Core.Models;
@@ -13,13 +14,21 @@ namespace RaindropAI.Infrastructure.Raindrop;
 /// </summary>
 public sealed class RaindropClient : IRaindropClient
 {
+    /// <summary>
+    /// Garde-fou contre une pagination qui ne se terminerait jamais (serveur ignorant le paramètre
+    /// <c>page</c>). À 50 éléments par page, cela couvre 10 000 articles en un cycle.
+    /// </summary>
+    private const int MaxPagesPerCycle = 200;
+
     private readonly HttpClient _httpClient;
     private readonly RaindropApiOptions _options;
+    private readonly ILogger<RaindropClient> _logger;
 
-    public RaindropClient(HttpClient httpClient, IOptions<RaindropApiOptions> options)
+    public RaindropClient(HttpClient httpClient, IOptions<RaindropApiOptions> options, ILogger<RaindropClient> logger)
     {
         _httpClient = httpClient;
         _options = options.Value;
+        _logger = logger;
 
         _httpClient.BaseAddress ??= new Uri(_options.BaseUrl.TrimEnd('/') + "/");
         _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _options.Token);
@@ -30,7 +39,7 @@ public sealed class RaindropClient : IRaindropClient
         var collected = new List<RaindropItem>();
         var page = 0;
 
-        while (true)
+        while (page < MaxPagesPerCycle)
         {
             var url = $"raindrops/{_options.CollectionId}?sort=-created&perpage={_options.PageSize}&page={page}";
             var response = await _httpClient.GetAsync(url, cancellationToken);
@@ -39,6 +48,9 @@ public sealed class RaindropClient : IRaindropClient
             var payload = await response.Content.ReadFromJsonAsync<RaindropsPageDto>(cancellationToken: cancellationToken)
                 ?? throw new InvalidOperationException("Réponse Raindrop vide ou invalide.");
 
+            // Une page vide est la seule fin de liste non ambiguë. Se fier à « page plus courte que
+            // demandé » confondrait la fin de liste avec un serveur qui rend moins d'éléments que
+            // le perpage demandé — et ferait perdre silencieusement tout ce qui suit.
             if (payload.Items.Count == 0)
             {
                 break;
@@ -56,12 +68,22 @@ public sealed class RaindropClient : IRaindropClient
                 collected.Add(MapToRaindropItem(dto));
             }
 
-            if (reachedKnownItem || payload.Items.Count < _options.PageSize)
+            if (reachedKnownItem)
             {
                 break;
             }
 
             page++;
+        }
+
+        if (page >= MaxPagesPerCycle)
+        {
+            _logger.LogWarning(
+                "Plafond de {MaxPages} pages atteint pour la collection {CollectionId} : {Count} articles récupérés, " +
+                "le reste sera repris au prochain cycle.",
+                MaxPagesPerCycle,
+                _options.CollectionId,
+                collected.Count);
         }
 
         collected.Reverse(); // du plus ancien au plus récent, prêt pour le traitement séquentiel
@@ -72,9 +94,12 @@ public sealed class RaindropClient : IRaindropClient
     {
         var rootCollections = await GetCollectionsAsync("collections", cancellationToken);
         var nestedCollections = await GetCollectionsAsync("collections/childrens", cancellationToken);
+        // /collections et /collections/childrens peuvent se recouvrir : on déduplique par identifiant,
+        // sans quoi la même collection apparaîtrait deux fois dans l'enum du schéma d'outil.
         var collections = rootCollections
             .Concat(nestedCollections)
-            .Select(dto => new RaindropCollection(dto.Id, dto.Title))
+            .GroupBy(dto => dto.Id)
+            .Select(group => new RaindropCollection(group.Key, group.First().Title))
             .ToList();
 
         var tagsResponse = await _httpClient.GetAsync("tags", cancellationToken);
@@ -112,14 +137,15 @@ public sealed class RaindropClient : IRaindropClient
         return payload.Items;
     }
 
+    /// <summary>
+    /// Les deux critères sont évalués indépendamment. Auparavant un <c>LastRaindropId</c> nul court-circuitait
+    /// la fonction avant même le test de date : un état de polling amorcé avec la seule date — le cas naturel
+    /// (« ignorer tout ce qui est antérieur à aujourd'hui », sans avoir à retrouver l'id du dernier raindrop) —
+    /// était donc totalement ignoré, et l'historique complet remonté.
+    /// </summary>
     private static bool IsAlreadyKnown(RaindropDto dto, PollingState lastState)
     {
-        if (lastState.LastRaindropId is null)
-        {
-            return false;
-        }
-
-        if (dto.Id == lastState.LastRaindropId)
+        if (lastState.LastRaindropId is not null && dto.Id == lastState.LastRaindropId)
         {
             return true;
         }

@@ -4,7 +4,7 @@ using RaindropAI.Core.Interfaces;
 namespace RaindropAI.Worker.Services;
 
 /// <summary>Digest quotidien exhaustif : tout ce qui n'a pas encore été inclus dans un envoi précédent.</summary>
-public sealed class DigestNotificationJob : IInvocable
+public sealed class DigestNotificationJob : IInvocable, ICancellableInvocable
 {
     private readonly IArticleRepository _articleRepository;
     private readonly IDigestNotifier _digestNotifier;
@@ -17,9 +17,12 @@ public sealed class DigestNotificationJob : IInvocable
         _logger = logger;
     }
 
+    /// <summary>Alimenté par Coravel, annulé à l'arrêt de l'application (SIGTERM, <c>docker compose down</c>).</summary>
+    public CancellationToken CancellationToken { get; set; }
+
     public async Task Invoke()
     {
-        var cancellationToken = CancellationToken.None;
+        var cancellationToken = CancellationToken;
 
         try
         {
@@ -31,12 +34,19 @@ public sealed class DigestNotificationJob : IInvocable
             }
 
             await _digestNotifier.SendDigestAsync(pendingArticles, cancellationToken);
+
+            // Volontairement non annulable : l'email est parti, ne pas enregistrer ce fait le ferait
+            // renvoyer au prochain digest. Une seule écriture SQLite locale, elle ne retarde pas l'arrêt.
             await _articleRepository.MarkDigestSentAsync(
                 pendingArticles.Select(a => a.Item.Id).ToList(),
                 DateTimeOffset.UtcNow,
-                cancellationToken);
+                CancellationToken.None);
 
             _logger.LogInformation("Digest envoyé avec {Count} articles.", pendingArticles.Count);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            _logger.LogInformation("Envoi du digest interrompu par l'arrêt de l'application.");
         }
         catch (Exception ex)
         {

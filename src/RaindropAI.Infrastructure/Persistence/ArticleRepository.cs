@@ -1,5 +1,7 @@
+using System.Globalization;
 using System.Text.Json;
 using Dapper;
+using Microsoft.Extensions.Logging;
 using RaindropAI.Core.Enums;
 using RaindropAI.Core.Interfaces;
 using RaindropAI.Core.Models;
@@ -8,11 +10,16 @@ namespace RaindropAI.Infrastructure.Persistence;
 
 public sealed class ArticleRepository : IArticleRepository
 {
-    private readonly SqliteConnectionFactory _connectionFactory;
+    /// <summary>Taille des lots pour les clauses <c>IN</c>, bien en deçà de la limite de variables de SQLite.</summary>
+    private const int BatchSize = 500;
 
-    public ArticleRepository(SqliteConnectionFactory connectionFactory)
+    private readonly SqliteConnectionFactory _connectionFactory;
+    private readonly ILogger<ArticleRepository> _logger;
+
+    public ArticleRepository(SqliteConnectionFactory connectionFactory, ILogger<ArticleRepository> logger)
     {
         _connectionFactory = connectionFactory;
+        _logger = logger;
     }
 
     public async Task UpsertAsync(RaindropItem item, ClassificationResult classification, DateTimeOffset classifiedAtUtc, CancellationToken cancellationToken)
@@ -63,9 +70,9 @@ public sealed class ArticleRepository : IArticleRepository
             item.CollectionId,
             item.Domain,
             item.RaindropType,
-            RaindropCreatedUtc = item.CreatedUtc.UtcDateTime.ToString("O"),
-            RaindropLastUpdateUtc = item.LastUpdateUtc?.UtcDateTime.ToString("O"),
-            FetchedAtUtc = DateTimeOffset.UtcNow.ToString("O"),
+            RaindropCreatedUtc = item.CreatedUtc.UtcDateTime.ToString("O", CultureInfo.InvariantCulture),
+            RaindropLastUpdateUtc = item.LastUpdateUtc?.UtcDateTime.ToString("O", CultureInfo.InvariantCulture),
+            FetchedAtUtc = DateTimeOffset.UtcNow.ToString("O", CultureInfo.InvariantCulture),
             classification.SuggestedCollection,
             SuggestedTags = JsonSerializer.Serialize(classification.Tags),
             RecommendedAction = classification.Action.ToString(),
@@ -73,7 +80,7 @@ public sealed class ArticleRepository : IArticleRepository
             classification.Reason,
             ClassificationModel = classification.Model,
             ClassificationRawResponse = classification.RawResponse,
-            ClassifiedAtUtc = classifiedAtUtc.UtcDateTime.ToString("O"),
+            ClassifiedAtUtc = classifiedAtUtc.UtcDateTime.ToString("O", CultureInfo.InvariantCulture),
         }, cancellationToken: cancellationToken));
     }
 
@@ -81,23 +88,44 @@ public sealed class ArticleRepository : IArticleRepository
     {
         await using var connection = await _connectionFactory.OpenConnectionAsync(cancellationToken);
         const string sql = "UPDATE Articles SET WriteBackStatus = @Status, Moved = @Moved, WriteBackAtUtc = @AtUtc WHERE Id = @Id";
-        await connection.ExecuteAsync(new CommandDefinition(
+        var affected = await connection.ExecuteAsync(new CommandDefinition(
             sql,
             new
             {
                 Id = articleId,
                 Status = success ? "Done" : "Failed",
                 Moved = moved ? 1 : 0,
-                AtUtc = atUtc.UtcDateTime.ToString("O"),
+                AtUtc = atUtc.UtcDateTime.ToString("O", CultureInfo.InvariantCulture),
             },
             cancellationToken: cancellationToken));
+
+        // Zéro ligne touchée signalerait un article jamais persisté : l'UPDATE serait sinon parfaitement
+        // silencieux, et l'audit du write-back perdrait sa trace sans que rien ne l'indique.
+        if (affected == 0)
+        {
+            _logger.LogWarning("Write-back non enregistré : aucun article {ArticleId} en base.", articleId);
+        }
     }
 
     public async Task<IReadOnlyList<ClassifiedArticle>> GetUnsentDigestItemsAsync(CancellationToken cancellationToken)
     {
         await using var connection = await _connectionFactory.OpenConnectionAsync(cancellationToken);
-        const string sql = "SELECT * FROM Articles WHERE EmailDigestSentAtUtc IS NULL ORDER BY RaindropCreatedUtc";
+        // Colonnes listées explicitement : un `SELECT *` obligerait ArticleRow à suivre le schéma à la
+        // trace, et masquerait l'oubli d'un champ derrière une valeur par défaut silencieuse.
+        const string sql = """
+            SELECT
+                Id, Title, Link, Excerpt, Note, OriginalTags, CollectionId, Domain, RaindropType,
+                RaindropCreatedUtc, RaindropLastUpdateUtc, FetchedAtUtc,
+                SuggestedCollection, SuggestedTags, RecommendedAction, Priority, Reason,
+                ClassificationModel, ClassificationRawResponse, ClassifiedAtUtc,
+                Moved, WriteBackStatus, DiscordNotifiedAtUtc, EmailDigestSentAtUtc
+            FROM Articles
+            WHERE EmailDigestSentAtUtc IS NULL
+            ORDER BY RaindropCreatedUtc
+            """;
         var rows = await connection.QueryAsync<ArticleRow>(new CommandDefinition(sql, cancellationToken: cancellationToken));
+
+        // Pas de log du nombre ici : DigestNotificationJob le journalise déjà côté appelant.
         return rows.Select(MapToClassifiedArticle).ToList();
     }
 
@@ -107,7 +135,7 @@ public sealed class ArticleRepository : IArticleRepository
         const string sql = "UPDATE Articles SET DiscordNotifiedAtUtc = @NotifiedAtUtc WHERE Id = @Id";
         await connection.ExecuteAsync(new CommandDefinition(
             sql,
-            new { Id = articleId, NotifiedAtUtc = notifiedAtUtc.UtcDateTime.ToString("O") },
+            new { Id = articleId, NotifiedAtUtc = notifiedAtUtc.UtcDateTime.ToString("O", CultureInfo.InvariantCulture) },
             cancellationToken: cancellationToken));
     }
 
@@ -120,10 +148,16 @@ public sealed class ArticleRepository : IArticleRepository
 
         await using var connection = await _connectionFactory.OpenConnectionAsync(cancellationToken);
         const string sql = "UPDATE Articles SET EmailDigestSentAtUtc = @SentAtUtc WHERE Id IN @Ids";
-        await connection.ExecuteAsync(new CommandDefinition(
-            sql,
-            new { Ids = articleIds, SentAtUtc = sentAtUtc.UtcDateTime.ToString("O") },
-            cancellationToken: cancellationToken));
+
+        // Dapper développe la clause IN en un paramètre par identifiant : sur un digest volumineux
+        // (premier backfill), on dépasserait la limite de variables de SQLite. D'où le découpage.
+        foreach (var batch in articleIds.Chunk(BatchSize))
+        {
+            await connection.ExecuteAsync(new CommandDefinition(
+                sql,
+                new { Ids = batch, SentAtUtc = sentAtUtc.UtcDateTime.ToString("O", CultureInfo.InvariantCulture) },
+                cancellationToken: cancellationToken));
+        }
     }
 
     private static ClassifiedArticle MapToClassifiedArticle(ArticleRow row)
@@ -138,8 +172,8 @@ public sealed class ArticleRepository : IArticleRepository
             row.CollectionId,
             row.Domain,
             row.RaindropType,
-            DateTimeOffset.Parse(row.RaindropCreatedUtc),
-            row.RaindropLastUpdateUtc is null ? null : DateTimeOffset.Parse(row.RaindropLastUpdateUtc));
+            DateTimeOffset.Parse(row.RaindropCreatedUtc, CultureInfo.InvariantCulture),
+            row.RaindropLastUpdateUtc is null ? null : DateTimeOffset.Parse(row.RaindropLastUpdateUtc, CultureInfo.InvariantCulture));
 
         var classification = new ClassificationResult(
             row.SuggestedCollection,
@@ -153,10 +187,10 @@ public sealed class ArticleRepository : IArticleRepository
         return new ClassifiedArticle(
             item,
             classification,
-            row.ClassifiedAtUtc is null ? DateTimeOffset.UtcNow : DateTimeOffset.Parse(row.ClassifiedAtUtc),
+            row.ClassifiedAtUtc is null ? DateTimeOffset.UtcNow : DateTimeOffset.Parse(row.ClassifiedAtUtc, CultureInfo.InvariantCulture),
             row.Moved != 0,
-            row.DiscordNotifiedAtUtc is null ? null : DateTimeOffset.Parse(row.DiscordNotifiedAtUtc),
-            row.EmailDigestSentAtUtc is null ? null : DateTimeOffset.Parse(row.EmailDigestSentAtUtc));
+            row.DiscordNotifiedAtUtc is null ? null : DateTimeOffset.Parse(row.DiscordNotifiedAtUtc, CultureInfo.InvariantCulture),
+            row.EmailDigestSentAtUtc is null ? null : DateTimeOffset.Parse(row.EmailDigestSentAtUtc, CultureInfo.InvariantCulture));
     }
 
     private sealed class ArticleRow

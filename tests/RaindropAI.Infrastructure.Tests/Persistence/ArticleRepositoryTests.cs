@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Options;
 using RaindropAI.Core.Enums;
@@ -15,7 +16,7 @@ public class ArticleRepositoryTests : IDisposable
     {
         _dbPath = Path.Combine(Path.GetTempPath(), $"raindropai-test-{Guid.NewGuid():N}.db");
         var factory = new SqliteConnectionFactory(Options.Create(new SqliteOptions { ConnectionString = $"Data Source={_dbPath}" }));
-        _repository = new ArticleRepository(factory);
+        _repository = new ArticleRepository(factory, NullLogger<ArticleRepository>.Instance);
     }
 
     [Fact]
@@ -45,6 +46,27 @@ public class ArticleRepositoryTests : IDisposable
 
         var single = Assert.Single(pending);
         Assert.Equal(2, single.Item.Id);
+    }
+
+    /// <summary>
+    /// F-21 : Dapper développe la clause IN en un paramètre par identifiant. Un digest volumineux
+    /// (premier backfill) dépasserait la limite de variables de SQLite sans découpage en lots.
+    /// </summary>
+    [Fact]
+    public async Task MarkDigestSentAsync_WithMoreIdsThanOneBatch_MarksThemAll()
+    {
+        const int count = 1200;
+        for (var id = 1; id <= count; id++)
+        {
+            await _repository.UpsertAsync(CreateItem(id, $"A{id}"), CreateClassification(), DateTimeOffset.UtcNow, TestContext.Current.CancellationToken);
+        }
+
+        await _repository.MarkDigestSentAsync(
+            Enumerable.Range(1, count).Select(i => (long)i).ToList(),
+            DateTimeOffset.UtcNow,
+            TestContext.Current.CancellationToken);
+
+        Assert.Empty(await _repository.GetUnsentDigestItemsAsync(TestContext.Current.CancellationToken));
     }
 
     [Fact]

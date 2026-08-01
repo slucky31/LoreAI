@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 using RaindropAI.Core.Enums;
 using RaindropAI.Core.Models;
@@ -10,6 +11,43 @@ namespace RaindropAI.Infrastructure.Classification;
 /// </summary>
 public static class ClassificationResponseParser
 {
+    /// <summary>
+    /// Les tags sont la seule sortie libre du modèle réellement écrite dans Raindrop : le schéma d'outil
+    /// contraint la collection à un titre existant et la raison à 200 caractères, mais pas eux. Un extrait
+    /// de page hostile pourrait donc tenter d'y faire écrire n'importe quoi (cf. F-11). D'où ces plafonds.
+    /// </summary>
+    private const int MaxTagLength = 50;
+
+    private const int MaxTags = 10;
+
+    /// <summary>
+    /// Variante sans exception, destinée à l'appelant nominal : une sortie de modèle invalide est un
+    /// résultat attendu, pas un incident. Cela permet à <c>AnthropicClassifier</c> de ne plus envelopper
+    /// tout son corps dans un <c>catch (Exception)</c>, qui masquait aussi bien un JSON malformé qu'un
+    /// bug de programmation.
+    /// </summary>
+    public static bool TryParse(
+        string toolInputJson,
+        string model,
+        string rawResponse,
+        [NotNullWhen(true)] out ClassificationResult? result,
+        [NotNullWhen(false)] out string? error)
+    {
+        try
+        {
+            result = Parse(toolInputJson, model, rawResponse);
+            error = null;
+            return true;
+        }
+        catch (ClassificationParseException ex)
+        {
+            result = null;
+            error = ex.Message;
+            return false;
+        }
+    }
+
+    /// <summary>Lève <see cref="ClassificationParseException"/> ; préférer <see cref="TryParse"/> côté appelant.</summary>
     public static ClassificationResult Parse(string toolInputJson, string model, string rawResponse)
     {
         try
@@ -48,7 +86,7 @@ public static class ClassificationResponseParser
         };
     }
 
-    private static IReadOnlyList<string> ParseStringArray(JsonElement root, string propertyName)
+    private static List<string> ParseStringArray(JsonElement root, string propertyName)
     {
         if (!root.TryGetProperty(propertyName, out var element) || element.ValueKind != JsonValueKind.Array)
         {
@@ -57,9 +95,28 @@ public static class ClassificationResponseParser
 
         return element.EnumerateArray()
             .Select(e => e.GetString())
-            .Where(s => !string.IsNullOrWhiteSpace(s))
-            .Select(s => s!)
+            .Select(SanitizeTag)
+            .Where(s => s.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Take(MaxTags)
             .ToList();
+    }
+
+    /// <summary>
+    /// Aplatit les blancs (un tag ne tient que sur une ligne), retire les caractères de contrôle et tronque.
+    /// Rien de ce que renvoie le modèle ne doit pouvoir se déverser tel quel dans les données de l'utilisateur.
+    /// </summary>
+    private static string SanitizeTag(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            return string.Empty;
+        }
+
+        var collapsed = string.Join(' ', raw.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+        var printable = new string(collapsed.Where(c => !char.IsControl(c)).ToArray()).Trim();
+
+        return printable.Length <= MaxTagLength ? printable : printable[..MaxTagLength].TrimEnd();
     }
 
     private static TEnum ParseEnum<TEnum>(JsonElement root, string propertyName) where TEnum : struct, Enum

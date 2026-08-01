@@ -1,0 +1,42 @@
+root = true
+
+[*]
+charset = utf-8
+end_of_line = crlf
+indent_style = space
+indent_size = 4
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+[*.{json,yml,yaml,md}]
+indent_size = 2
+
+[*.{csproj,props,targets,slnx}]
+indent_size = 2
+
+[*.md]
+# Deux espaces en fin de ligne = saut de ligne en Markdown.
+trim_trailing_whitespace = false
+
+[*.cs]
+dotnet_sort_system_directives_first = true
+csharp_using_directive_placement = outside_namespace:warning
+csharp_style_namespace_declarations = file_scoped:warning
+csharp_prefer_braces = true:warning
+dotnet_style_prefer_is_null_check_over_reference_equality_method = true:warning
+
+# « Collection » est le terme métier de Raindrop.io pour un dossier de favoris — ce n'est pas un
+# IEnumerable, et renommer RaindropCollection reviendrait à s'écarter du vocabulaire de l'API.
+dotnet_code_quality.CA1711.allowed_suffixes = Collection
+
+# Délégués LoggerMessage source-générés. Pertinent sur un chemin chaud ; ici le worker écrit une poignée
+# de lignes toutes les 15 minutes, et l'interpolation nommée reste bien plus lisible.
+dotnet_diagnostic.CA1848.severity = none
+
+[tests/**/*.cs]
+# Convention de nommage des tests du dépôt : Méthode_Scénario_Résultat, avec des traits de soulignement.
+dotnet_diagnostic.CA1707.severity = none
+
+# GC.SuppressFinalize sur des fixtures scellées sans finaliseur : cérémonie sans effet, la durée de vie
+# est de toute façon pilotée par xUnit.
+dotnet_diagnostic.CA1816.severity = none

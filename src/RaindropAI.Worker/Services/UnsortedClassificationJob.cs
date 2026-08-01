@@ -2,6 +2,7 @@ using Coravel.Invocable;
 using Microsoft.Extensions.Options;
 using RaindropAI.Core.Interfaces;
 using RaindropAI.Core.Models;
+using RaindropAI.Core.Services;
 using RaindropAI.Worker.Options;
 
 namespace RaindropAI.Worker.Services;
@@ -12,7 +13,7 @@ namespace RaindropAI.Worker.Services;
 /// (tags fusionnés + déplacement de collection si une correspondance existe) — sans étape de validation.
 /// Tout ce qui est en dehors de "Non trié" est considéré comme déjà classé et n'est jamais retouché.
 /// </summary>
-public sealed class UnsortedClassificationJob : IInvocable
+public sealed class UnsortedClassificationJob : IInvocable, ICancellableInvocable
 {
     private readonly IRaindropClient _raindropClient;
     private readonly IPollingStateRepository _pollingStateRepository;
@@ -43,9 +44,12 @@ public sealed class UnsortedClassificationJob : IInvocable
         _logger = logger;
     }
 
+    /// <summary>Alimenté par Coravel, annulé à l'arrêt de l'application (SIGTERM, <c>docker compose down</c>).</summary>
+    public CancellationToken CancellationToken { get; set; }
+
     public async Task Invoke()
     {
-        var cancellationToken = CancellationToken.None;
+        var cancellationToken = CancellationToken;
 
         try
         {
@@ -67,43 +71,89 @@ public sealed class UnsortedClassificationJob : IInvocable
 
             var notifiedCount = 0;
             var movedCount = 0;
+            var processedCount = 0;
+            RaindropItem? lastProcessed = null;
 
             foreach (var item in newItems)
             {
-                var classification = await _classifier.ClassifyAsync(item, taxonomy, cancellationToken);
-                await _articleRepository.UpsertAsync(item, classification, DateTimeOffset.UtcNow, cancellationToken);
-
-                var matchedCollection = classification.SuggestedCollection is not null
-                    ? taxonomy.Collections.FirstOrDefault(c => c.Title == classification.SuggestedCollection)
-                    : null;
-
-                if (_options.WriteBackToRaindrop)
+                try
                 {
-                    var moved = await ApplyClassificationAsync(item, classification, matchedCollection, cancellationToken);
-                    if (moved)
+                    var classification = await _classifier.ClassifyAsync(item, taxonomy, cancellationToken);
+                    await _articleRepository.UpsertAsync(item, classification, DateTimeOffset.UtcNow, cancellationToken);
+
+                    if (classification.IsFallback)
                     {
-                        movedCount++;
+                        // Le repli n'est pas une décision du modèle : l'appliquer écrirait une trace d'erreur
+                        // dans le raindrop réel. On interrompt le cycle sans dépasser cet article, pour qu'il
+                        // soit repris au prochain passage au lieu d'être perdu définitivement par le high-water mark.
+                        _logger.LogWarning(
+                            "Classification en repli pour le raindrop {RaindropId} ({Reason}) — rien n'est appliqué, cycle interrompu, reprise au prochain passage.",
+                            item.Id,
+                            classification.Reason);
+                        break;
                     }
-                }
 
-                if (_notificationPolicy.ShouldNotifyImmediately(classification))
+                    var matchedCollection = ResolveTargetCollection(classification, taxonomy);
+
+                    if (_options.WriteBackToRaindrop)
+                    {
+                        var moved = await ApplyClassificationAsync(item, classification, matchedCollection, cancellationToken);
+                        if (moved)
+                        {
+                            movedCount++;
+                        }
+                    }
+
+                    if (_notificationPolicy.ShouldNotifyImmediately(classification))
+                    {
+                        await _immediateNotifier.NotifyAsync(item, classification, cancellationToken);
+                        await _articleRepository.MarkDiscordNotifiedAsync(item.Id, DateTimeOffset.UtcNow, cancellationToken);
+                        notifiedCount++;
+                    }
+
+                    processedCount++;
+                    lastProcessed = item;
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
                 {
-                    await _immediateNotifier.NotifyAsync(item, classification, cancellationToken);
-                    await _articleRepository.MarkDiscordNotifiedAsync(item.Id, DateTimeOffset.UtcNow, cancellationToken);
-                    notifiedCount++;
+                    _logger.LogInformation(
+                        "Arrêt de l'application demandé — cycle interrompu proprement avant le raindrop {RaindropId}.",
+                        item.Id);
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    // Sans ce filet, l'exception remontait au catch du cycle et court-circuitait l'avancement
+                    // du high-water mark : les articles déjà traités et écrits dans Raindrop étaient rejoués
+                    // au cycle suivant. On s'arrête ici en conservant la progression acquise.
+                    _logger.LogError(
+                        ex,
+                        "Échec du traitement du raindrop {RaindropId} — cycle interrompu, la progression acquise est conservée.",
+                        item.Id);
+                    break;
                 }
             }
 
-            var latest = newItems[^1];
-            await _pollingStateRepository.UpdateAsync(
-                new PollingState(latest.Id, latest.CreatedUtc, DateTimeOffset.UtcNow),
-                cancellationToken);
+            if (lastProcessed is not null)
+            {
+                // Volontairement non annulable : à ce stade des raindrops réels ont déjà été modifiés.
+                // Utiliser le token d'arrêt ferait échouer cette écriture pendant un shutdown et rejouerait
+                // tout le batch au redémarrage. C'est une écriture SQLite locale, elle ne retarde pas l'arrêt.
+                await _pollingStateRepository.UpdateAsync(
+                    new PollingState(lastProcessed.Id, lastProcessed.CreatedUtc, DateTimeOffset.UtcNow),
+                    CancellationToken.None);
+            }
 
             _logger.LogInformation(
-                "Cycle terminé : {NewCount} articles traités, {MovedCount} déplacés, {NotifiedCount} notifiés immédiatement.",
+                "Cycle terminé : {ProcessedCount}/{NewCount} articles traités, {MovedCount} déplacés, {NotifiedCount} notifiés immédiatement.",
+                processedCount,
                 newItems.Count,
                 movedCount,
                 notifiedCount);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            _logger.LogInformation("Cycle de classification interrompu par l'arrêt de l'application.");
         }
         catch (Exception ex)
         {
@@ -112,8 +162,41 @@ public sealed class UnsortedClassificationJob : IInvocable
     }
 
     /// <summary>
+    /// Ne renvoie une collection que si le titre suggéré désigne une cible <b>sans ambiguïté</b>. Deux
+    /// collections homonymes (sous des parents différents) ne permettent pas de trancher : on préfère
+    /// laisser l'article dans « Non trié » avec ses tags plutôt que de le ranger au mauvais endroit.
+    /// </summary>
+    private RaindropCollection? ResolveTargetCollection(ClassificationResult classification, RaindropTaxonomy taxonomy)
+    {
+        if (classification.SuggestedCollection is null)
+        {
+            return null;
+        }
+
+        var matches = taxonomy.Collections
+            .Where(c => c.Title == classification.SuggestedCollection)
+            .ToList();
+
+        if (matches.Count == 1)
+        {
+            return matches[0];
+        }
+
+        if (matches.Count > 1)
+        {
+            _logger.LogWarning(
+                "Titre de collection ambigu « {Title} » ({Count} collections homonymes) : le raindrop n'est pas déplacé.",
+                classification.SuggestedCollection,
+                matches.Count);
+        }
+
+        return null;
+    }
+
+    /// <summary>
     /// Applique toujours les tags (fusionnés, jamais de perte) ; ne déplace la collection que si une
-    /// correspondance existante a été trouvée. La note existante est complétée, jamais écrasée.
+    /// correspondance existante a été trouvée. La note rédigée par l'utilisateur est préservée ; seul le
+    /// bloc [RaindropAI] d'un passage précédent est remplacé (cf. <see cref="ClassificationNoteBuilder"/>).
     /// </summary>
     private async Task<bool> ApplyClassificationAsync(
         RaindropItem item,
@@ -128,10 +211,7 @@ public sealed class UnsortedClassificationJob : IInvocable
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToList();
 
-            var classificationNote = $"[RaindropAI] {classification.Action} — {classification.Priority} — {classification.Reason}";
-            var mergedNote = string.IsNullOrWhiteSpace(item.Note)
-                ? classificationNote
-                : $"{item.Note}\n\n{classificationNote}";
+            var mergedNote = ClassificationNoteBuilder.Build(item.Note, classification);
 
             await _raindropClient.UpdateRaindropAsync(item.Id, mergedTags, mergedNote, matchedCollection?.Id, cancellationToken);
             await _articleRepository.RecordWriteBackAsync(item.Id, success: true, moved: matchedCollection is not null, DateTimeOffset.UtcNow, cancellationToken);
