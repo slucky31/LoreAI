@@ -83,7 +83,17 @@ public sealed class AnthropicClassifier : IClassifier
     private static string ExtractToolInput(string rawResponseBody)
     {
         using var document = JsonDocument.Parse(rawResponseBody);
-        foreach (var block in document.RootElement.GetProperty("content").EnumerateArray())
+        var root = document.RootElement;
+
+        // Une réponse tronquée porte un bloc tool_use au JSON incomplet : échouer explicitement ici
+        // vaut mieux que de laisser le parser conclure sur des champs partiels.
+        if (root.TryGetProperty("stop_reason", out var stopReason) && stopReason.GetString() == "max_tokens")
+        {
+            throw new ClassificationParseException(
+                $"Réponse Anthropic tronquée (stop_reason=max_tokens, max_tokens={MaxTokens}).");
+        }
+
+        foreach (var block in root.GetProperty("content").EnumerateArray())
         {
             if (block.TryGetProperty("type", out var typeElement) && typeElement.GetString() == "tool_use")
             {

@@ -47,6 +47,40 @@ public class AnthropicClassifierTests
         Assert.Equal(RecommendedAction.ATester, result.Action);
         Assert.Equal(Priority.Haute, result.Priority);
         Assert.Equal("Nouvel outil Claude à essayer.", result.Reason);
+        Assert.False(result.IsFallback);
+    }
+
+    [Fact]
+    public async Task ClassifyAsync_TruncatedResponse_ReturnsFallback()
+    {
+        using var server = WireMockServer.Start();
+        server
+            .Given(Request.Create().WithPath("/v1/messages").UsingPost())
+            .RespondWith(Response.Create()
+                .WithStatusCode(200)
+                .WithHeader("Content-Type", "application/json")
+                .WithBody("""
+                    {
+                      "id": "msg_1",
+                      "type": "message",
+                      "stop_reason": "max_tokens",
+                      "content": [
+                        {
+                          "type": "tool_use",
+                          "id": "toolu_1",
+                          "name": "classify",
+                          "input": { "suggestedCollection": "Claude", "tags": ["claude"] }
+                        }
+                      ]
+                    }
+                    """));
+
+        var classifier = CreateClassifier(server);
+        var result = await classifier.ClassifyAsync(CreateItem(), SampleTaxonomy, CancellationToken.None);
+
+        // Le bloc tool_use est présent mais incomplet : on ne doit surtout pas conclure dessus.
+        Assert.True(result.IsFallback);
+        Assert.Contains("max_tokens", result.Reason);
     }
 
     [Fact]
@@ -67,6 +101,7 @@ public class AnthropicClassifierTests
         Assert.Empty(result.Tags);
         Assert.Equal(RecommendedAction.Reference, result.Action);
         Assert.Equal(Priority.Basse, result.Priority);
+        Assert.True(result.IsFallback);
     }
 
     [Fact]
@@ -84,6 +119,7 @@ public class AnthropicClassifierTests
         var result = await classifier.ClassifyAsync(CreateItem(), SampleTaxonomy, CancellationToken.None);
 
         Assert.Null(result.SuggestedCollection);
+        Assert.True(result.IsFallback);
     }
 
     private static AnthropicClassifier CreateClassifier(WireMockServer server)

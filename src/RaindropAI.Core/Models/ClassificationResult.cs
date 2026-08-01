@@ -11,6 +11,13 @@ public sealed record ClassificationResult(
     string Model,
     string RawResponse)
 {
+    /// <summary>
+    /// Vrai quand la classification a échoué : les valeurs portées ici sont des valeurs de repli,
+    /// pas une décision du modèle. Un résultat de repli ne doit jamais être appliqué à Raindrop —
+    /// il écrirait une trace d'erreur technique dans les données réelles de l'utilisateur.
+    /// </summary>
+    public bool IsFallback { get; init; }
+
     public static ClassificationResult Fallback(string model, string reason, string rawResponse) =>
-        new(null, [], RecommendedAction.Reference, Priority.Basse, reason, model, rawResponse);
+        new(null, [], RecommendedAction.Reference, Priority.Basse, reason, model, rawResponse) { IsFallback = true };
 }

@@ -44,7 +44,7 @@ Statuts possibles : `ouvert` · `en cours` · `corrigé` · `refusé (raison)` �
 
 ### F-01 — Un échec de classification écrit un message d'erreur dans le vrai Raindrop, définitivement
 
-- **Axe** : Correction · **Statut** : `ouvert`
+- **Axe** : Correction · **Statut** : ✅ `corrigé` (commit `f-01`)
 - **Localisation** :
   - `src/RaindropAI.Infrastructure/Classification/AnthropicClassifier.cs:55-59`
   - `src/RaindropAI.Worker/Services/UnsortedClassificationJob.cs:80-87` et `:131`
@@ -72,6 +72,13 @@ définitivement l'article du périmètre de tri. Sur une rafale de 429 (rate lim
 - ajouter un discriminant sur `ClassificationResult` (ex. `bool IsFallback` ou un `ClassificationOutcome`), positionné par `ClassificationResult.Fallback` ;
 - dans `UnsortedClassificationJob`, si `IsFallback` : persister en base (audit) mais **ne pas** appeler `ApplyClassificationAsync`, et **ne pas** avancer le high-water mark au-delà de cet item (ou le marquer pour reprise via un statut `PendingRetry` en base) ;
 - lever explicitement sur `stop_reason == "max_tokens"` dans `AnthropicClassifier` plutôt que de laisser le parser échouer en aval.
+
+**Correction appliquée.** `ClassificationResult.IsFallback` (positionné par la fabrique `Fallback`) distingue
+désormais un repli d'une décision du modèle. `UnsortedClassificationJob` persiste le repli pour l'audit puis
+**interrompt le cycle sans dépasser l'article** : ni write-back, ni notification, et le high-water mark reste
+en deçà, donc l'article est repris au passage suivant. `AnthropicClassifier` lève explicitement sur
+`stop_reason == "max_tokens"`. Le cas d'une panne durable sur un article donné reste à traiter (compteur de
+tentatives) — voir la limite notée en fin de document.
 
 ---
 
@@ -438,3 +445,16 @@ Points contrôlés qui ne posent pas de problème ; consignés pour éviter de r
 - **CI** — déclencheur `pull_request` (et non `pull_request_target`) : les secrets ne sont pas exposés aux forks. `permissions` déclarées explicitement et au plus juste par job.
 - **`DiscordNotifier`** — n'échoue jamais bruyamment (`catch` + `LogWarning`), conformément à son contrat documenté ; une panne Discord n'interrompt pas le batch.
 - **Suite de tests** — 45 tests, tous verts, avec de vraies dépendances simulées (WireMock.Net, SQLite fichier). Qualité correcte sur le périmètre couvert ; voir F-07 pour le périmètre manquant.
+
+---
+
+## Limites connues des correctifs appliqués
+
+À garder en tête ; ces points n'étaient pas dans le périmètre des findings mais en découlent.
+
+- **F-01 — pas de compteur de tentatives.** Interrompre le cycle sur un repli fait le bon choix par défaut
+  (les échecs sont massivement transitoires : 429, timeout, 5xx) et se résout tout seul au cycle suivant.
+  Mais un article qui échouerait **systématiquement** bloque la file : les articles plus récents ne seront pas
+  traités tant qu'il n'est pas débloqué. Le log `LogWarning` nomme le `RaindropId` fautif, donc la situation est
+  diagnosticable — elle n'est pas auto-réparable. Si le cas se présente, ajouter un compteur de tentatives en
+  base et sauter l'article au-delà d'un seuil.

@@ -67,11 +67,25 @@ public sealed class UnsortedClassificationJob : IInvocable
 
             var notifiedCount = 0;
             var movedCount = 0;
+            var processedCount = 0;
+            RaindropItem? lastProcessed = null;
 
             foreach (var item in newItems)
             {
                 var classification = await _classifier.ClassifyAsync(item, taxonomy, cancellationToken);
                 await _articleRepository.UpsertAsync(item, classification, DateTimeOffset.UtcNow, cancellationToken);
+
+                if (classification.IsFallback)
+                {
+                    // Le repli n'est pas une décision du modèle : l'appliquer écrirait une trace d'erreur
+                    // dans le raindrop réel. On interrompt le cycle sans dépasser cet article, pour qu'il
+                    // soit repris au prochain passage au lieu d'être perdu définitivement par le high-water mark.
+                    _logger.LogWarning(
+                        "Classification en repli pour le raindrop {RaindropId} ({Reason}) — rien n'est appliqué, cycle interrompu, reprise au prochain passage.",
+                        item.Id,
+                        classification.Reason);
+                    break;
+                }
 
                 var matchedCollection = classification.SuggestedCollection is not null
                     ? taxonomy.Collections.FirstOrDefault(c => c.Title == classification.SuggestedCollection)
@@ -92,15 +106,21 @@ public sealed class UnsortedClassificationJob : IInvocable
                     await _articleRepository.MarkDiscordNotifiedAsync(item.Id, DateTimeOffset.UtcNow, cancellationToken);
                     notifiedCount++;
                 }
+
+                processedCount++;
+                lastProcessed = item;
             }
 
-            var latest = newItems[^1];
-            await _pollingStateRepository.UpdateAsync(
-                new PollingState(latest.Id, latest.CreatedUtc, DateTimeOffset.UtcNow),
-                cancellationToken);
+            if (lastProcessed is not null)
+            {
+                await _pollingStateRepository.UpdateAsync(
+                    new PollingState(lastProcessed.Id, lastProcessed.CreatedUtc, DateTimeOffset.UtcNow),
+                    cancellationToken);
+            }
 
             _logger.LogInformation(
-                "Cycle terminé : {NewCount} articles traités, {MovedCount} déplacés, {NotifiedCount} notifiés immédiatement.",
+                "Cycle terminé : {ProcessedCount}/{NewCount} articles traités, {MovedCount} déplacés, {NotifiedCount} notifiés immédiatement.",
+                processedCount,
                 newItems.Count,
                 movedCount,
                 notifiedCount);
