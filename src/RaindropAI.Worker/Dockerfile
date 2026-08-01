@@ -5,7 +5,10 @@ FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:9.0 AS build
 ARG TARGETARCH
 WORKDIR /src
 
-COPY Directory.Build.props Directory.Packages.props ./
+# .editorconfig fait partie de la configuration de build : Directory.Build.props active les analyseurs
+# .NET avec TreatWarningsAsErrors, et c'est .editorconfig qui porte leur paramétrage. L'oublier ici fait
+# échouer la compilation dans le conteneur alors qu'elle passe en local.
+COPY Directory.Build.props Directory.Packages.props .editorconfig ./
 COPY src/RaindropAI.Core/RaindropAI.Core.csproj src/RaindropAI.Core/
 COPY src/RaindropAI.Infrastructure/RaindropAI.Infrastructure.csproj src/RaindropAI.Infrastructure/
 COPY src/RaindropAI.Worker/RaindropAI.Worker.csproj src/RaindropAI.Worker/

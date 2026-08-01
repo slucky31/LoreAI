@@ -7,8 +7,8 @@
 | **Périmètre** | Revue générale · Architecture .NET · Design patterns · Sécurité |
 | **État build** | ✅ `dotnet build -c Release` — 0 warning, 0 erreur |
 | **État tests à l'audit** | ✅ 45/45 (6 Core + 39 Infrastructure) |
-| **État tests après correctifs** | ✅ 96/96 (14 Core + 54 Infrastructure + 28 Worker) |
-| **Avancement** | 14 findings corrigés (F-01 → F-14, F-26), 12 ouverts |
+| **État tests après correctifs** | ✅ 107/107 (14 Core + 64 Infrastructure + 29 Worker) |
+| **Avancement** | ✅ **26 findings sur 26 corrigés** |
 
 ## Comment reprendre ce document
 
@@ -25,16 +25,17 @@ Statuts possibles : `ouvert` · `en cours` · `corrigé` · `refusé (raison)` �
 |---|---|---|---|
 | 🔴 Critique | 3 | F-01, F-02, F-26 | ✅ corrigés |
 | 🟠 Élevé | 5 | F-03, F-04, F-05, F-06, F-07 | ✅ corrigés |
-| 🟡 Moyen | 8 | F-08 → F-10, F-12 → F-14 ✅ · F-11, F-15 ⏳ | partiel |
-| ⚪ Faible | 10 | F-16 → F-25 | ⏳ ouverts |
+| 🟡 Moyen | 8 | F-08 → F-15 | ✅ corrigés |
+| ⚪ Faible | 10 | F-16 → F-25 | ✅ corrigés |
 
-**Tout ce qui est critique et élevé est corrigé**, ainsi que les findings de sécurité (F-02, F-08, F-09,
-F-10 ; seul F-11, prompt injection, reste ouvert), les deux pertes silencieuses d'articles à la pagination
-(F-12, F-13) et la résilience de l'appel LLM (F-14). Un commit par finding, `fix: … (F-xx)`.
+**Les 26 findings sont corrigés**, à raison d'un commit par finding (`fix: … (F-xx)`).
 
-Restent ouverts : F-11 et F-15 (moyen), F-16 à F-25 (faible). Le plus rentable ensuite est **F-11**
-(filtrage des tags produits par le modèle, seule sortie libre écrite dans Raindrop), puis le lot
-F-16/F-17/F-21, petits correctifs de robustesse sur la persistance et la taxonomie.
+Deux points restent explicitement hors périmètre, faute de pouvoir être traités depuis le dépôt :
+
+- le `HEALTHCHECK` du conteneur (F-10), qui demande d'abord un vrai signal de vivacité — le worker n'expose
+  aucun endpoint, et sans cela il ne détecterait rien de plus que le crash déjà couvert par
+  `restart: unless-stopped` ;
+- la restriction des droits du PAT `RELEASE_TOKEN` (F-23), qui relève de la configuration du compte GitHub.
 
 **Répartition par axe** — Correction : 9 · Architecture : 7 · Sécurité : 5 · Design patterns : 3 · Tests : 1
 
@@ -51,7 +52,7 @@ F-16/F-17/F-21, petits correctifs de robustesse sur la persistance et la taxonom
 6. ✅ **F-26** — image publiée amd64 uniquement, donc indémarrable sur le Pi (découvert en cours de route).
 7. ✅ **F-12 + F-13** — les deux pertes silencieuses d'articles à la pagination.
 8. ✅ **F-14** — résilience HTTP calibrée pour l'appel LLM.
-9. ⏳ Le reste au fil de l'eau, en commençant par F-11.
+9. ✅ **F-11, F-15 à F-25** — le reste, un commit par finding.
 
 Note sur l'ordre suivi : F-07 est passé en dernier comme prévu, donc F-01 → F-06 ont été écrits sans filet.
 Les tests de F-07 ont été validés *a posteriori* par mutation (réintroduction des défauts) pour vérifier
