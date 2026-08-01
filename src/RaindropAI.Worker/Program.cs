@@ -19,9 +19,13 @@ try
 {
     var builder = Host.CreateApplicationBuilder(args);
 
+    // Serilog est la seule source de vérité pour les niveaux de log : tout se règle sous `Serilog:`.
+    // Une section `Logging:LogLevel` cohabitait auparavant, filtrée en amont par Microsoft.Extensions.Logging
+    // alors que Serilog applique ensuite son propre minimum — deux réglages pour un seul effet attendu,
+    // dont l'un pouvait rester sans effet visible.
     builder.Services.AddSerilog((services, loggerConfiguration) =>
     {
-        var logFilePath = builder.Configuration["Logging:FilePath"] ?? "logs/raindropai-.log";
+        var logFilePath = builder.Configuration["Serilog:FilePath"] ?? "logs/raindropai-.log";
         loggerConfiguration
             .ReadFrom.Configuration(builder.Configuration)
             .ReadFrom.Services(services)
