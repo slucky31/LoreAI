@@ -48,7 +48,7 @@ public sealed class SqliteConnectionFactory
             using var reader = new StreamReader(stream);
             var schemaSql = await reader.ReadToEndAsync(cancellationToken);
 
-            var command = connection.CreateCommand();
+            await using var command = connection.CreateCommand();
             command.CommandText = schemaSql;
             await command.ExecuteNonQueryAsync(cancellationToken);
 
