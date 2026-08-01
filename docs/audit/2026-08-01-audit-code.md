@@ -84,7 +84,7 @@ tentatives) — voir la limite notée en fin de document.
 
 ### F-02 — `.env.example` cible la bibliothèque entière (`CollectionId=0`) au lieu de « Non trié » (`-1`)
 
-- **Axe** : Sécurité / Correction · **Statut** : `ouvert`
+- **Axe** : Sécurité / Correction · **Statut** : ✅ `corrigé` (commit `f-02`)
 - **Localisation** : `.env.example:7`
 
 **Constat.**
@@ -112,6 +112,13 @@ défaut — l'écart va dans le sens sûr, mais entretient la confusion.
 Aligner aussi `Worker__WriteBackToRaindrop` sur le défaut documenté, ou expliquer dans le fichier pourquoi
 l'exemple est volontairement plus prudent. À noter : `RaindropClientTests` utilise systématiquement
 `CollectionId = 0`, ce qui explique probablement la dérive — aucun test ne verrouille le défaut `-1`.
+
+**Correction appliquée.** `.env.example` passe à `-1`, avec un commentaire qui explicite le danger de `0`.
+Le README gagne un avertissement au niveau de la section Configuration (et non plus seulement dans
+« Premier lancement », qui ne parlait que de volume). Le nouveau test
+`RaindropApiOptionsTests.CollectionId_DefaultsToNonTrie` verrouille le défaut pour que la dérive ne puisse pas
+se reproduire silencieusement. Le `WriteBackToRaindrop=false` de l'exemple est conservé — il va dans le sens
+sûr — mais commenté comme volontairement plus prudent que le défaut du code.
 
 ---
 

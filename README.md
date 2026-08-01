@@ -29,6 +29,8 @@ docs/adr/                      Architecture Decision Records
 
 Copier `.env.example` en `.env` et renseigner les valeurs (voir commentaires dans le fichier). Les clés suivent la convention .NET `Section__Propriete` (ex. `Raindrop__Token`, `Email__SmtpHost`).
 
+⚠️ Vérifiez que `Raindrop__CollectionId` vaut bien **`-1`** (« Non trié »). C'est ce réglage qui garantit que l'outil ne touche pas aux raindrops que vous avez déjà rangés : `0` viserait **toute votre bibliothèque**.
+
 ## Lancer en local
 
 ```bash
