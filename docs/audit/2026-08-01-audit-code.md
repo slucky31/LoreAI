@@ -491,7 +491,7 @@ nouveaux tags maximum).
 
 ### F-12 — La pagination s'arrête dès qu'une page est plus courte que `PageSize`
 
-- **Axe** : Correction · **Statut** : `ouvert`
+- **Axe** : Correction · **Statut** : ✅ `corrigé` (commit `f-12`)
 - **Localisation** : `src/RaindropAI.Infrastructure/Raindrop/RaindropClient.cs:33-65`
 
 ```csharp
@@ -509,6 +509,19 @@ indéfiniment des pages pleines (pagination cassée côté serveur).
 **Correctif** : se baser sur le champ `count` de la réponse (déjà désérialisé dans `RaindropsPageDto`) ou sur
 `Items.Count == 0` pour détecter la fin, clamper `PageSize` à 50 au binding, et ajouter un plafond de pages
 avec un `LogWarning` si atteint.
+
+**Correction appliquée.** Seule une **page vide** met fin à la pagination : c'est le seul signal non ambigu.
+La condition `Items.Count < PageSize` disparaît. Plafond `MaxPagesPerCycle = 200` (10 000 articles) contre une
+pagination qui ne se terminerait jamais, avec un `LogWarning` — un plafond silencieux ferait croire à une
+récupération complète. Cela a nécessité d'injecter un `ILogger<RaindropClient>`, ce qui entame F-25.
+
+Coût : une requête supplémentaire par cycle, mais **uniquement** quand toutes les pages sont consommées sans
+rencontrer d'article connu (premier backfill). En régime établi, l'arrêt se fait sur l'article déjà connu dès
+la première page, sans requête de plus.
+
+Deux tests existants ont dû être complétés d'une page vide terminale : ils ne simulaient que les pages que
+l'ancien algorithme demandait. Validé par mutation — restaurer `|| Items.Count < PageSize` fait échouer
+`GetNewRaindropsAsync_ShortPageFollowedByMoreItems_DoesNotStopEarly`, et rien d'autre.
 
 ---
 
