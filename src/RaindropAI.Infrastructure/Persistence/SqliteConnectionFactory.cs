@@ -27,6 +27,16 @@ public sealed class SqliteConnectionFactory
         return connection;
     }
 
+    /// <summary>
+    /// Applique le schéma sans avoir besoin d'une requête métier. Appelé au démarrage par l'hôte, pour
+    /// qu'une base illisible ou un disque en lecture seule se manifeste tout de suite et non au premier
+    /// cycle, quinze minutes plus tard. Le chemin paresseux ci-dessus reste en place comme filet.
+    /// </summary>
+    public async Task InitializeSchemaAsync(CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenConnectionAsync(cancellationToken);
+    }
+
     private async Task EnsureSchemaAsync(SqliteConnection connection, CancellationToken cancellationToken)
     {
         if (_schemaEnsured)

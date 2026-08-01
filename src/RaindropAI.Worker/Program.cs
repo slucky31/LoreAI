@@ -45,6 +45,7 @@ try
         .AddValidatedOptions<NotificationOptions>(builder.Configuration, "Notification");
 
     builder.Services.AddSingleton<SqliteConnectionFactory>();
+    builder.Services.AddHostedService<DatabaseInitializer>();
     builder.Services.AddSingleton<IArticleRepository, ArticleRepository>();
     builder.Services.AddSingleton<IPollingStateRepository, PollingStateRepository>();
     // DefaultNotificationPolicy expose des seuils en paramètres de constructeur ; ils étaient annoncés

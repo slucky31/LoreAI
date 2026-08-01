@@ -1,3 +1,15 @@
+-- Trace des migrations appliquées. Le schéma est aujourd'hui décrit par ce seul script idempotent ;
+-- cette table existe pour qu'une deuxième migration ait un point d'ancrage plutôt que d'être ajoutée
+-- après coup à une base déjà en production.
+CREATE TABLE IF NOT EXISTS SchemaVersion (
+    Version INTEGER PRIMARY KEY,
+    AppliedAtUtc TEXT NOT NULL
+);
+
+INSERT INTO SchemaVersion (Version, AppliedAtUtc)
+SELECT 1, strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+WHERE NOT EXISTS (SELECT 1 FROM SchemaVersion WHERE Version = 1);
+
 CREATE TABLE IF NOT EXISTS PollingState (
     Id INTEGER PRIMARY KEY CHECK (Id = 1),
     LastRaindropId INTEGER,
