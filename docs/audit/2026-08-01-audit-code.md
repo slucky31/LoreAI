@@ -377,7 +377,7 @@ injectable. 3 tests ajoutés (ancre normale avec `&` encodé en `&amp;`, tentati
 
 ### F-09 — SMTP : `UseSsl=false` bascule en clair, et le nom de l'option est trompeur
 
-- **Axe** : Sécurité · **Statut** : `ouvert`
+- **Axe** : Sécurité · **Statut** : ✅ `corrigé` (commit `f-09`)
 - **Localisation** : `src/RaindropAI.Infrastructure/Notifications/EmailNotifier.cs:39-41`
 
 ```csharp
@@ -393,6 +393,23 @@ désactiver le chiffrement d'une authentification. Ensuite le nom : `UseSsl` sug
 **Correctif** : utiliser `SecureSocketOptions.Auto` (MailKit négocie selon le port) ou au minimum
 `StartTlsWhenAvailable`, et renommer l'option (`SecureSocketMode` en enum, ou `UseStartTls`). Ne jamais
 retomber sur `None`.
+
+**Correction appliquée — en écartant le correctif que j'avais moi-même proposé.** `SecureSocketOptions.Auto`
+et `StartTlsWhenAvailable` retombent tous deux **en clair** si le serveur n'annonce pas STARTTLS ; les
+recommander était une erreur de l'audit initial. Seuls `StartTls` et `SslOnConnect` échouent plutôt que de
+dégrader la connexion.
+
+Le booléen `UseSsl` est donc remplacé par un enum `SmtpSecurity` (`Auto` | `StartTls` | `SslOnConnect`) et un
+`SmtpSecurityResolver` pur. Le mode `Auto` choisit lui-même selon le port (465 → TLS implicite, sinon
+STARTTLS obligatoire) au lieu de déléguer à MailKit. **Aucune valeur d'entrée ne peut produire une connexion
+en clair** — c'est verrouillé par un test qui balaie le produit cartésien des modes et des ports usuels et
+vérifie que ni `None`, ni `Auto`, ni `StartTlsWhenAvailable` n'en sortent.
+
+⚠️ **Changement de clé de configuration** : `Email__UseSsl` n'est plus lu, remplacé par `Email__Security`.
+Un `.env` qui garderait l'ancienne clé la verrait silencieusement ignorée — mais le défaut `Auto` sur le port
+587 donne exactement le comportement précédent (`UseSsl=true` → STARTTLS), donc la configuration documentée
+reste inchangée en pratique. Une valeur invalide échoue au démarrage :
+`Failed to convert configuration value 'NImporteQuoi' at 'Email:Security'`.
 
 ---
 

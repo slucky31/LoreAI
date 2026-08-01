@@ -36,7 +36,7 @@ public sealed class EmailNotifier : IDigestNotifier
         using var client = new SmtpClient();
         try
         {
-            var secureSocketOptions = _options.UseSsl ? SecureSocketOptions.StartTls : SecureSocketOptions.None;
+            var secureSocketOptions = SmtpSecurityResolver.Resolve(_options.Security, _options.SmtpPort);
             await client.ConnectAsync(_options.SmtpHost, _options.SmtpPort, secureSocketOptions, cancellationToken);
             await client.AuthenticateAsync(_options.SmtpUser, _options.SmtpPassword, cancellationToken);
             await client.SendAsync(message, cancellationToken);

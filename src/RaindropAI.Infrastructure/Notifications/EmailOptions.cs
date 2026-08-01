@@ -24,5 +24,9 @@ public sealed class EmailOptions
     [EmailAddress]
     public required string ToAddress { get; init; }
 
-    public bool UseSsl { get; init; } = true;
+    /// <summary>
+    /// Remplace l'ancien booléen <c>UseSsl</c>, qui laissait passer une connexion en clair et dont le nom
+    /// suggérait à tort du TLS implicite alors que le code faisait du STARTTLS.
+    /// </summary>
+    public SmtpSecurity Security { get; init; } = SmtpSecurity.Auto;
 }
