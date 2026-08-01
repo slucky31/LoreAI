@@ -3,6 +3,12 @@
   "extends": [
     "config:recommended",
     "helpers:pinGitHubActionDigests"
+    ":label(renovate)",
+    ":separateMultipleMajorReleases",
+    ":semanticCommitTypeAll(fix)"
   ],
-  "semanticCommits": "enabled"
+  "prConcurrentLimit": 10,
+  "baseBranchPatterns": [
+    "main"
+  ]
 }
