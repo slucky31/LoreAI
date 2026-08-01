@@ -93,6 +93,10 @@ try
 catch (Exception ex)
 {
     Log.Fatal(ex, "RaindropAI.Worker s'est arrêté de façon inattendue.");
+
+    // Sans cela le process sortait avec 0 : un échec de démarrage (configuration invalide, /data non
+    // inscriptible) était indistinguable d'un arrêt normal pour Docker et l'outillage.
+    Environment.ExitCode = 1;
 }
 finally
 {
