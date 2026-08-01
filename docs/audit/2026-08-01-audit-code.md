@@ -126,7 +126,7 @@ sûr — mais commenté comme volontairement plus prudent que le défaut du code
 
 ### F-03 — Aucune isolation d'erreur par item : une exception annule l'avancement de tout le batch
 
-- **Axe** : Correction · **Statut** : `ouvert`
+- **Axe** : Correction · **Statut** : ✅ `corrigé` (commit `f-03`)
 - **Localisation** : `src/RaindropAI.Worker/Services/UnsortedClassificationJob.cs:71-100`
 
 **Constat.** La boucle `foreach (var item in newItems)` n'a pas de `try/catch` par item. Seul
@@ -142,6 +142,16 @@ persistante au *k+1*-ième item, la boucle rejoue indéfiniment le même préfix
 **Correctif proposé.** Encadrer le corps de la boucle d'un `try/catch` par item (log + compteur d'échecs,
 on continue), et avancer le high-water mark après chaque item traité avec succès plutôt qu'une seule fois
 en fin de batch.
+
+**Correction appliquée.** Le corps de la boucle est encadré par un `try/catch` qui logge le `RaindropId`
+fautif et sort de la boucle. Le high-water mark est désormais calculé sur `lastProcessed` (dernier article
+réellement traité de bout en bout, introduit en F-01) et non plus sur `newItems[^1]` : la progression acquise
+est conservée même en cas d'échec en milieu de batch, et le cycle reprend exactement à l'article fautif.
+
+Choix retenu : `break` plutôt que `continue`. Un `continue` ferait avancer le high-water mark au-delà de
+l'article en échec, qui serait alors perdu définitivement — c'est le défaut corrigé en F-01, il n'y avait pas
+de raison de le réintroduire ici. Le compteur du log final devient `{ProcessedCount}/{NewCount}`, ce qui rend
+un arrêt partiel visible.
 
 ---
 

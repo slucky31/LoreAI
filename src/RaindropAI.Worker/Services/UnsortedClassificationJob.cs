@@ -72,43 +72,57 @@ public sealed class UnsortedClassificationJob : IInvocable
 
             foreach (var item in newItems)
             {
-                var classification = await _classifier.ClassifyAsync(item, taxonomy, cancellationToken);
-                await _articleRepository.UpsertAsync(item, classification, DateTimeOffset.UtcNow, cancellationToken);
-
-                if (classification.IsFallback)
+                try
                 {
-                    // Le repli n'est pas une décision du modèle : l'appliquer écrirait une trace d'erreur
-                    // dans le raindrop réel. On interrompt le cycle sans dépasser cet article, pour qu'il
-                    // soit repris au prochain passage au lieu d'être perdu définitivement par le high-water mark.
-                    _logger.LogWarning(
-                        "Classification en repli pour le raindrop {RaindropId} ({Reason}) — rien n'est appliqué, cycle interrompu, reprise au prochain passage.",
-                        item.Id,
-                        classification.Reason);
+                    var classification = await _classifier.ClassifyAsync(item, taxonomy, cancellationToken);
+                    await _articleRepository.UpsertAsync(item, classification, DateTimeOffset.UtcNow, cancellationToken);
+
+                    if (classification.IsFallback)
+                    {
+                        // Le repli n'est pas une décision du modèle : l'appliquer écrirait une trace d'erreur
+                        // dans le raindrop réel. On interrompt le cycle sans dépasser cet article, pour qu'il
+                        // soit repris au prochain passage au lieu d'être perdu définitivement par le high-water mark.
+                        _logger.LogWarning(
+                            "Classification en repli pour le raindrop {RaindropId} ({Reason}) — rien n'est appliqué, cycle interrompu, reprise au prochain passage.",
+                            item.Id,
+                            classification.Reason);
+                        break;
+                    }
+
+                    var matchedCollection = classification.SuggestedCollection is not null
+                        ? taxonomy.Collections.FirstOrDefault(c => c.Title == classification.SuggestedCollection)
+                        : null;
+
+                    if (_options.WriteBackToRaindrop)
+                    {
+                        var moved = await ApplyClassificationAsync(item, classification, matchedCollection, cancellationToken);
+                        if (moved)
+                        {
+                            movedCount++;
+                        }
+                    }
+
+                    if (_notificationPolicy.ShouldNotifyImmediately(classification))
+                    {
+                        await _immediateNotifier.NotifyAsync(item, classification, cancellationToken);
+                        await _articleRepository.MarkDiscordNotifiedAsync(item.Id, DateTimeOffset.UtcNow, cancellationToken);
+                        notifiedCount++;
+                    }
+
+                    processedCount++;
+                    lastProcessed = item;
+                }
+                catch (Exception ex)
+                {
+                    // Sans ce filet, l'exception remontait au catch du cycle et court-circuitait l'avancement
+                    // du high-water mark : les articles déjà traités et écrits dans Raindrop étaient rejoués
+                    // au cycle suivant. On s'arrête ici en conservant la progression acquise.
+                    _logger.LogError(
+                        ex,
+                        "Échec du traitement du raindrop {RaindropId} — cycle interrompu, la progression acquise est conservée.",
+                        item.Id);
                     break;
                 }
-
-                var matchedCollection = classification.SuggestedCollection is not null
-                    ? taxonomy.Collections.FirstOrDefault(c => c.Title == classification.SuggestedCollection)
-                    : null;
-
-                if (_options.WriteBackToRaindrop)
-                {
-                    var moved = await ApplyClassificationAsync(item, classification, matchedCollection, cancellationToken);
-                    if (moved)
-                    {
-                        movedCount++;
-                    }
-                }
-
-                if (_notificationPolicy.ShouldNotifyImmediately(classification))
-                {
-                    await _immediateNotifier.NotifyAsync(item, classification, cancellationToken);
-                    await _articleRepository.MarkDiscordNotifiedAsync(item.Id, DateTimeOffset.UtcNow, cancellationToken);
-                    notifiedCount++;
-                }
-
-                processedCount++;
-                lastProcessed = item;
             }
 
             if (lastProcessed is not null)
