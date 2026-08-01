@@ -8,6 +8,9 @@ namespace RaindropAI.Infrastructure.Persistence;
 
 public sealed class ArticleRepository : IArticleRepository
 {
+    /// <summary>Taille des lots pour les clauses <c>IN</c>, bien en deçà de la limite de variables de SQLite.</summary>
+    private const int BatchSize = 500;
+
     private readonly SqliteConnectionFactory _connectionFactory;
 
     public ArticleRepository(SqliteConnectionFactory connectionFactory)
@@ -96,7 +99,19 @@ public sealed class ArticleRepository : IArticleRepository
     public async Task<IReadOnlyList<ClassifiedArticle>> GetUnsentDigestItemsAsync(CancellationToken cancellationToken)
     {
         await using var connection = await _connectionFactory.OpenConnectionAsync(cancellationToken);
-        const string sql = "SELECT * FROM Articles WHERE EmailDigestSentAtUtc IS NULL ORDER BY RaindropCreatedUtc";
+        // Colonnes listées explicitement : un `SELECT *` obligerait ArticleRow à suivre le schéma à la
+        // trace, et masquerait l'oubli d'un champ derrière une valeur par défaut silencieuse.
+        const string sql = """
+            SELECT
+                Id, Title, Link, Excerpt, Note, OriginalTags, CollectionId, Domain, RaindropType,
+                RaindropCreatedUtc, RaindropLastUpdateUtc, FetchedAtUtc,
+                SuggestedCollection, SuggestedTags, RecommendedAction, Priority, Reason,
+                ClassificationModel, ClassificationRawResponse, ClassifiedAtUtc,
+                Moved, WriteBackStatus, DiscordNotifiedAtUtc, EmailDigestSentAtUtc
+            FROM Articles
+            WHERE EmailDigestSentAtUtc IS NULL
+            ORDER BY RaindropCreatedUtc
+            """;
         var rows = await connection.QueryAsync<ArticleRow>(new CommandDefinition(sql, cancellationToken: cancellationToken));
         return rows.Select(MapToClassifiedArticle).ToList();
     }
@@ -120,10 +135,16 @@ public sealed class ArticleRepository : IArticleRepository
 
         await using var connection = await _connectionFactory.OpenConnectionAsync(cancellationToken);
         const string sql = "UPDATE Articles SET EmailDigestSentAtUtc = @SentAtUtc WHERE Id IN @Ids";
-        await connection.ExecuteAsync(new CommandDefinition(
-            sql,
-            new { Ids = articleIds, SentAtUtc = sentAtUtc.UtcDateTime.ToString("O") },
-            cancellationToken: cancellationToken));
+
+        // Dapper développe la clause IN en un paramètre par identifiant : sur un digest volumineux
+        // (premier backfill), on dépasserait la limite de variables de SQLite. D'où le découpage.
+        foreach (var batch in articleIds.Chunk(BatchSize))
+        {
+            await connection.ExecuteAsync(new CommandDefinition(
+                sql,
+                new { Ids = batch, SentAtUtc = sentAtUtc.UtcDateTime.ToString("O") },
+                cancellationToken: cancellationToken));
+        }
     }
 
     private static ClassifiedArticle MapToClassifiedArticle(ArticleRow row)

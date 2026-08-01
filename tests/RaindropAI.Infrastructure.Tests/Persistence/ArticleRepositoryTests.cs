@@ -47,6 +47,27 @@ public class ArticleRepositoryTests : IDisposable
         Assert.Equal(2, single.Item.Id);
     }
 
+    /// <summary>
+    /// F-21 : Dapper développe la clause IN en un paramètre par identifiant. Un digest volumineux
+    /// (premier backfill) dépasserait la limite de variables de SQLite sans découpage en lots.
+    /// </summary>
+    [Fact]
+    public async Task MarkDigestSentAsync_WithMoreIdsThanOneBatch_MarksThemAll()
+    {
+        const int count = 1200;
+        for (var id = 1; id <= count; id++)
+        {
+            await _repository.UpsertAsync(CreateItem(id, $"A{id}"), CreateClassification(), DateTimeOffset.UtcNow, TestContext.Current.CancellationToken);
+        }
+
+        await _repository.MarkDigestSentAsync(
+            Enumerable.Range(1, count).Select(i => (long)i).ToList(),
+            DateTimeOffset.UtcNow,
+            TestContext.Current.CancellationToken);
+
+        Assert.Empty(await _repository.GetUnsentDigestItemsAsync(TestContext.Current.CancellationToken));
+    }
+
     [Fact]
     public async Task MarkDiscordNotifiedAsync_SetsTimestamp()
     {
