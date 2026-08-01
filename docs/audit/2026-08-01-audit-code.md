@@ -7,8 +7,8 @@
 | **Périmètre** | Revue générale · Architecture .NET · Design patterns · Sécurité |
 | **État build** | ✅ `dotnet build -c Release` — 0 warning, 0 erreur |
 | **État tests à l'audit** | ✅ 45/45 (6 Core + 39 Infrastructure) |
-| **État tests après correctifs** | ✅ 75/75 (14 Core + 41 Infrastructure + 20 Worker) |
-| **Avancement** | 7 findings corrigés (F-01 → F-07), 18 ouverts |
+| **État tests après correctifs** | ✅ 84/84 (14 Core + 50 Infrastructure + 20 Worker) |
+| **Avancement** | 10 findings corrigés (F-01 → F-10), 15 ouverts |
 
 ## Comment reprendre ce document
 
@@ -25,12 +25,14 @@ Statuts possibles : `ouvert` · `en cours` · `corrigé` · `refusé (raison)` �
 |---|---|---|---|
 | 🔴 Critique | 2 | F-01, F-02 | ✅ corrigés |
 | 🟠 Élevé | 5 | F-03, F-04, F-05, F-06, F-07 | ✅ corrigés |
-| 🟡 Moyen | 8 | F-08 → F-15 | ⏳ ouverts |
+| 🟡 Moyen | 8 | F-08, F-09, F-10 ✅ · F-11 → F-15 ⏳ | partiel |
 | ⚪ Faible | 10 | F-16 → F-25 | ⏳ ouverts |
 
-**Tout ce qui est critique et élevé est corrigé** (un commit par finding, `fix: … (F-xx)`). Il reste les
-sévérités moyenne et faible, dont les trois findings de sécurité F-08 (injection HTML dans le digest),
-F-09 (SMTP en clair si `UseSsl=false`) et F-10 (conteneur en root).
+**Tout ce qui est critique et élevé est corrigé**, ainsi que **les cinq findings de sécurité** (F-02, F-08,
+F-09, F-10 ; F-11 reste ouvert). Un commit par finding, `fix: … (F-xx)`.
+
+Restent ouverts : F-11 à F-15 (moyen) et F-16 à F-25 (faible). Les plus proches d'un vrai impact
+fonctionnel sont **F-12 et F-13**, qui font perdre des articles silencieusement à la pagination.
 
 **Répartition par axe** — Correction : 9 · Architecture : 7 · Sécurité : 5 · Design patterns : 3 · Tests : 1
 
@@ -42,8 +44,11 @@ F-09 (SMTP en clair si `UseSsl=false`) et F-10 (conteneur en root).
 2. ✅ **F-03 + F-04** — idempotence du cycle ; conditionne la fiabilité de tout le reste.
 3. ✅ **F-05 + F-06** — fail-fast config et arrêt gracieux ; peu de code, gros gain d'exploitabilité.
 4. ✅ **F-07** — filet de sécurité pour les corrections précédentes (l'orchestration n'avait aucun test).
-5. ⏳ Le reste au fil de l'eau — commencer par F-08/F-09/F-10 (sécurité), puis F-12/F-13 (perte silencieuse
-   d'articles à la pagination), qui sont les plus proches d'un vrai impact fonctionnel.
+5. ✅ **F-08 + F-09 + F-10** — les trois findings de sécurité restants (injection HTML dans le digest,
+   SMTP en clair, conteneur en root).
+6. ⏳ **F-12 + F-13** — perte silencieuse d'articles à la pagination : les plus proches d'un vrai impact
+   fonctionnel parmi ce qui reste.
+7. ⏳ Le reste au fil de l'eau.
 
 Note sur l'ordre suivi : F-07 est passé en dernier comme prévu, donc F-01 → F-06 ont été écrits sans filet.
 Les tests de F-07 ont été validés *a posteriori* par mutation (réintroduction des défauts) pour vérifier
@@ -415,7 +420,7 @@ reste inchangée en pratique. Une valeur invalide échoue au démarrage :
 
 ### F-10 — Le conteneur tourne en root
 
-- **Axe** : Sécurité · **Statut** : `ouvert`
+- **Axe** : Sécurité · **Statut** : ✅ `corrigé` (commit `f-10`)
 - **Localisation** : `src/RaindropAI.Worker/Dockerfile:12-17`
 
 L'image finale (`mcr.microsoft.com/dotnet/runtime:9.0`) ne définit pas de `USER` : le process s'exécute en
@@ -426,6 +431,25 @@ exactement ce cas.
 à cet UID. Envisager la variante `-noble-chiseled` (non-root par défaut, surface d'attaque réduite), et un
 `HEALTHCHECK` — aujourd'hui `restart: unless-stopped` ne redémarre que sur crash du process, pas sur un
 worker vivant mais en échec permanent (cf. F-05).
+
+**Correction appliquée.** `USER $APP_UID` dans l'étage final, précédé d'un `mkdir -p /data/logs` + `chown`
+(utile pour un volume nommé). Constats vérifiés sur l'image réelle plutôt que supposés :
+
+```
+mcr.microsoft.com/dotnet/runtime:9.0 -> APP_UID=1654, utilisateur app (uid/gid 1654) présent
+utilisateur par défaut de l'image     -> uid=0(root)          ← le finding, confirmé
+après correctif, worker démarré       -> uid=1654(app), logs écrits dans /data/logs
+/data appartenant à root              -> « Permission denied » reproduit
+```
+
+⚠️ **Impact sur les déploiements existants.** Sur un bind mount (le cas de `docker-compose.yml`), c'est la
+propriété côté hôte qui prime : le `chown` de l'image est masqué. Un `data/` créé du temps où le conteneur
+tournait en root appartient à root, et SQLite échouera au redémarrage. D'où l'étape
+`sudo chown -R 1654:1654 data` ajoutée au README et rappelée en commentaire dans `docker-compose.yml`.
+
+**Restent ouverts, volontairement hors de ce correctif** : la variante `-noble-chiseled` et le `HEALTHCHECK`.
+Ce dernier demanderait d'abord un vrai signal de vivacité (le worker n'expose aucun endpoint) — sans quoi il
+ne détecterait rien de plus que le crash déjà couvert par `restart: unless-stopped`.
 
 ---
 

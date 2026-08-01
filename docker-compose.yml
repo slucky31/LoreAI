@@ -9,4 +9,7 @@ services:
     environment:
       DOTNET_ENVIRONMENT: Production
     volumes:
+      # Le conteneur tourne en non-root (uid 1654). Sur un bind mount c'est la propriété côté hôte
+      # qui prime : ./data doit lui appartenir, sinon SQLite échoue en « Permission denied ».
+      #   mkdir -p data && sudo chown -R 1654:1654 data
       - ./data:/data
