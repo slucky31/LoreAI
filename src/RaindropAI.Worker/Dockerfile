@@ -1,7 +1,7 @@
 # --platform=$BUILDPLATFORM : le SDK tourne nativement sur le runner et c'est `dotnet publish -a` qui
 # cible l'architecture voulue. Émuler tout le SDK sous QEMU pour produire l'arm64 serait bien plus lent,
 # et la cross-compilation évite complètement l'émulation (l'étage final ne fait que des COPY).
-FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:9.0 AS build
+FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 ARG TARGETARCH
 WORKDIR /src
 
@@ -27,7 +27,7 @@ RUN mkdir -p /app/data-skeleton/logs
 
 # Chiselée : pas de shell ni de gestionnaire de paquets (surface d'attaque réduite), et l'utilisateur
 # applicatif non-root est déjà celui par défaut. Multi-arch, dont arm64 pour le Raspberry Pi.
-FROM mcr.microsoft.com/dotnet/runtime:9.0-noble-chiseled AS final
+FROM mcr.microsoft.com/dotnet/runtime:10.0-noble-chiseled AS final
 WORKDIR /app
 COPY --from=build /app/publish .
 
