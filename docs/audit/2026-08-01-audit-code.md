@@ -157,7 +157,7 @@ un arrêt partiel visible.
 
 ### F-04 — La note appliquée à Raindrop n'est pas idempotente
 
-- **Axe** : Correction · **Statut** : `ouvert`
+- **Axe** : Correction · **Statut** : ✅ `corrigé` (commit `f-04`)
 - **Localisation** : `src/RaindropAI.Worker/Services/UnsortedClassificationJob.cs:131-134`
 
 **Constat.**
@@ -177,6 +177,20 @@ empile les blocs `[RaindropAI]`. La note d'un bookmark peut grossir sans limite.
 **Correctif proposé.** Retirer le bloc `[RaindropAI] …` existant avant d'ajouter le nouveau (regex ancrée sur
 le marqueur), ou délimiter la zone gérée par l'outil (`<!-- raindropai:start --> … <!-- raindropai:end -->`)
 et la remplacer intégralement.
+
+**Correction appliquée.** Logique extraite dans `Core/Services/ClassificationNoteBuilder` (pure, même esprit
+que `DigestMessageBuilder`), ce qui la rend testable sans attendre le projet de tests Worker de F-07 —
+8 tests dans `RaindropAI.Core.Tests`.
+
+Trois décisions à noter :
+- **Filtrage ligne à ligne** plutôt que troncature à partir du marqueur : l'utilisateur peut avoir écrit
+  *sous* le bloc, et son texte doit survivre (couvert par un test).
+- **Pas de délimiteurs `<!-- … -->`** : les notes Raindrop s'affichent en texte brut, les commentaires HTML
+  seraient visibles. Le marqueur `[RaindropAI]` en début de ligne suffit.
+- **La justification est aplatie sur une ligne** : un `reason` multi-ligne produirait un bloc irrécupérable au
+  passage suivant, donc non idempotent. C'est le seul trou qu'un filtrage ligne à ligne laisserait ouvert.
+
+Les notes déjà polluées par des blocs empilés sont nettoyées au prochain passage (test dédié).
 
 ---
 

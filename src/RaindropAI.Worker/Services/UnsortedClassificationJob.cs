@@ -2,6 +2,7 @@ using Coravel.Invocable;
 using Microsoft.Extensions.Options;
 using RaindropAI.Core.Interfaces;
 using RaindropAI.Core.Models;
+using RaindropAI.Core.Services;
 using RaindropAI.Worker.Options;
 
 namespace RaindropAI.Worker.Services;
@@ -147,7 +148,8 @@ public sealed class UnsortedClassificationJob : IInvocable
 
     /// <summary>
     /// Applique toujours les tags (fusionnés, jamais de perte) ; ne déplace la collection que si une
-    /// correspondance existante a été trouvée. La note existante est complétée, jamais écrasée.
+    /// correspondance existante a été trouvée. La note rédigée par l'utilisateur est préservée ; seul le
+    /// bloc [RaindropAI] d'un passage précédent est remplacé (cf. <see cref="ClassificationNoteBuilder"/>).
     /// </summary>
     private async Task<bool> ApplyClassificationAsync(
         RaindropItem item,
@@ -162,10 +164,7 @@ public sealed class UnsortedClassificationJob : IInvocable
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToList();
 
-            var classificationNote = $"[RaindropAI] {classification.Action} — {classification.Priority} — {classification.Reason}";
-            var mergedNote = string.IsNullOrWhiteSpace(item.Note)
-                ? classificationNote
-                : $"{item.Note}\n\n{classificationNote}";
+            var mergedNote = ClassificationNoteBuilder.Build(item.Note, classification);
 
             await _raindropClient.UpdateRaindropAsync(item.Id, mergedTags, mergedNote, matchedCollection?.Id, cancellationToken);
             await _articleRepository.RecordWriteBackAsync(item.Id, success: true, moved: matchedCollection is not null, DateTimeOffset.UtcNow, cancellationToken);
