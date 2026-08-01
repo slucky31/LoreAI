@@ -447,9 +447,21 @@ propriété côté hôte qui prime : le `chown` de l'image est masqué. Un `data
 tournait en root appartient à root, et SQLite échouera au redémarrage. D'où l'étape
 `sudo chown -R 1654:1654 data` ajoutée au README et rappelée en commentaire dans `docker-compose.yml`.
 
-**Restent ouverts, volontairement hors de ce correctif** : la variante `-noble-chiseled` et le `HEALTHCHECK`.
-Ce dernier demanderait d'abord un vrai signal de vivacité (le worker n'expose aucun endpoint) — sans quoi il
-ne détecterait rien de plus que le crash déjà couvert par `restart: unless-stopped`.
+**Complément — bascule sur `-noble-chiseled`.** Faite dans un second temps. L'image chiselée n'a ni shell ni
+gestionnaire de paquets, et son utilisateur par défaut est déjà `1654` : aucune instruction `RUN` n'y est
+possible, le squelette de `/data` est donc préparé dans l'étage de build puis copié avec
+`COPY --chown=$APP_UID`. Le `USER` explicite est conservé même s'il est redondant — sans lui, un retour vers
+une image de base non chiselée ferait silencieusement retomber le worker en root.
+
+Vérifié : image **138 Mo contre 199 Mo** pour la base précédente, worker démarré, `/data/logs` écrit en
+`1654:1654`, et absence de shell confirmée. L'image chiselée force
+`DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=true` : la suite complète a donc été rejouée avec
+`DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1`, **84/84 au vert**. À garder en tête, les tris par chaîne de
+`DigestMessageBuilder` (`OrderBy(g => g.Key)`) sont ordinaux en production et culturels en dev local.
+
+**Reste ouvert** : le `HEALTHCHECK`, qui demanderait d'abord un vrai signal de vivacité (le worker n'expose
+aucun endpoint) — sans quoi il ne détecterait rien de plus que le crash déjà couvert par
+`restart: unless-stopped`.
 
 ---
 
