@@ -55,6 +55,28 @@ public class UnsortedClassificationJobTests
             1, Arg.Any<IReadOnlyCollection<string>>(), Arg.Any<string>(), null, Arg.Any<CancellationToken>());
     }
 
+    /// <summary>
+    /// F-17 : deux collections peuvent porter le même titre sous des parents différents. Ranger au hasard
+    /// serait pire que ne pas ranger — l'article garde ses tags et reste dans « Non trié ».
+    /// </summary>
+    [Fact]
+    public async Task Invoke_AmbiguousCollectionTitle_AppliesTagsButDoesNotMove()
+    {
+        var ambiguousTaxonomy = new RaindropTaxonomy(
+            [new RaindropCollection(10, "Veille"), new RaindropCollection(20, "Veille")],
+            []);
+
+        var fixture = new JobFixture()
+            .WithTaxonomy(ambiguousTaxonomy)
+            .WithNewItems(CreateItem(1))
+            .WithClassification(CreateClassification("Veille", ["dotnet"]));
+
+        await fixture.Build().Invoke();
+
+        await fixture.RaindropClient.Received(1).UpdateRaindropAsync(
+            1, Arg.Any<IReadOnlyCollection<string>>(), Arg.Any<string>(), null, Arg.Any<CancellationToken>());
+    }
+
     [Fact]
     public async Task Invoke_TagMergeIsCaseInsensitiveAndNeverLosesExistingTags()
     {
@@ -352,6 +374,12 @@ public class UnsortedClassificationJobTests
                 .Returns(Array.Empty<RaindropItem>());
             RaindropClient.GetTaxonomyAsync(Arg.Any<CancellationToken>()).Returns(Taxonomy);
             NotificationPolicy.ShouldNotifyImmediately(Arg.Any<ClassificationResult>()).Returns(false);
+        }
+
+        public JobFixture WithTaxonomy(RaindropTaxonomy taxonomy)
+        {
+            RaindropClient.GetTaxonomyAsync(Arg.Any<CancellationToken>()).Returns(taxonomy);
+            return this;
         }
 
         public JobFixture WithWriteBack(bool enabled)

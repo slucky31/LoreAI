@@ -94,9 +94,12 @@ public sealed class RaindropClient : IRaindropClient
     {
         var rootCollections = await GetCollectionsAsync("collections", cancellationToken);
         var nestedCollections = await GetCollectionsAsync("collections/childrens", cancellationToken);
+        // /collections et /collections/childrens peuvent se recouvrir : on déduplique par identifiant,
+        // sans quoi la même collection apparaîtrait deux fois dans l'enum du schéma d'outil.
         var collections = rootCollections
             .Concat(nestedCollections)
-            .Select(dto => new RaindropCollection(dto.Id, dto.Title))
+            .GroupBy(dto => dto.Id)
+            .Select(group => new RaindropCollection(group.Key, group.First().Title))
             .ToList();
 
         var tagsResponse = await _httpClient.GetAsync("tags", cancellationToken);

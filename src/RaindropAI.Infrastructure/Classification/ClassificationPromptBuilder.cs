@@ -29,8 +29,12 @@ public static class ClassificationPromptBuilder
 
     public static string BuildToolInputSchemaJson(RaindropTaxonomy taxonomy)
     {
+        // Titres dédupliqués : deux collections homonymes produiraient un enum à doublons, et de toute
+        // façon l'appelant refuse de déplacer sur un titre ambigu.
         var collectionEnum = taxonomy.Collections
-            .Select(c => (object?)c.Title)
+            .Select(c => c.Title)
+            .Distinct(StringComparer.Ordinal)
+            .Select(title => (object?)title)
             .Append(null)
             .ToArray();
 
@@ -78,7 +82,7 @@ public static class ClassificationPromptBuilder
         var excerpt = Truncate(item.Excerpt, MaxExcerptLength);
         var existingTags = item.Tags.Count > 0 ? string.Join(", ", item.Tags) : "(aucun)";
         var collections = taxonomy.Collections.Count > 0
-            ? string.Join(", ", taxonomy.Collections.Select(c => c.Title))
+            ? string.Join(", ", taxonomy.Collections.Select(c => c.Title).Distinct(StringComparer.Ordinal))
             : "(aucune collection existante)";
         var topTags = taxonomy.Tags.Count > 0
             ? string.Join(", ", taxonomy.Tags.OrderByDescending(t => t.Count).Take(MaxTagsInPrompt).Select(t => t.Name))

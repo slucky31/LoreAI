@@ -93,9 +93,7 @@ public sealed class UnsortedClassificationJob : IInvocable, ICancellableInvocabl
                         break;
                     }
 
-                    var matchedCollection = classification.SuggestedCollection is not null
-                        ? taxonomy.Collections.FirstOrDefault(c => c.Title == classification.SuggestedCollection)
-                        : null;
+                    var matchedCollection = ResolveTargetCollection(classification, taxonomy);
 
                     if (_options.WriteBackToRaindrop)
                     {
@@ -161,6 +159,38 @@ public sealed class UnsortedClassificationJob : IInvocable, ICancellableInvocabl
         {
             _logger.LogError(ex, "Échec du cycle de classification de \"Non trié\".");
         }
+    }
+
+    /// <summary>
+    /// Ne renvoie une collection que si le titre suggéré désigne une cible <b>sans ambiguïté</b>. Deux
+    /// collections homonymes (sous des parents différents) ne permettent pas de trancher : on préfère
+    /// laisser l'article dans « Non trié » avec ses tags plutôt que de le ranger au mauvais endroit.
+    /// </summary>
+    private RaindropCollection? ResolveTargetCollection(ClassificationResult classification, RaindropTaxonomy taxonomy)
+    {
+        if (classification.SuggestedCollection is null)
+        {
+            return null;
+        }
+
+        var matches = taxonomy.Collections
+            .Where(c => c.Title == classification.SuggestedCollection)
+            .ToList();
+
+        if (matches.Count == 1)
+        {
+            return matches[0];
+        }
+
+        if (matches.Count > 1)
+        {
+            _logger.LogWarning(
+                "Titre de collection ambigu « {Title} » ({Count} collections homonymes) : le raindrop n'est pas déplacé.",
+                classification.SuggestedCollection,
+                matches.Count);
+        }
+
+        return null;
     }
 
     /// <summary>
