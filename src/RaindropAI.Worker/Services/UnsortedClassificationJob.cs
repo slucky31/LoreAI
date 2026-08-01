@@ -63,11 +63,14 @@ public sealed class UnsortedClassificationJob : IInvocable, ICancellableInvocabl
             }
 
             var taxonomy = await _raindropClient.GetTaxonomyAsync(cancellationToken);
-            _logger.LogInformation(
-                "{Count} nouveaux articles à trier ({CollectionCount} collections et {TagCount} tags connus).",
-                newItems.Count,
-                taxonomy.Collections.Count,
-                taxonomy.Tags.Count);
+            if (_logger.IsEnabled(LogLevel.Information))
+            {
+                _logger.LogInformation(
+                    "{Count} nouveaux articles à trier ({CollectionCount} collections et {TagCount} tags connus).",
+                    newItems.Count,
+                    taxonomy.Collections.Count,
+                    taxonomy.Tags.Count);
+            }
 
             var notifiedCount = 0;
             var movedCount = 0;
@@ -116,9 +119,12 @@ public sealed class UnsortedClassificationJob : IInvocable, ICancellableInvocabl
                 }
                 catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
                 {
-                    _logger.LogInformation(
-                        "Arrêt de l'application demandé — cycle interrompu proprement avant le raindrop {RaindropId}.",
-                        item.Id);
+                    if (_logger.IsEnabled(LogLevel.Information))
+                    {
+                        _logger.LogInformation(
+                            "Arrêt de l'application demandé — cycle interrompu proprement avant le raindrop {RaindropId}.",
+                            item.Id);
+                    }
                     break;
                 }
                 catch (Exception ex)
@@ -144,12 +150,15 @@ public sealed class UnsortedClassificationJob : IInvocable, ICancellableInvocabl
                     CancellationToken.None);
             }
 
-            _logger.LogInformation(
-                "Cycle terminé : {ProcessedCount}/{NewCount} articles traités, {MovedCount} déplacés, {NotifiedCount} notifiés immédiatement.",
-                processedCount,
-                newItems.Count,
-                movedCount,
-                notifiedCount);
+            if (_logger.IsEnabled(LogLevel.Information))
+            {
+                _logger.LogInformation(
+                    "Cycle terminé : {ProcessedCount}/{NewCount} articles traités, {MovedCount} déplacés, {NotifiedCount} notifiés immédiatement.",
+                    processedCount,
+                    newItems.Count,
+                    movedCount,
+                    notifiedCount);
+            }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
