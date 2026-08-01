@@ -8,7 +8,7 @@
     <!-- Pin transitif : Microsoft.Data.Sqlite 10.0.10 tire SQLitePCLRaw 2.1.11, qui a une CVE connue
          (GHSA-2m69-gcr7-jv3q). 2.1.12 la corrige ; pas de version de Microsoft.Data.Sqlite plus récente
          disponible qui la tire nativement. -->
-    <PackageVersion Include="SQLitePCLRaw.lib.e_sqlite3" Version="2.1.12" />
+    <PackageVersion Include="SQLitePCLRaw.lib.e_sqlite3" Version="3.53.3" />
     <PackageVersion Include="Dapper" Version="2.1.79" />
     <PackageVersion Include="MailKit" Version="4.17.0" />
     <PackageVersion Include="Microsoft.Data.Sqlite" Version="10.0.10" />
