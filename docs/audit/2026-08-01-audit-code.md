@@ -6,7 +6,9 @@
 | **Commit audité** | `1b09e39` (`main`, arbre propre) |
 | **Périmètre** | Revue générale · Architecture .NET · Design patterns · Sécurité |
 | **État build** | ✅ `dotnet build -c Release` — 0 warning, 0 erreur |
-| **État tests** | ✅ 45/45 (6 Core + 39 Infrastructure) |
+| **État tests à l'audit** | ✅ 45/45 (6 Core + 39 Infrastructure) |
+| **État tests après correctifs** | ✅ 75/75 (14 Core + 41 Infrastructure + 20 Worker) |
+| **Avancement** | 7 findings corrigés (F-01 → F-07), 18 ouverts |
 
 ## Comment reprendre ce document
 
@@ -19,24 +21,33 @@ Statuts possibles : `ouvert` · `en cours` · `corrigé` · `refusé (raison)` �
 
 ## Synthèse
 
-| Sévérité | Nb | IDs |
-|---|---|---|
-| 🔴 Critique | 2 | F-01, F-02 |
-| 🟠 Élevé | 5 | F-03, F-04, F-05, F-06, F-07 |
-| 🟡 Moyen | 8 | F-08 → F-15 |
-| ⚪ Faible | 10 | F-16 → F-25 |
+| Sévérité | Nb | IDs | État |
+|---|---|---|---|
+| 🔴 Critique | 2 | F-01, F-02 | ✅ corrigés |
+| 🟠 Élevé | 5 | F-03, F-04, F-05, F-06, F-07 | ✅ corrigés |
+| 🟡 Moyen | 8 | F-08 → F-15 | ⏳ ouverts |
+| ⚪ Faible | 10 | F-16 → F-25 | ⏳ ouverts |
+
+**Tout ce qui est critique et élevé est corrigé** (un commit par finding, `fix: … (F-xx)`). Il reste les
+sévérités moyenne et faible, dont les trois findings de sécurité F-08 (injection HTML dans le digest),
+F-09 (SMTP en clair si `UseSsl=false`) et F-10 (conteneur en root).
 
 **Répartition par axe** — Correction : 9 · Architecture : 7 · Sécurité : 5 · Design patterns : 3 · Tests : 1
 
 **Lecture d'ensemble.** L'architecture est saine et fidèle à l'ADR 0001 : la direction des dépendances est respectée, `Core` n'a effectivement aucune dépendance externe, les seams (`IClassifier`, `IRaindropClient`, …) sont au bon endroit. Le vrai risque n'est pas structurel, il est **opérationnel** : l'outil écrit sans validation humaine dans un compte Raindrop réel, et plusieurs chemins d'erreur écrivent quand même — parfois du contenu erroné — puis marquent l'article comme traité définitivement.
 
-### Ordre de correction recommandé
+### Ordre de correction
 
-1. **F-01 + F-02** — les deux seuls findings qui peuvent abîmer des données réelles. À traiter avant tout déploiement.
-2. **F-03 + F-04** — idempotence du cycle ; conditionne la fiabilité de tout le reste.
-3. **F-05 + F-06** — fail-fast config et arrêt gracieux ; peu de code, gros gain d'exploitabilité.
-4. **F-07** — filet de sécurité pour les corrections précédentes (l'orchestration n'a aucun test aujourd'hui).
-5. Le reste au fil de l'eau.
+1. ✅ **F-01 + F-02** — les deux seuls findings qui peuvent abîmer des données réelles. À traiter avant tout déploiement.
+2. ✅ **F-03 + F-04** — idempotence du cycle ; conditionne la fiabilité de tout le reste.
+3. ✅ **F-05 + F-06** — fail-fast config et arrêt gracieux ; peu de code, gros gain d'exploitabilité.
+4. ✅ **F-07** — filet de sécurité pour les corrections précédentes (l'orchestration n'avait aucun test).
+5. ⏳ Le reste au fil de l'eau — commencer par F-08/F-09/F-10 (sécurité), puis F-12/F-13 (perte silencieuse
+   d'articles à la pagination), qui sont les plus proches d'un vrai impact fonctionnel.
+
+Note sur l'ordre suivi : F-07 est passé en dernier comme prévu, donc F-01 → F-06 ont été écrits sans filet.
+Les tests de F-07 ont été validés *a posteriori* par mutation (réintroduction des défauts) pour vérifier
+qu'ils verrouillent réellement ces correctifs, et pas seulement qu'ils passent.
 
 ---
 
@@ -291,7 +302,7 @@ le digest au redémarrage, c'est-à-dire exactement le dommage que ce finding ch
 
 ### F-07 — Le projet Worker n'a aucun test
 
-- **Axe** : Tests · **Statut** : `ouvert`
+- **Axe** : Tests · **Statut** : ✅ `corrigé` (commit `f-07`)
 - **Localisation** : `tests/` — seuls `RaindropAI.Core.Tests` et `RaindropAI.Infrastructure.Tests` existent
 
 **Constat.** Les 45 tests couvrent honnêtement Infrastructure (WireMock sur les 3 clients HTTP, SQLite réel
@@ -314,6 +325,23 @@ NSubstitute sur les six interfaces (la classe est déjà entièrement injectée 
 Cas prioritaires : fallback ⇒ pas d'écriture (F-01), collection inconnue ⇒ tags seuls sans déplacement,
 `WriteBackToRaindrop=false` ⇒ aucun appel à `UpdateRaindropAsync`, exception au *k*-ième item ⇒ les *k-1*
 premiers restent acquis (F-03).
+
+**Correction appliquée.** Nouveau projet `tests/RaindropAI.Worker.Tests` (ajouté au `.slnx`), 20 tests sur
+`UnsortedClassificationJob` (17) et `DigestNotificationJob` (3), via NSubstitute sur les six interfaces —
+la classe était déjà entièrement injectée, aucun refactoring n'a été nécessaire. Une petite `JobFixture`
+interne porte les doubles et les valeurs par défaut pour que chaque cas tienne en trois lignes.
+
+Couvre les garanties du README (fusion de tags additive et insensible à la casse, déplacement uniquement sur
+correspondance exacte, mode « à blanc » qui ne touche à rien) et les invariants de F-01, F-03, F-04 et F-06.
+
+**Les tests ont été validés par mutation**, pour vérifier qu'ils échouent bien sur le code d'avant correctif :
+
+| Mutation | Résultat |
+|---|---|
+| Neutraliser le garde-fou `IsFallback` (F-01) | 4 tests échouent |
+| Rendre l'exception par item à nouveau propagée (F-03) | 1 test échoue (`…KeepsProgressOnTheFirstTwo`) |
+
+Total après correctifs : **75 tests** (14 Core + 41 Infrastructure + 20 Worker).
 
 ---
 

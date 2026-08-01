@@ -12,5 +12,6 @@
   <Folder Name="/tests/">
     <Project Path="tests/RaindropAI.Core.Tests/RaindropAI.Core.Tests.csproj" />
     <Project Path="tests/RaindropAI.Infrastructure.Tests/RaindropAI.Infrastructure.Tests.csproj" />
+    <Project Path="tests/RaindropAI.Worker.Tests/RaindropAI.Worker.Tests.csproj" />
   </Folder>
 </Solution>
