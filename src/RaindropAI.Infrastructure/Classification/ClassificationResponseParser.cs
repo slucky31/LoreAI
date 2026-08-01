@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 using RaindropAI.Core.Enums;
 using RaindropAI.Core.Models;
@@ -19,6 +20,34 @@ public static class ClassificationResponseParser
 
     private const int MaxTags = 10;
 
+    /// <summary>
+    /// Variante sans exception, destinée à l'appelant nominal : une sortie de modèle invalide est un
+    /// résultat attendu, pas un incident. Cela permet à <c>AnthropicClassifier</c> de ne plus envelopper
+    /// tout son corps dans un <c>catch (Exception)</c>, qui masquait aussi bien un JSON malformé qu'un
+    /// bug de programmation.
+    /// </summary>
+    public static bool TryParse(
+        string toolInputJson,
+        string model,
+        string rawResponse,
+        [NotNullWhen(true)] out ClassificationResult? result,
+        [NotNullWhen(false)] out string? error)
+    {
+        try
+        {
+            result = Parse(toolInputJson, model, rawResponse);
+            error = null;
+            return true;
+        }
+        catch (ClassificationParseException ex)
+        {
+            result = null;
+            error = ex.Message;
+            return false;
+        }
+    }
+
+    /// <summary>Lève <see cref="ClassificationParseException"/> ; préférer <see cref="TryParse"/> côté appelant.</summary>
     public static ClassificationResult Parse(string toolInputJson, string model, string rawResponse)
     {
         try

@@ -122,6 +122,42 @@ public class AnthropicClassifierTests
         Assert.True(result.IsFallback);
     }
 
+    [Fact]
+    public async Task ClassifyAsync_BodyThatIsNotJson_ReturnsFallback()
+    {
+        using var server = WireMockServer.Start();
+        server
+            .Given(Request.Create().WithPath("/v1/messages").UsingPost())
+            .RespondWith(Response.Create()
+                .WithStatusCode(200)
+                .WithHeader("Content-Type", "application/json")
+                .WithBody("<html>502 Bad Gateway</html>"));
+
+        var classifier = CreateClassifier(server);
+        var result = await classifier.ClassifyAsync(CreateItem(), SampleTaxonomy, TestContext.Current.CancellationToken);
+
+        // Un intermédiaire qui renvoie du HTML en 200 reste une panne de transport : repli, pas de crash.
+        Assert.True(result.IsFallback);
+    }
+
+    [Fact]
+    public async Task ClassifyAsync_ResponseWithoutContentArray_ReturnsFallback()
+    {
+        using var server = WireMockServer.Start();
+        server
+            .Given(Request.Create().WithPath("/v1/messages").UsingPost())
+            .RespondWith(Response.Create()
+                .WithStatusCode(200)
+                .WithHeader("Content-Type", "application/json")
+                .WithBody("""{ "id": "msg_1", "type": "message" }"""));
+
+        var classifier = CreateClassifier(server);
+        var result = await classifier.ClassifyAsync(CreateItem(), SampleTaxonomy, TestContext.Current.CancellationToken);
+
+        Assert.True(result.IsFallback);
+        Assert.Contains("content", result.Reason, StringComparison.Ordinal);
+    }
+
     private static AnthropicClassifier CreateClassifier(WireMockServer server)
     {
         var httpClient = new HttpClient();

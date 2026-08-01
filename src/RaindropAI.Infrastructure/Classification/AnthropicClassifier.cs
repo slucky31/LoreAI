@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -49,14 +50,41 @@ public sealed class AnthropicClassifier : IClassifier
             rawResponseBody = await response.Content.ReadAsStringAsync(cancellationToken);
             response.EnsureSuccessStatusCode();
 
-            var toolInputJson = ExtractToolInput(rawResponseBody);
-            return ClassificationResponseParser.Parse(toolInputJson, _options.Model, rawResponseBody);
+            if (!TryExtractToolInput(rawResponseBody, out var toolInputJson, out var extractError))
+            {
+                return Fallback(item, extractError, rawResponseBody);
+            }
+
+            return ClassificationResponseParser.TryParse(toolInputJson, _options.Model, rawResponseBody, out var result, out var parseError)
+                ? result
+                : Fallback(item, parseError, rawResponseBody);
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (Exception ex) when (IsTransportFailure(ex, cancellationToken))
         {
             _logger.LogWarning(ex, "Classification échouée pour le raindrop {RaindropId}", item.Id);
             return ClassificationResult.Fallback(_options.Model, $"Classification échouée: {ex.Message}", rawResponseBody);
         }
+    }
+
+    /// <summary>
+    /// Seules les pannes de transport et de format donnent lieu à un repli. Tout le reste — typiquement un
+    /// bug de ce code — remonte à l'appelant, qui le journalisera en erreur avec sa pile plutôt que de le
+    /// déguiser en « classification échouée ».
+    /// </summary>
+    private static bool IsTransportFailure(Exception exception, CancellationToken cancellationToken) => exception switch
+    {
+        // Arrêt de l'application demandé : ce n'est pas un échec, il doit remonter tel quel (cf. F-06).
+        OperationCanceledException when cancellationToken.IsCancellationRequested => false,
+        // Délai dépassé côté handler de résilience : matérialisé par une annulation non demandée.
+        OperationCanceledException => true,
+        HttpRequestException or JsonException or TimeoutException => true,
+        _ => false,
+    };
+
+    private ClassificationResult Fallback(RaindropItem item, string reason, string rawResponseBody)
+    {
+        _logger.LogWarning("Classification inexploitable pour le raindrop {RaindropId} : {Reason}", item.Id, reason);
+        return ClassificationResult.Fallback(_options.Model, $"Classification échouée: {reason}", rawResponseBody);
     }
 
     private object BuildRequestBody(RaindropItem item, RaindropTaxonomy taxonomy) => new
@@ -80,27 +108,43 @@ public sealed class AnthropicClassifier : IClassifier
         tool_choice = new { type = "tool", name = ClassificationPromptBuilder.ToolName }
     };
 
-    private static string ExtractToolInput(string rawResponseBody)
+    private static bool TryExtractToolInput(
+        string rawResponseBody,
+        [NotNullWhen(true)] out string? toolInputJson,
+        [NotNullWhen(false)] out string? error)
     {
+        toolInputJson = null;
+
         using var document = JsonDocument.Parse(rawResponseBody);
         var root = document.RootElement;
 
-        // Une réponse tronquée porte un bloc tool_use au JSON incomplet : échouer explicitement ici
+        // Une réponse tronquée porte un bloc tool_use au JSON incomplet : le signaler explicitement
         // vaut mieux que de laisser le parser conclure sur des champs partiels.
         if (root.TryGetProperty("stop_reason", out var stopReason) && stopReason.GetString() == "max_tokens")
         {
-            throw new ClassificationParseException(
-                $"Réponse Anthropic tronquée (stop_reason=max_tokens, max_tokens={MaxTokens}).");
+            error = $"réponse Anthropic tronquée (stop_reason=max_tokens, max_tokens={MaxTokens})";
+            return false;
         }
 
-        foreach (var block in root.GetProperty("content").EnumerateArray())
+        if (!root.TryGetProperty("content", out var content) || content.ValueKind != JsonValueKind.Array)
         {
-            if (block.TryGetProperty("type", out var typeElement) && typeElement.GetString() == "tool_use")
+            error = "réponse Anthropic sans tableau content";
+            return false;
+        }
+
+        foreach (var block in content.EnumerateArray())
+        {
+            if (block.TryGetProperty("type", out var typeElement)
+                && typeElement.GetString() == "tool_use"
+                && block.TryGetProperty("input", out var input))
             {
-                return block.GetProperty("input").GetRawText();
+                toolInputJson = input.GetRawText();
+                error = null;
+                return true;
             }
         }
 
-        throw new ClassificationParseException("Aucun bloc tool_use trouvé dans la réponse Anthropic.");
+        error = "aucun bloc tool_use dans la réponse Anthropic";
+        return false;
     }
 }
