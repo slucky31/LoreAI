@@ -622,7 +622,7 @@ démarrage. Le test tient lieu de garde-fou.
 
 ### F-15 — `DefaultNotificationPolicy` : des paramètres « injectables » qui ne le sont pas
 
-- **Axe** : Design patterns · **Statut** : `ouvert`
+- **Axe** : Design patterns · **Statut** : ✅ `corrigé` (commit `f-15`)
 - **Localisation** : `src/RaindropAI.Core/Services/DefaultNotificationPolicy.cs:16-23` · `Program.cs:41`
 
 Le commentaire annonce « Seuils injectables pour rester configurables sans toucher à l'appelant », mais
@@ -637,6 +637,18 @@ l'injecter, ce qui rend la promesse réelle et rejoint la convention `Section__P
 (b) supprimer les paramètres et assumer une règle codée en dur, conformément à l'esprit « pas de sur-ingénierie »
 de l'ADR 0001. L'option (a) semble préférable : le seuil de notification est typiquement ce qu'on veut ajuster
 après quelques jours d'usage, sans recompiler.
+
+**Correction appliquée — option (a).** Nouvelle section de configuration `Notification`
+(`TriggerActions`, `MinimumPriority`), validée au démarrage comme les six autres.
+
+Le point de conception : `NotificationOptions` vit dans le **Worker**, pas dans Core. Injecter un
+`IOptions<T>` directement dans `DefaultNotificationPolicy` aurait obligé Core à référencer
+`Microsoft.Extensions.Options` et cassé son « zéro dépendance externe » (ADR 0001). La policy garde donc des
+paramètres de constructeur simples, et c'est la fabrique enregistrée dans `Program.cs` qui les alimente
+depuis la configuration. Le seam reste propre et la promesse du commentaire devient vraie.
+
+Vérifié : le worker démarre avec les défauts, et `Notification__MinimumPriority=Enorme` échoue au démarrage
+en nommant le chemin fautif.
 
 ---
 

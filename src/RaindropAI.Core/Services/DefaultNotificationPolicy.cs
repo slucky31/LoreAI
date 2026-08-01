@@ -6,7 +6,8 @@ namespace RaindropAI.Core.Services;
 
 /// <summary>
 /// Règle par défaut : notification immédiate seulement pour les items à tester jugés prioritaires.
-/// Seuils injectables pour rester configurables sans toucher à l'appelant.
+/// Les seuils sont alimentés depuis la configuration par le Worker (section <c>Notification</c>) ; ils
+/// restent des paramètres de constructeur simples pour que Core n'ait à dépendre d'aucun système d'options.
 /// </summary>
 public sealed class DefaultNotificationPolicy : INotificationPolicy
 {

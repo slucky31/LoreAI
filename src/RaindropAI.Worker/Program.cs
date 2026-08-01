@@ -37,12 +37,22 @@ try
         .AddValidatedOptions<ClassifierOptions>(builder.Configuration, "Classifier")
         .AddValidatedOptions<DiscordOptions>(builder.Configuration, "Discord")
         .AddValidatedOptions<EmailOptions>(builder.Configuration, "Email")
-        .AddValidatedOptions<WorkerOptions>(builder.Configuration, "Worker");
+        .AddValidatedOptions<WorkerOptions>(builder.Configuration, "Worker")
+        .AddValidatedOptions<NotificationOptions>(builder.Configuration, "Notification");
 
     builder.Services.AddSingleton<SqliteConnectionFactory>();
     builder.Services.AddSingleton<IArticleRepository, ArticleRepository>();
     builder.Services.AddSingleton<IPollingStateRepository, PollingStateRepository>();
-    builder.Services.AddSingleton<INotificationPolicy, DefaultNotificationPolicy>();
+    // DefaultNotificationPolicy expose des seuils en paramètres de constructeur ; ils étaient annoncés
+    // « injectables » mais aucun appelant ne les fournissait. On les alimente depuis la configuration ici,
+    // plutôt que de faire dépendre Core de Microsoft.Extensions.Options.
+    builder.Services.AddSingleton<INotificationPolicy>(serviceProvider =>
+    {
+        var notificationOptions = serviceProvider.GetRequiredService<IOptions<NotificationOptions>>().Value;
+        return new DefaultNotificationPolicy(
+            notificationOptions.TriggerActions.ToHashSet(),
+            notificationOptions.MinimumPriority);
+    });
     builder.Services.AddSingleton<IDigestNotifier, EmailNotifier>();
 
     builder.Services.AddHttpClient<IRaindropClient, RaindropClient>()
