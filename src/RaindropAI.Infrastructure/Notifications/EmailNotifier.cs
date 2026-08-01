@@ -39,12 +39,15 @@ public sealed class EmailNotifier : IDigestNotifier
         try
         {
             var secureSocketOptions = SmtpSecurityResolver.Resolve(_options.Security, _options.SmtpPort);
-            _logger.LogInformation(
-                "Envoi du digest ({Count} articles) via {Host}:{Port} en {Security}.",
-                articles.Count,
-                _options.SmtpHost,
-                _options.SmtpPort,
-                secureSocketOptions);
+            if (_logger.IsEnabled(LogLevel.Information))
+            {
+                _logger.LogInformation(
+                    "Envoi du digest ({Count} articles) via {Host}:{Port} en {Security}.",
+                    articles.Count,
+                    _options.SmtpHost,
+                    _options.SmtpPort,
+                    secureSocketOptions);
+            }
 
             await client.ConnectAsync(_options.SmtpHost, _options.SmtpPort, secureSocketOptions, cancellationToken);
             await client.AuthenticateAsync(_options.SmtpUser, _options.SmtpPassword, cancellationToken);

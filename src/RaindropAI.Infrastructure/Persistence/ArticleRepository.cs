@@ -124,10 +124,9 @@ public sealed class ArticleRepository : IArticleRepository
             ORDER BY RaindropCreatedUtc
             """;
         var rows = await connection.QueryAsync<ArticleRow>(new CommandDefinition(sql, cancellationToken: cancellationToken));
-        var articles = rows.Select(MapToClassifiedArticle).ToList();
 
-        _logger.LogDebug("{Count} articles en attente de digest.", articles.Count);
-        return articles;
+        // Pas de log du nombre ici : DigestNotificationJob le journalise déjà côté appelant.
+        return rows.Select(MapToClassifiedArticle).ToList();
     }
 
     public async Task MarkDiscordNotifiedAsync(long articleId, DateTimeOffset notifiedAtUtc, CancellationToken cancellationToken)
