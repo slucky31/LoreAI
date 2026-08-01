@@ -81,6 +81,11 @@ public sealed class UnsortedClassificationJob : IInvocable, ICancellableInvocabl
             {
                 try
                 {
+                    if (_logger.IsEnabled(LogLevel.Information))
+                    {
+                        _logger.LogInformation("Traitement du signet {RaindropId} en cours.", item.Id);
+                    }
+
                     var classification = await _classifier.ClassifyAsync(item, taxonomy, cancellationToken);
                     await _articleRepository.UpsertAsync(item, classification, DateTimeOffset.UtcNow, cancellationToken);
 
