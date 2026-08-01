@@ -1,6 +1,6 @@
 # RaindropAI
 
-Outil .NET 9 qui trie automatiquement le backlog de la collection **« Non trié »** de Raindrop.io. Il apprend vos collections et tags réels (via l'API Raindrop), classifie chaque nouvel article avec Claude Haiku en s'appuyant sur cette taxonomie, puis applique directement le résultat : tags fusionnés et déplacement vers la collection identifiée si elle correspond — sans étape de validation manuelle. Une notification Discord signale en plus les articles jugés prioritaires à tester, et un digest email quotidien récapitule tout le reste.
+Outil .NET 10 qui trie automatiquement le backlog de la collection **« Non trié »** de Raindrop.io. Il apprend vos collections et tags réels (via l'API Raindrop), classifie chaque nouvel article avec Claude Haiku en s'appuyant sur cette taxonomie, puis applique directement le résultat : tags fusionnés et déplacement vers la collection identifiée si elle correspond — sans étape de validation manuelle. Une notification Discord signale en plus les articles jugés prioritaires à tester, et un digest email quotidien récapitule tout le reste.
 
 Tout ce qui se trouve **en dehors** de « Non trié » est considéré comme déjà classé par vos soins et n'est jamais retouché.
 
@@ -18,7 +18,7 @@ docs/adr/                      Architecture Decision Records
 
 ## Prérequis
 
-- .NET 9 SDK (dev local)
+- .NET 10 SDK (dev local)
 - Docker + Docker Compose (déploiement, notamment sur Raspberry Pi 64-bit / arm64)
 - Un token API Raindrop.io (App Management Console → Test token)
 - Une clé API Anthropic
