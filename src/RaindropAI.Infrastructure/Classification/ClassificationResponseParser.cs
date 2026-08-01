@@ -10,6 +10,15 @@ namespace RaindropAI.Infrastructure.Classification;
 /// </summary>
 public static class ClassificationResponseParser
 {
+    /// <summary>
+    /// Les tags sont la seule sortie libre du modèle réellement écrite dans Raindrop : le schéma d'outil
+    /// contraint la collection à un titre existant et la raison à 200 caractères, mais pas eux. Un extrait
+    /// de page hostile pourrait donc tenter d'y faire écrire n'importe quoi (cf. F-11). D'où ces plafonds.
+    /// </summary>
+    private const int MaxTagLength = 50;
+
+    private const int MaxTags = 10;
+
     public static ClassificationResult Parse(string toolInputJson, string model, string rawResponse)
     {
         try
@@ -57,9 +66,28 @@ public static class ClassificationResponseParser
 
         return element.EnumerateArray()
             .Select(e => e.GetString())
-            .Where(s => !string.IsNullOrWhiteSpace(s))
-            .Select(s => s!)
+            .Select(SanitizeTag)
+            .Where(s => s.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Take(MaxTags)
             .ToList();
+    }
+
+    /// <summary>
+    /// Aplatit les blancs (un tag ne tient que sur une ligne), retire les caractères de contrôle et tronque.
+    /// Rien de ce que renvoie le modèle ne doit pouvoir se déverser tel quel dans les données de l'utilisateur.
+    /// </summary>
+    private static string SanitizeTag(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            return string.Empty;
+        }
+
+        var collapsed = string.Join(' ', raw.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+        var printable = new string(collapsed.Where(c => !char.IsControl(c)).ToArray()).Trim();
+
+        return printable.Length <= MaxTagLength ? printable : printable[..MaxTagLength].TrimEnd();
     }
 
     private static TEnum ParseEnum<TEnum>(JsonElement root, string propertyName) where TEnum : struct, Enum
