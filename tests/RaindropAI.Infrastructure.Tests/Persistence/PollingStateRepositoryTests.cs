@@ -1,3 +1,4 @@
+using System.Globalization;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Options;
 using RaindropAI.Core.Models;
@@ -28,7 +29,7 @@ public class PollingStateRepositoryTests : IDisposable
     [Fact]
     public async Task UpdateAsync_ThenGetAsync_RoundTripsValues()
     {
-        var expected = new PollingState(123, DateTimeOffset.Parse("2026-01-01T00:00:00Z"), DateTimeOffset.Parse("2026-01-02T00:00:00Z"));
+        var expected = new PollingState(123, DateTimeOffset.Parse("2026-01-01T00:00:00Z", CultureInfo.InvariantCulture), DateTimeOffset.Parse("2026-01-02T00:00:00Z", CultureInfo.InvariantCulture));
 
         await _repository.UpdateAsync(expected, CancellationToken.None);
         var actual = await _repository.GetAsync(CancellationToken.None);

@@ -5,4 +5,21 @@
     <Version>0.2.1</Version>
   </PropertyGroup>
 
+  <!-- Communes aux cinq projets ; étaient répétées dans chaque .csproj. -->
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <!--
+    TreatWarningsAsErrors ne portait que sur les avertissements du compilateur : les analyseurs .NET
+    n'étaient pas activés, donc aucune de leurs règles ne pouvait échouer le build.
+  -->
+  <PropertyGroup>
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+    <AnalysisLevel>latest-recommended</AnalysisLevel>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+  </PropertyGroup>
+
 </Project>

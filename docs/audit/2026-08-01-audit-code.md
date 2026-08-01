@@ -662,7 +662,7 @@ en nommant le chemin fautif.
 | **F-19** ✅ | Architecture | `SqliteConnectionFactory.cs:30-61` | Le schéma était appliqué paresseusement à la première connexion utile, pas au démarrage ; et il n'existait qu'un script `IF NOT EXISTS` sans table de versions — aucune stratégie d'évolution (le nom `0001_InitialSchema` en suggérait pourtant une). | Corrigé (`f-19`) : `DatabaseInitializer` (`IHostedService`) applique le schéma au démarrage, donc un volume non inscriptible se manifeste tout de suite et non au premier tick cron. Table `SchemaVersion` ajoutée, avec insertion conditionnelle. Le chemin paresseux reste en filet. 2 tests, dont l'idempotence sur une base déjà peuplée. |
 | **F-20** ✅ | Architecture | `Program.cs:73-80` | Le `catch` de dernier recours loggait puis laissait le process sortir avec le **code 0** : un échec de démarrage était indistinguable d'un arrêt normal pour Docker et l'outillage. | Corrigé (`f-20`) : `Environment.ExitCode = 1`. Vérifié en exécution — un `Raindrop__Token` absent fait désormais sortir le process avec 1 au lieu de 0. |
 | **F-21** ✅ | Design | `ArticleRepository.cs:99` et `:122` | `SELECT *` (fragile à l'évolution du schéma, et `ArticleRow` devait rester exhaustive) ; `WHERE Id IN @Ids` sans batching — l'expansion Dapper génère un paramètre par id et se heurtait à la limite de variables SQLite sur un très gros digest. | Corrigé (`f-21`) : 24 colonnes listées explicitement, et `MarkDigestSentAsync` découpé en lots de 500 via `Chunk`. Test sur 1200 articles, soit trois lots. |
-| **F-22** | Architecture | 5 × `.csproj` · racine | `TargetFramework`/`Nullable`/`ImplicitUsings` sont répétés dans chaque projet alors que `Directory.Build.props` existe déjà. Pas d'`.editorconfig`, pas d'`EnableNETAnalyzers`/`AnalysisLevel` — `TreatWarningsAsErrors` ne s'appuie donc que sur les warnings du compilateur. | Centraliser les propriétés communes ; activer les analyzers .NET + un `.editorconfig` minimal. |
+| **F-22** ✅ | Architecture | 5 × `.csproj` · racine | `TargetFramework`/`Nullable`/`ImplicitUsings` étaient répétés dans chaque projet alors que `Directory.Build.props` existait déjà. Pas d'`.editorconfig`, pas d'`EnableNETAnalyzers`/`AnalysisLevel` — `TreatWarningsAsErrors` ne s'appuyait donc que sur les warnings du compilateur. | Corrigé (`f-22`) : propriétés communes centralisées, analyseurs activés (`latest-recommended` + `EnforceCodeStyleInBuild`), `.editorconfig` ajouté. Les 50 violations révélées sont détaillées ci-dessous. |
 | **F-23** | Sécurité | `.github/workflows/*.yml` | Les actions tierces sont référencées par tag mobile (`@v4`, `@v6`, `marocchino/sticky-pull-request-comment@v2`) et non par SHA. Le workflow `cd.yml` dispose de `contents: write`, `packages: write` et d'un PAT admin (`RELEASE_TOKEN`) : une action compromise s'exécuterait avec ces droits. | Épingler par SHA (Renovate sait les mettre à jour), et restreindre `RELEASE_TOKEN` au strict nécessaire. |
 | **F-24** | Design | `ClassificationResponseParser.cs:13-34` | L'exception est le flux de contrôle nominal : le parser lève systématiquement pour signaler une sortie LLM invalide, et l'unique appelant rattrape via un `catch (Exception)` très large (`AnthropicClassifier.cs:55`) qui masque aussi bien un JSON malformé qu'un bug de programmation. | Exposer un `TryParse(out …)` ou un type résultat ; réserver le `catch` large aux vraies erreurs de transport. |
 | **F-25** | Correction | `RaindropClient` · `ArticleRepository` · `EmailNotifier` | Aucun `ILogger` : rien n'est tracé sur le nombre de pages paginées, la durée des requêtes, le nombre de lignes affectées, ni sur l'envoi SMTP. Le diagnostic repose entièrement sur les logs du job appelant. | Injecter `ILogger<T>` et tracer les points de bascule (pagination, write-back, envoi). |
@@ -726,6 +726,25 @@ Points contrôlés qui ne posent pas de problème ; consignés pour éviter de r
 - **CI** — déclencheur `pull_request` (et non `pull_request_target`) : les secrets ne sont pas exposés aux forks. `permissions` déclarées explicitement et au plus juste par job.
 - **`DiscordNotifier`** — n'échoue jamais bruyamment (`catch` + `LogWarning`), conformément à son contrat documenté ; une panne Discord n'interrompt pas le batch.
 - **Suite de tests** — 45 tests, tous verts, avec de vraies dépendances simulées (WireMock.Net, SQLite fichier). Qualité correcte sur le périmètre couvert ; voir F-07 pour le périmètre manquant.
+
+---
+
+## F-22 — ce que l'activation des analyseurs a révélé
+
+Activer `EnableNETAnalyzers` + `latest-recommended` sur un dépôt en `TreatWarningsAsErrors` a fait
+apparaître **50 violations**. Le tri entre « vrai défaut » et « bruit » est le vrai travail du finding :
+
+| Règle | Nb | Décision |
+|---|---|---|
+| **CA1305** — dépendance culturelle | 26 | **Corrigée.** C'est le seul défaut de fond du lot : `DateTimeOffset.Parse` et `ToString("O")` sur toutes les dates persistées dépendaient de la culture courante. Une base écrite sous une culture et relue sous une autre pouvait mal se relire — et le conteneur tourne justement en mode globalization-invariant depuis F-10, alors que le dev local non. `CultureInfo.InvariantCulture` partout, sinks Serilog compris. |
+| **CA1707** — traits de soulignement | 20 | Désactivée sur `tests/`. C'est la convention `Méthode_Scénario_Résultat` du dépôt et de xUnit. |
+| **CA1848** — délégués `LoggerMessage` | 6 | Désactivée. Pertinente sur un chemin chaud ; le worker écrit une poignée de lignes toutes les 15 min, et l'interpolation nommée reste bien plus lisible. |
+| **CA1001** — champ jetable | 2 | **Corrigée.** `SqliteConnectionFactory` détenait un `SemaphoreSlim` sans être `IDisposable`. |
+| **CA1859** — type de retour | 2 | **Corrigée.** `List<string>` au lieu de `IReadOnlyList<string>` sur une méthode privée. |
+| **CA1816** — `GC.SuppressFinalize` | 2 | Désactivée sur `tests/`. Cérémonie sans effet sur des fixtures scellées sans finaliseur. |
+| **CA1711** — suffixe `Collection` | 2 | Configurée via `allowed_suffixes`. « Collection » est le terme métier de Raindrop.io pour un dossier ; renommer `RaindropCollection` s'écarterait du vocabulaire de l'API. |
+
+Chaque désactivation porte sa justification dans `.editorconfig`, et aucune n'est globale sans motif.
 
 ---
 

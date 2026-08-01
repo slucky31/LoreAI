@@ -1,3 +1,4 @@
+using System.Globalization;
 using Dapper;
 using RaindropAI.Core.Interfaces;
 using RaindropAI.Core.Models;
@@ -27,8 +28,8 @@ public sealed class PollingStateRepository : IPollingStateRepository
 
         return new PollingState(
             row.LastRaindropId,
-            row.LastCreatedUtc is null ? null : DateTimeOffset.Parse(row.LastCreatedUtc),
-            DateTimeOffset.Parse(row.UpdatedAtUtc));
+            row.LastCreatedUtc is null ? null : DateTimeOffset.Parse(row.LastCreatedUtc, CultureInfo.InvariantCulture),
+            DateTimeOffset.Parse(row.UpdatedAtUtc, CultureInfo.InvariantCulture));
     }
 
     public async Task UpdateAsync(PollingState state, CancellationToken cancellationToken)
@@ -46,8 +47,8 @@ public sealed class PollingStateRepository : IPollingStateRepository
         await connection.ExecuteAsync(new CommandDefinition(sql, new
         {
             state.LastRaindropId,
-            LastCreatedUtc = state.LastCreatedUtc?.UtcDateTime.ToString("O"),
-            UpdatedAtUtc = state.UpdatedAtUtc.UtcDateTime.ToString("O"),
+            LastCreatedUtc = state.LastCreatedUtc?.UtcDateTime.ToString("O", CultureInfo.InvariantCulture),
+            UpdatedAtUtc = state.UpdatedAtUtc.UtcDateTime.ToString("O", CultureInfo.InvariantCulture),
         }, cancellationToken: cancellationToken));
     }
 

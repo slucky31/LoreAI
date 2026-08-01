@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Net;
 using System.Text;
 using RaindropAI.Core.Models;
@@ -21,11 +22,11 @@ public static class DigestMessageBuilder
                      .GroupBy(a => a.Classification.SuggestedCollection ?? NoCollectionLabel)
                      .OrderBy(g => g.Key))
         {
-            builder.AppendLine($"<h2>{WebUtility.HtmlEncode(collectionGroup.Key)}</h2>");
+            builder.AppendLine(CultureInfo.InvariantCulture, $"<h2>{WebUtility.HtmlEncode(collectionGroup.Key)}</h2>");
 
             foreach (var actionGroup in collectionGroup.GroupBy(a => a.Classification.Action).OrderBy(g => g.Key.ToString()))
             {
-                builder.AppendLine($"<h3>{actionGroup.Key}</h3><ul>");
+                builder.AppendLine(CultureInfo.InvariantCulture, $"<h3>{actionGroup.Key}</h3><ul>");
 
                 foreach (var article in actionGroup.OrderByDescending(a => a.Classification.Priority))
                 {
@@ -34,6 +35,7 @@ public static class DigestMessageBuilder
                         : "(aucun)";
 
                     builder.AppendLine(
+                        CultureInfo.InvariantCulture,
                         $"<li>{BuildTitleHtml(article.Item.Title, article.Item.Link)} " +
                         $"— {article.Classification.Priority} — tags : {WebUtility.HtmlEncode(tags)} — {WebUtility.HtmlEncode(article.Classification.Reason)}</li>");
                 }

@@ -1,9 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk.Worker">
 
   <PropertyGroup>
-    <TargetFramework>net9.0</TargetFramework>
-    <Nullable>enable</Nullable>
-    <ImplicitUsings>enable</ImplicitUsings>
     <UserSecretsId>dotnet-RaindropAI.Worker-09f11de5-4c4a-41d2-96e9-2e40e4d0111c</UserSecretsId>
   </PropertyGroup>
 

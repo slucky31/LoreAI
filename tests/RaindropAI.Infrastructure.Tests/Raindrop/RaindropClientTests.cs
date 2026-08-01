@@ -1,3 +1,4 @@
+using System.Globalization;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using RaindropAI.Core.Models;
@@ -62,7 +63,7 @@ public class RaindropClientTests
                     """));
 
         var client = CreateClient(server, pageSize: 50);
-        var lastState = new PollingState(101, DateTimeOffset.Parse("2026-01-01T00:00:00Z"), DateTimeOffset.UtcNow);
+        var lastState = new PollingState(101, DateTimeOffset.Parse("2026-01-01T00:00:00Z", CultureInfo.InvariantCulture), DateTimeOffset.UtcNow);
 
         var items = await client.GetNewRaindropsAsync(lastState, CancellationToken.None);
 
@@ -156,7 +157,7 @@ public class RaindropClientTests
         GivenPage(server, 0, $"{Item(103, "2026-01-03T00:00:00Z")}, {Item(102, "2026-01-02T00:00:00Z")}, {Item(101, "2026-01-01T00:00:00Z")}");
 
         var client = CreateClient(server, pageSize: 50);
-        var dateOnlyState = new PollingState(null, DateTimeOffset.Parse("2026-01-02T00:00:00Z"), DateTimeOffset.UtcNow);
+        var dateOnlyState = new PollingState(null, DateTimeOffset.Parse("2026-01-02T00:00:00Z", CultureInfo.InvariantCulture), DateTimeOffset.UtcNow);
 
         var items = await client.GetNewRaindropsAsync(dateOnlyState, CancellationToken.None);
 
@@ -273,7 +274,8 @@ public class RaindropClientTests
 
     private static void GivenPage(WireMockServer server, int page, string itemsJson) =>
         server
-            .Given(Request.Create().WithPath("/rest/v1/raindrops/0").UsingGet().WithParam("page", page.ToString()))
+            .Given(Request.Create().WithPath("/rest/v1/raindrops/0").UsingGet()
+                .WithParam("page", page.ToString(CultureInfo.InvariantCulture)))
             .RespondWith(Response.Create()
                 .WithStatusCode(200)
                 .WithHeader("Content-Type", "application/json")

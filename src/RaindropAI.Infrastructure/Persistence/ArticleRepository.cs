@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using Dapper;
 using RaindropAI.Core.Enums;
@@ -66,9 +67,9 @@ public sealed class ArticleRepository : IArticleRepository
             item.CollectionId,
             item.Domain,
             item.RaindropType,
-            RaindropCreatedUtc = item.CreatedUtc.UtcDateTime.ToString("O"),
-            RaindropLastUpdateUtc = item.LastUpdateUtc?.UtcDateTime.ToString("O"),
-            FetchedAtUtc = DateTimeOffset.UtcNow.ToString("O"),
+            RaindropCreatedUtc = item.CreatedUtc.UtcDateTime.ToString("O", CultureInfo.InvariantCulture),
+            RaindropLastUpdateUtc = item.LastUpdateUtc?.UtcDateTime.ToString("O", CultureInfo.InvariantCulture),
+            FetchedAtUtc = DateTimeOffset.UtcNow.ToString("O", CultureInfo.InvariantCulture),
             classification.SuggestedCollection,
             SuggestedTags = JsonSerializer.Serialize(classification.Tags),
             RecommendedAction = classification.Action.ToString(),
@@ -76,7 +77,7 @@ public sealed class ArticleRepository : IArticleRepository
             classification.Reason,
             ClassificationModel = classification.Model,
             ClassificationRawResponse = classification.RawResponse,
-            ClassifiedAtUtc = classifiedAtUtc.UtcDateTime.ToString("O"),
+            ClassifiedAtUtc = classifiedAtUtc.UtcDateTime.ToString("O", CultureInfo.InvariantCulture),
         }, cancellationToken: cancellationToken));
     }
 
@@ -91,7 +92,7 @@ public sealed class ArticleRepository : IArticleRepository
                 Id = articleId,
                 Status = success ? "Done" : "Failed",
                 Moved = moved ? 1 : 0,
-                AtUtc = atUtc.UtcDateTime.ToString("O"),
+                AtUtc = atUtc.UtcDateTime.ToString("O", CultureInfo.InvariantCulture),
             },
             cancellationToken: cancellationToken));
     }
@@ -122,7 +123,7 @@ public sealed class ArticleRepository : IArticleRepository
         const string sql = "UPDATE Articles SET DiscordNotifiedAtUtc = @NotifiedAtUtc WHERE Id = @Id";
         await connection.ExecuteAsync(new CommandDefinition(
             sql,
-            new { Id = articleId, NotifiedAtUtc = notifiedAtUtc.UtcDateTime.ToString("O") },
+            new { Id = articleId, NotifiedAtUtc = notifiedAtUtc.UtcDateTime.ToString("O", CultureInfo.InvariantCulture) },
             cancellationToken: cancellationToken));
     }
 
@@ -142,7 +143,7 @@ public sealed class ArticleRepository : IArticleRepository
         {
             await connection.ExecuteAsync(new CommandDefinition(
                 sql,
-                new { Ids = batch, SentAtUtc = sentAtUtc.UtcDateTime.ToString("O") },
+                new { Ids = batch, SentAtUtc = sentAtUtc.UtcDateTime.ToString("O", CultureInfo.InvariantCulture) },
                 cancellationToken: cancellationToken));
         }
     }
@@ -159,8 +160,8 @@ public sealed class ArticleRepository : IArticleRepository
             row.CollectionId,
             row.Domain,
             row.RaindropType,
-            DateTimeOffset.Parse(row.RaindropCreatedUtc),
-            row.RaindropLastUpdateUtc is null ? null : DateTimeOffset.Parse(row.RaindropLastUpdateUtc));
+            DateTimeOffset.Parse(row.RaindropCreatedUtc, CultureInfo.InvariantCulture),
+            row.RaindropLastUpdateUtc is null ? null : DateTimeOffset.Parse(row.RaindropLastUpdateUtc, CultureInfo.InvariantCulture));
 
         var classification = new ClassificationResult(
             row.SuggestedCollection,
@@ -174,10 +175,10 @@ public sealed class ArticleRepository : IArticleRepository
         return new ClassifiedArticle(
             item,
             classification,
-            row.ClassifiedAtUtc is null ? DateTimeOffset.UtcNow : DateTimeOffset.Parse(row.ClassifiedAtUtc),
+            row.ClassifiedAtUtc is null ? DateTimeOffset.UtcNow : DateTimeOffset.Parse(row.ClassifiedAtUtc, CultureInfo.InvariantCulture),
             row.Moved != 0,
-            row.DiscordNotifiedAtUtc is null ? null : DateTimeOffset.Parse(row.DiscordNotifiedAtUtc),
-            row.EmailDigestSentAtUtc is null ? null : DateTimeOffset.Parse(row.EmailDigestSentAtUtc));
+            row.DiscordNotifiedAtUtc is null ? null : DateTimeOffset.Parse(row.DiscordNotifiedAtUtc, CultureInfo.InvariantCulture),
+            row.EmailDigestSentAtUtc is null ? null : DateTimeOffset.Parse(row.EmailDigestSentAtUtc, CultureInfo.InvariantCulture));
     }
 
     private sealed class ArticleRow

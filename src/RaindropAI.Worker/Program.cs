@@ -1,3 +1,4 @@
+using System.Globalization;
 using Coravel;
 using Microsoft.Extensions.Options;
 using RaindropAI.Core.Interfaces;
@@ -11,8 +12,10 @@ using RaindropAI.Worker.Resilience;
 using RaindropAI.Worker.Services;
 using Serilog;
 
+// Culture invariante sur les sinks : des logs rendus à l'identique quelle que soit la machine, et
+// alignés sur le conteneur, qui tourne de toute façon en mode globalization-invariant.
 Log.Logger = new LoggerConfiguration()
-    .WriteTo.Console()
+    .WriteTo.Console(formatProvider: CultureInfo.InvariantCulture)
     .CreateBootstrapLogger();
 
 try
@@ -29,8 +32,8 @@ try
         loggerConfiguration
             .ReadFrom.Configuration(builder.Configuration)
             .ReadFrom.Services(services)
-            .WriteTo.Console()
-            .WriteTo.File(logFilePath, rollingInterval: Serilog.RollingInterval.Day);
+            .WriteTo.Console(formatProvider: CultureInfo.InvariantCulture)
+            .WriteTo.File(logFilePath, rollingInterval: Serilog.RollingInterval.Day, formatProvider: CultureInfo.InvariantCulture);
     });
 
     // Validées au démarrage : une configuration incomplète doit arrêter le service tout de suite,

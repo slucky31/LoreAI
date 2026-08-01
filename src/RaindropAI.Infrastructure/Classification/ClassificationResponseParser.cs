@@ -57,7 +57,7 @@ public static class ClassificationResponseParser
         };
     }
 
-    private static IReadOnlyList<string> ParseStringArray(JsonElement root, string propertyName)
+    private static List<string> ParseStringArray(JsonElement root, string propertyName)
     {
         if (!root.TryGetProperty(propertyName, out var element) || element.ValueKind != JsonValueKind.Array)
         {
