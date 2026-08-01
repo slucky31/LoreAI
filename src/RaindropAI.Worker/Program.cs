@@ -84,6 +84,7 @@ try
     {
         scheduler.Schedule<UnsortedClassificationJob>()
             .Cron(workerOptions.PollingCronExpression)
+            .RunOnceAtStart()
             .PreventOverlapping(nameof(UnsortedClassificationJob));
 
         scheduler.Schedule<DigestNotificationJob>()
