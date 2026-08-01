@@ -41,6 +41,8 @@ dotnet run --project src/RaindropAI.Worker
 
 En local, `appsettings.Development.json` pointe vers un fichier SQLite `raindropai.dev.db` dans le dossier courant et des logs dans `logs/`.
 
+Le worker **refuse de démarrer** si la configuration est incomplète (token Raindrop, clé Anthropic, webhook Discord, SMTP) et indique précisément le champ fautif — par exemple `DataAnnotation validation failed for 'RaindropApiOptions' members: 'Token'`. Renseignez les valeurs via `dotnet user-secrets` ou `.env` avant de lancer.
+
 ## Déploiement sur Raspberry Pi
 
 ```bash

@@ -28,12 +28,15 @@ try
             .WriteTo.File(logFilePath, rollingInterval: Serilog.RollingInterval.Day);
     });
 
-    builder.Services.Configure<SqliteOptions>(builder.Configuration.GetSection("Sqlite"));
-    builder.Services.Configure<RaindropApiOptions>(builder.Configuration.GetSection("Raindrop"));
-    builder.Services.Configure<ClassifierOptions>(builder.Configuration.GetSection("Classifier"));
-    builder.Services.Configure<DiscordOptions>(builder.Configuration.GetSection("Discord"));
-    builder.Services.Configure<EmailOptions>(builder.Configuration.GetSection("Email"));
-    builder.Services.Configure<WorkerOptions>(builder.Configuration.GetSection("Worker"));
+    // Validées au démarrage : une configuration incomplète doit arrêter le service tout de suite,
+    // pas produire un worker qui tourne et échoue en silence toutes les 15 minutes.
+    builder.Services
+        .AddValidatedOptions<SqliteOptions>(builder.Configuration, "Sqlite")
+        .AddValidatedOptions<RaindropApiOptions>(builder.Configuration, "Raindrop")
+        .AddValidatedOptions<ClassifierOptions>(builder.Configuration, "Classifier")
+        .AddValidatedOptions<DiscordOptions>(builder.Configuration, "Discord")
+        .AddValidatedOptions<EmailOptions>(builder.Configuration, "Email")
+        .AddValidatedOptions<WorkerOptions>(builder.Configuration, "Worker");
 
     builder.Services.AddSingleton<SqliteConnectionFactory>();
     builder.Services.AddSingleton<IArticleRepository, ArticleRepository>();

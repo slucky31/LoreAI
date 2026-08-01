@@ -196,7 +196,7 @@ Les notes déjà polluées par des blocs empilés sont nettoyées au prochain pa
 
 ### F-05 — Aucune validation de configuration : `required` n'est pas appliqué au binding (vérifié)
 
-- **Axe** : Architecture · **Statut** : `ouvert`
+- **Axe** : Architecture · **Statut** : ✅ `corrigé` (commit `f-05`)
 - **Localisation** : `src/RaindropAI.Worker/Program.cs:31-36` ; toutes les classes `*Options`
 
 **Constat.** Les options utilisent `required` (`RaindropApiOptions.Token`, `ClassifierOptions.ApiKey`,
@@ -223,6 +223,25 @@ là, chaque item part en fallback et déclenche F-01.
 **Correctif proposé.** Passer en `AddOptions<T>().Bind(section).ValidateDataAnnotations().ValidateOnStart()`
 pour les six sections, avec `[Required]`/`[Url]`/`[Range]` sur les membres. Le démarrage échoue alors
 immédiatement avec un message actionnable, ce qui est le comportement attendu d'un service sans opérateur.
+
+**Correction appliquée.** Les six sections passent par
+`AddValidatedOptions<T>()` (`Worker/Options/ValidatedOptionsRegistration.cs`), qui enchaîne
+`Bind().ValidateDataAnnotations().ValidateOnStart()`. Annotations posées sur les six classes d'options :
+`[Required(AllowEmptyStrings = false)]` sur tous les secrets, `[Url]` sur les URLs, `[EmailAddress]` sur les
+adresses, `[Range(1, 65535)]` sur le port SMTP et `[Range(1, 50)]` sur `PageSize` (l'API Raindrop plafonne
+`perpage` à 50 — cela documente la contrainte mais **ne clôt pas F-12**, dont le défaut est dans la boucle).
+
+Vérifié sur les trois cas :
+
+```
+Token absent      -> OptionsValidationException: … 'RaindropApiOptions' members: 'Token' … is required.
+FromAddress = xxx -> OptionsValidationException: … 'EmailOptions' members: 'FromAddress' … not a valid e-mail address.
+config complète   -> Application started.
+```
+
+⚠️ **Changement de comportement assumé** : un `.env` incomplet ne démarre plus du tout, là où le worker
+tournait auparavant en échouant en silence. C'est l'objet même du finding, mais cela signifie qu'un
+`dotnet run` sans user-secrets s'arrête désormais immédiatement — documenté dans le README.
 
 ---
 
