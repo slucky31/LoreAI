@@ -141,13 +141,16 @@ Une ligne par cycle, y compris les cycles vides. C'est aussi la seule façon de 
 
 Le cron tourne toutes les 15 minutes : **96 cycles par jour, dont la grande majorité sans aucun nouvel article**. Notifier à chaque fin de cycle transformerait Discord en flux de « rien à signaler » et tuerait la valeur du canal d'alerte existant.
 
-Règle : **on ne notifie que si le cycle a fait quelque chose, ou s'il s'est mal passé.**
+Règle, arrêtée dans [#31](https://github.com/slucky31/RaindropAI/issues/31) : **pas d'import, pas de notification.**
 
 | Situation | Notification |
 |---|---|
-| `Outcome = Empty` | Aucune |
+| `Outcome = Empty` | **Aucune**, jamais |
 | `Outcome = Ok`, au moins un article traité | Compte-rendu : *N vus, N traités, N déplacés, N restés dans « Non trié », N tags appliqués* |
-| `Outcome = Failed` ou `Interrupted` (repli, échec de write-back) | Compte-rendu **+ la raison**, c'est le cas qui compte le plus |
+| `Outcome = Interrupted` — il y avait des articles, le cycle s'est arrêté (repli, échec de write-back) | Compte-rendu **+ la raison**, c'est le cas qui compte le plus |
+| `Outcome = Failed` avant de savoir s'il y avait quelque chose (API Raindrop injoignable) | **Aucune.** Une panne durable produirait 96 notifications par jour. La ligne `CycleRuns` est écrite quand même — c'est le healthcheck O2 qui la lit |
+
+C'est ce qui sépare proprement les deux issues : **O1 signale ce qui a été fait, O2 signale que l'outil ne tourne plus.** Aucune des deux ne parle pour l'autre.
 
 Précision sur « nombre de tags » : compter les tags **réellement ajoutés** après la fusion insensible à la casse (`UnsortedClassificationJob.cs:223`), pas ceux proposés par le modèle. Un tag déjà présent sur l'article ne doit pas gonfler le chiffre, sinon le compte-rendu ment.
 
@@ -408,7 +411,7 @@ Recommandation : **un spike d'une demi-journée avant d'attaquer le lot 3**, pas
 | **Migration de données oubliée** si le multi-sources arrive après le lot 1 | C'est exactement pourquoi C1 est dans le lot 0. Ne pas indexer des milliers d'items sur un schéma qu'on sait devoir changer |
 | **Perte du filet « rien ne se perd »** par la suppression du digest (D3) | O1 (#31) livré **avant** la suppression, pour qu'un cycle en échec reste visible. Compensation complète au lot 6 par L1 |
 | **Échec silencieux du pipeline** : une classification en repli interrompt tout le cycle sans rien appliquer, et ne laisse qu'un `LogWarning` | `CycleRuns` persiste `Outcome` + `FailureReason`, O1 le pousse sur Discord, O2 le rend visible dans Portainer. Aujourd'hui, personne ne le voit |
-| **Discord noyé sous les comptes-rendus** (96 cycles/jour, la plupart vides) | Ne notifier que sur `Ok` avec au moins un article traité, ou sur `Failed`/`Interrupted`. Un cycle vide ne produit rien |
+| **Discord noyé sous les comptes-rendus** (96 cycles/jour, la plupart vides ; une panne d'API durable les rendrait tous bruyants) | Pas d'import, pas de notification (#31). Un cycle vide ou une API injoignable ne produisent rien sur Discord — c'est le healthcheck qui couvre ce cas |
 | **Healthcheck qui ne répare rien** (#35) | Compose ne redémarre pas un conteneur `unhealthy` : le healthcheck donne la visibilité Portainer demandée, pas la reprise. Ajouter `autoheal` est une décision distincte |
 | **Cache de prompt inefficace ou contre-productif** (#34) | Seuil de 4 096 tokens sur Haiku 4.5 et préfixe stable à ~900 tokens : mesurer via `usage` avant d'implémenter. Réservé au backfill |
 | **Écriture hors « Non trié »** (N1 avec tag, L5) | Invariant historique du projet. Chaque écriture hors périmètre exige une décision explicite et son propre flag, jamais un effet de bord |
