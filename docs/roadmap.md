@@ -11,7 +11,7 @@ Ce document cartographie les scénarios qui transforment cette base en **actif e
 3. **Nettoyer** — doublons, liens morts, tags redondants, articles périmés.
 4. **Lire** — pousser la bonne chose au bon moment, et boucler la boucle.
 
-Plus un axe transverse **Interroger** (serveur MCP).
+Plus deux axes transverses : **Interroger** (serveur MCP) et **Opérer** (dette opérationnelle — issues [#31](https://github.com/slucky31/RaindropAI/issues/31), [#34](https://github.com/slucky31/RaindropAI/issues/34), [#35](https://github.com/slucky31/RaindropAI/issues/35)).
 
 C'est une carte, pas un engagement de livraison : les lots sont indépendants et peuvent être pris dans un autre ordre, à condition de respecter les dépendances signalées.
 
@@ -112,6 +112,58 @@ C'est la partie la plus structurante de toute la roadmap, et la seule qui coûte
 | Q2 | **Recherche plein texte FTS5** | 3 | 1 | Table virtuelle + triggers de synchronisation. Socle de Q1 et S5 |
 | Q3 | **Outils MCP en écriture** — « marque comme lu », « range dans X » | 2 | 2 | Après Q1, et seulement si l'usage le justifie |
 
+### Axe transverse « Opérer » (issues ouvertes)
+
+| # | Scénario | V | E | Notes |
+|---|---|---|---|---|
+| O1 | **Compte-rendu de cycle sur Discord** ([#31](https://github.com/slucky31/RaindropAI/issues/31)) — fin de traitement, articles triés ou non, nombre de tags appliqués | 3 | 1 | Valeur relevée à 3 par **D3** : une fois l'email supprimé, c'est la **seule** preuve que l'outil tourne. Les compteurs existent déjà, ils sont journalisés puis jetés |
+| O2 | **Healthcheck Docker pour Portainer** ([#35](https://github.com/slucky31/RaindropAI/issues/35)) | 2 | 2 | Reste ouvert depuis [F-10 de l'audit](audit/2026-08-01-audit-code.md) faute de « vrai signal de vivacité ». Ce signal, c'est le journal de cycle ci-dessous |
+| O3 | **Cache de prompt Anthropic** ([#34](https://github.com/slucky31/RaindropAI/issues/34)) | 1 | 2 | **Sans effet au régime actuel** — voir l'arbitrage dédié. C'est une optimisation de *backfill*, pas de croisière. À mesurer (30 min) avant de planifier |
+
+## Le worker n'a aucune mémoire de son dernier cycle
+
+C'est le constat qui relie **O1** et **O2**, et c'est pour ça qu'aucun des deux n'a été livré jusqu'ici.
+
+`UnsortedClassificationJob` calcule déjà tout ce qu'il faut — `processedCount`, `newItems.Count`, `movedCount`, `notifiedCount` — puis **les journalise et les jette** (`UnsortedClassificationJob.cs:158`). Rien n'est persisté. Pire : un cycle qui ne trouve aucun nouvel article sort en avance (`UnsortedClassificationJob.cs:59`) sans rien écrire, et `PollingState` n'est mis à jour que s'il y a eu au moins un article traité (`UnsortedClassificationJob.cs:148`). **Il n'existe donc aucun horodatage fiable de « le dernier cycle s'est bien déroulé ».**
+
+D'où le prérequis commun, à poser au lot 0 : une table `CycleRuns`.
+
+| Colonne | Rôle |
+|---|---|
+| `StartedUtc`, `CompletedUtc` | Le battement de cœur qu'attend O2 |
+| `Outcome` | `Ok` · `Empty` · `Interrupted` · `Failed` |
+| `ItemsSeen`, `ItemsProcessed`, `Moved`, `TagsApplied`, `Notified` | Le contenu du compte-rendu O1 |
+| `FailureReason` | Ce qui manque le plus aujourd'hui : voir *pourquoi* un cycle s'est arrêté |
+
+Une ligne par cycle, y compris les cycles vides. C'est aussi la seule façon de rendre visible un cas aujourd'hui silencieux : une classification en repli **interrompt tout le cycle** sans rien appliquer (`UnsortedClassificationJob.cs:92`), et ne laisse qu'un `LogWarning`. Avec le digest supprimé (D3), ce cas deviendrait totalement invisible.
+
+### Ce que O1 doit faire — et surtout ne pas faire
+
+Le cron tourne toutes les 15 minutes : **96 cycles par jour, dont la grande majorité sans aucun nouvel article**. Notifier à chaque fin de cycle transformerait Discord en flux de « rien à signaler » et tuerait la valeur du canal d'alerte existant.
+
+Règle : **on ne notifie que si le cycle a fait quelque chose, ou s'il s'est mal passé.**
+
+| Situation | Notification |
+|---|---|
+| `Outcome = Empty` | Aucune |
+| `Outcome = Ok`, au moins un article traité | Compte-rendu : *N vus, N traités, N déplacés, N restés dans « Non trié », N tags appliqués* |
+| `Outcome = Failed` ou `Interrupted` (repli, échec de write-back) | Compte-rendu **+ la raison**, c'est le cas qui compte le plus |
+
+Précision sur « nombre de tags » : compter les tags **réellement ajoutés** après la fusion insensible à la casse (`UnsortedClassificationJob.cs:223`), pas ceux proposés par le modèle. Un tag déjà présent sur l'article ne doit pas gonfler le chiffre, sinon le compte-rendu ment.
+
+### Ce que O2 peut et ne peut pas faire
+
+Trois contraintes concrètes, à connaître avant d'écrire la ligne `HEALTHCHECK` :
+
+1. **L'image est chiselée** (`runtime:10.0-noble-chiseled`) : ni shell, ni `curl`, ni gestionnaire de paquets. Un `HEALTHCHECK CMD curl ...` ne peut pas fonctionner. La forme viable est un **mode sonde de l'application elle-même**, en forme exec pour éviter le shell :
+   ```dockerfile
+   HEALTHCHECK --interval=5m --timeout=10s --start-period=30s \
+     CMD ["dotnet", "RaindropAI.Worker.dll", "--health-check"]
+   ```
+   La sonde lit la dernière ligne de `CycleRuns` et sort 0 ou 1. Contrepartie à accepter : chaque sonde démarre un second processus .NET sur le Pi — d'où l'intervalle de 5 minutes, pas 30 secondes.
+2. **Docker Compose ne redémarre pas un conteneur `unhealthy`.** `restart: unless-stopped` ne réagit qu'à la mort du processus. Le healthcheck apportera donc la **visibilité dans Portainer** — ce que demande l'issue — mais **pas la reprise automatique**. Pour ça il faudrait un conteneur `autoheal` en plus. À décider séparément.
+3. **Définir « healthy » sur la fraîcheur, pas sur le succès.** Un échec de l'API Raindrop ne doit pas faire clignoter le conteneur. Proposition : *unhealthy* si aucun cycle terminé depuis `Worker__HealthMaxCycleAgeMinutes` (défaut 45, soit 3× le cron par défaut) **ou** après 3 échecs consécutifs. Un réglage explicite plutôt que du parsing d'expression cron.
+
 ## Le Markdown devient le format de restitution
 
 Conséquence de **D3** qu'il faut regarder en face : supprimer l'email ne supprime pas le besoin de restituer. Le bilan hebdomadaire (lot 2) et la revue mensuelle (lot 5) doivent atterrir quelque part.
@@ -154,6 +206,8 @@ Aucune valeur visible, mais sans lui chaque lot suivant rejoue la même plomberi
 - **Runner de migrations.** Il n'existe aujourd'hui qu'un seul script (`0001_InitialSchema.sql`, ressource embarquée rejouée intégralement au démarrage) et **aucun runner** : la table `SchemaVersion` existe mais personne ne la lit. Lister les ressources `Migrations/NNNN_*.sql`, comparer à `SchemaVersion`, appliquer dans une transaction.
 - **Modèle `Item` générique + `ISourceIngester`** (voir « prérequis n°2 »). `PollingState` devient une ligne par source. Le `RaindropClient` actuel devient la première implémentation d'`ISourceIngester`, sans changement de comportement.
 - **Élargir `IArticleRepository`.** Le contrat n'expose que cinq méthodes et un seul `SELECT`. Ajouter `GetByIdAsync`, `GetByFilterAsync`, `SearchAsync`, `CountByAsync` — et cesser au passage de jeter `FetchedAtUtc` et `WriteBackStatus`, aujourd'hui lus depuis SQL puis perdus dans `MapToClassifiedArticle`.
+- **Journal de cycle** (table `CycleRuns`, voir plus haut) : prérequis commun de O1 (#31) et O2 (#35). Une ligne par cycle, cycles vides compris. C'est le « vrai signal de vivacité » qui manquait à [F-10](audit/2026-08-01-audit-code.md).
+- **Healthcheck Docker** (O2, #35) : mode `--health-check` de l'application + `HEALTHCHECK` en forme exec dans le `Dockerfile`. Livrable dès que `CycleRuns` existe, indépendamment du reste.
 - **Vérifier la disponibilité de FTS5** avant de bâtir dessus :
   ```sql
   SELECT 1 FROM pragma_compile_options WHERE compile_options = 'ENABLE_FTS5';
@@ -179,11 +233,13 @@ Un `LibraryIndexingJob` distinct, **strictement en lecture seule**, qui parcourt
 
 Première valeur visible, et exécution de **D3**.
 
-- Retirer `DigestNotificationJob`, `IDigestNotifier`, `EmailNotifier`, `EmailOptions`, `DigestMessageBuilder`, la dépendance MailKit et la colonne `EmailDigestSentAtUtc` (migration `0002_*.sql`).
+- **O1 (#31) d'abord** : compte-rendu de cycle sur Discord, alimenté par `CycleRuns`, avec la règle « on ne notifie que si le cycle a fait quelque chose ou s'est mal passé ». **À livrer avant la suppression de l'email**, pas après — sinon il existe une fenêtre où plus rien ne signale qu'un cycle a échoué.
+- Retirer ensuite `DigestNotificationJob`, `IDigestNotifier`, `EmailNotifier`, `EmailOptions`, `DigestMessageBuilder`, la dépendance MailKit et la colonne `EmailDigestSentAtUtc` (migration `0003_*.sql`).
 - Introduire `MarkdownReportBuilder` (pur, statique) + l'envoi de pièce jointe via le webhook Discord existant.
 - Un `WeeklyInsightsJob` produit le rapport : **N1** doublons · **N2** tags redondants · **N5** collections déséquilibrées · **S3** tendances · **S6** coût LLM.
+- **S6 expose aussi `cache_creation_input_tokens` / `cache_read_input_tokens`** : c'est le même `json_extract` sur le bloc `usage`, et c'est ce qui rendra la décision O3 (#34) factuelle au lot 4.
 
-Zéro appel LLM, zéro nouvelle dépendance, et une dépendance en moins. Le seul risque est de perdre le filet « rien ne se perd » qu'assurait le digest exhaustif — c'est un choix assumé (D3), compensé plus tard par L1.
+Zéro appel LLM, zéro nouvelle dépendance, et une dépendance en moins. Le seul risque est de perdre le filet « rien ne se perd » qu'assurait le digest exhaustif — c'est un choix assumé (D3), atténué immédiatement par O1 et compensé plus tard par L1.
 
 #### Lot 3 — Serveur MCP en lecture seule (LAN strict)
 
@@ -221,6 +277,8 @@ raindropai-mcp:        # nouveau
 - **L2** temps de lecture : corollaire gratuit.
 - **S2** résumé : ajouter un champ `summary` au tool `classify` (`ClassificationPromptBuilder`) plutôt qu'un second appel — mais **relever `max_tokens`** (300 aujourd'hui, et `stop_reason == "max_tokens"` est traité comme un échec dur par `AnthropicClassifier`).
 - Modèle configurable par usage (`Classifier__SummaryModel`) : le point d'extension est prévu, l'arbitrage reste ouvert (D6).
+
+- **O3 (#34) se décide ici**, et nulle part avant : c'est le premier moment où un backfill de masse est envisagé, donc le seul où le cache de prompt peut être rentable. Prérequis à faire dans le même lot si la mesure est concluante : déplacer la taxonomie dans le prompt système et laisser `<article>` en dernier, pour que le préfixe soit enfin cachable.
 
 ⚠️ C'est le lot qui coûte. Ne l'attaquer qu'avec S6 en place (lot 2) et en commençant par un sous-ensemble, pas par le corpus complet.
 
@@ -291,6 +349,24 @@ Ce qui peut réellement faire mal, c'est le **backfill** : classifier d'un coup 
 
 Conclusion : changer de fournisseur ferait économiser quelques euros au prix d'une réimplémentation d'`IClassifier` et de la perte du tool-use forcé sur lequel repose toute la fiabilité de la classification. **Non rentable.** Le point d'extension existe (D6) si la donne change ; on ne l'utilise pas par anticipation.
 
+### Cache de prompt (O3, issue #34) — **sans effet aujourd'hui, décisif au backfill**
+
+Trois obstacles, dont deux sont bloquants au régime actuel.
+
+**1. Le seuil minimal n'est pas atteint, et de loin.** Le [cache de prompt](https://platform.claude.com/docs/en/build-with-claude/prompt-caching) impose une longueur minimale par modèle : **4 096 tokens pour Claude Haiku 4.5**, le modèle utilisé ici. En dessous, la requête est traitée normalement, **sans erreur ni avertissement** — les champs `cache_creation_input_tokens` et `cache_read_input_tokens` restent simplement à 0.
+
+Or le préfixe stable de RaindropAI, c'est le prompt système (~450 tokens) plus le `tools` / `input_schema` (~300 tokens) : **de l'ordre de 900 tokens**, soit un quart du seuil. Même après le lot 4, l'article — c'est-à-dire la partie *variable* — grossit, mais le préfixe stable, lui, ne bouge pas.
+
+**2. L'ordre du prompt interdit toute mise en cache.** Le cache fonctionne par préfixe : tout ce qui suit la première variation est perdu. Dans `BuildUserMessage` (`ClassificationPromptBuilder.cs:93`), le bloc `<article>` — variable à chaque appel — est placé **avant** la liste des collections et des tags, qui est pourtant stable d'un cycle à l'autre. La partie réutilisable est donc située derrière la partie variable : structurellement incachable.
+
+Corriger cela veut dire déplacer la taxonomie dans le prompt système et laisser `<article>` en dernier. Ce n'est pas anodin : ce découpage a été conçu pour isoler le contenu non maîtrisé dans un bloc délimité (défense contre l'injection de prompt, cf. le commentaire `ClassificationPromptBuilder.cs:91`). L'inversion reste compatible avec cette intention, mais elle doit être faite en connaissance de cause.
+
+**3. L'économie est négative au volume actuel.** Une écriture de cache coûte 1,25× le prix d'entrée (TTL 5 min) ou 2× (TTL 1 h) ; une lecture coûte 0,1×. Avec un cron à 15 minutes, le TTL de 5 minutes a expiré avant le cycle suivant : il faudrait le TTL 1 h, donc payer **2× à l'écriture pour économiser 0,9× sur les appels suivants**. Le seuil de rentabilité est autour de trois réutilisations du même préfixe dans la fenêtre. Un cycle typique traite zéro ou un ou deux articles. **On paierait plus cher.**
+
+**Là où ça devient très rentable : le backfill.** Enrichir toute la bibliothèque d'un coup, c'est des milliers d'appels consécutifs partageant exactement le même préfixe — le seul moment où le cache change réellement la facture, et précisément l'opération identifiée plus haut comme le vrai risque budgétaire (30 à 60 € en une nuit). Le cache de prompt n'est donc **pas une optimisation de croisière, c'est une optimisation de backfill**.
+
+**Conclusion pratique.** Ne pas planifier O3 comme un lot. Le trancher par une mesure de 30 minutes, réalisable dès maintenant sans rien construire : ajouter un `cache_control` sur le dernier bloc `tools`, lancer un cycle, lire `cache_creation_input_tokens` et `cache_read_input_tokens`. La plomberie de mesure existe déjà — `ClassificationRawResponse` stocke le bloc `usage` entier, c'est le même levier que S6. Si les deux compteurs sont à 0, le seuil confirme le calcul et le sujet est clos jusqu'au lot 4.
+
 ### Recherche web pour la veille (C4) — **le vrai risque budgétaire**
 
 C'est le seul poste facturé *à l'appel* et non au token. Une veille quotidienne sur une dizaine de sujets peut à elle seule consommer le budget mensuel.
@@ -330,7 +406,11 @@ Recommandation : **un spike d'une demi-journée avant d'attaquer le lot 3**, pas
 |---|---|
 | **ADR 0001 rouvert** par D1 (multi-sources) et par le lot 3 (quatrième projet) | ADR 0009 (multi-sources) et 0010 (MCP) écrits *avant* le code. `Core` reste à zéro dépendance externe : le projet MCP dépend de `Infrastructure`, jamais l'inverse |
 | **Migration de données oubliée** si le multi-sources arrive après le lot 1 | C'est exactement pourquoi C1 est dans le lot 0. Ne pas indexer des milliers d'items sur un schéma qu'on sait devoir changer |
-| **Perte du filet « rien ne se perd »** par la suppression du digest (D3) | Assumé au lot 2, compensé au lot 6 par L1. Entre les deux, seul Discord alerte — accepter cette fenêtre ou reporter la suppression après L1 |
+| **Perte du filet « rien ne se perd »** par la suppression du digest (D3) | O1 (#31) livré **avant** la suppression, pour qu'un cycle en échec reste visible. Compensation complète au lot 6 par L1 |
+| **Échec silencieux du pipeline** : une classification en repli interrompt tout le cycle sans rien appliquer, et ne laisse qu'un `LogWarning` | `CycleRuns` persiste `Outcome` + `FailureReason`, O1 le pousse sur Discord, O2 le rend visible dans Portainer. Aujourd'hui, personne ne le voit |
+| **Discord noyé sous les comptes-rendus** (96 cycles/jour, la plupart vides) | Ne notifier que sur `Ok` avec au moins un article traité, ou sur `Failed`/`Interrupted`. Un cycle vide ne produit rien |
+| **Healthcheck qui ne répare rien** (#35) | Compose ne redémarre pas un conteneur `unhealthy` : le healthcheck donne la visibilité Portainer demandée, pas la reprise. Ajouter `autoheal` est une décision distincte |
+| **Cache de prompt inefficace ou contre-productif** (#34) | Seuil de 4 096 tokens sur Haiku 4.5 et préfixe stable à ~900 tokens : mesurer via `usage` avant d'implémenter. Réservé au backfill |
 | **Écriture hors « Non trié »** (N1 avec tag, L5) | Invariant historique du projet. Chaque écriture hors périmètre exige une décision explicite et son propre flag, jamais un effet de bord |
 | **Concurrence SQLite** (le worker écrit, le MCP lit) | L'ADR 0002 pose « un seul writer à la fois ». Activer WAL, MCP en `Mode=ReadOnly` et montage `:ro` |
 | **Volume sur le Pi** (lot 1 : milliers d'items ; lot 4 : contenu HTML ; phase 2 : trois sources) | Pagination, curseur reprenable, `ContentText` tronqué, surveiller la taille du `.db` |
@@ -346,3 +426,5 @@ Recommandation : **un spike d'une demi-journée avant d'attaquer le lot 3**, pas
 - **Abonnement Claude en mode headless** : faisabilité technique établie, conditions d'usage à vérifier. Enjeu financier faible (quelques euros/mois).
 - **Unité d'ingestion d'une newsletter** : le mail, ou chaque lien qu'il contient ? Recommandation ci-dessus (le mail), à confirmer à l'usage.
 - **Embeddings pour S5** : seulement si FTS5 s'avère insuffisant. Ajouterait une dépendance et un coût récurrent.
+- **Reprise automatique sur conteneur `unhealthy`** (suite de #35) : ajouter un conteneur `autoheal`, ou s'en tenir à la visibilité Portainer ? Dépend de la fréquence réelle des blocages, inconnue tant que `CycleRuns` n'existe pas.
+- **Inversion de l'ordre du prompt** (préalable à #34) : compatible avec la défense anti-injection actuelle, mais à faire délibérément et avec un test qui verrouille la nouvelle structure.
