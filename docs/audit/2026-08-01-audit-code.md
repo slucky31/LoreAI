@@ -1,4 +1,4 @@
-# Audit de code RaindropAI — 2026-08-01
+# Audit de code LoreAI — 2026-08-01
 
 | | |
 |---|---|
@@ -66,9 +66,9 @@ qu'ils verrouillent réellement ces correctifs, et pas seulement qu'ils passent.
 
 - **Axe** : Correction · **Statut** : ✅ `corrigé` (commit `f-01`)
 - **Localisation** :
-  - `src/RaindropAI.Infrastructure/Classification/AnthropicClassifier.cs:55-59`
-  - `src/RaindropAI.Worker/Services/UnsortedClassificationJob.cs:80-87` et `:131`
-  - `src/RaindropAI.Worker/Services/UnsortedClassificationJob.cs:97-100`
+  - `src/LoreAI.Infrastructure/Classification/AnthropicClassifier.cs:55-59`
+  - `src/LoreAI.Worker/Services/UnsortedClassificationJob.cs:80-87` et `:131`
+  - `src/LoreAI.Worker/Services/UnsortedClassificationJob.cs:97-100`
 
 **Constat.** `AnthropicClassifier` rattrape toute exception non-annulation et renvoie
 `ClassificationResult.Fallback(model, $"Classification échouée: {ex.Message}", …)`, c.-à-d.
@@ -78,7 +78,7 @@ qu'ils verrouillent réellement ces correctifs, et pas seulement qu'ils passent.
 `ApplyClassificationAsync`, qui construit :
 
 ```
-[RaindropAI] Reference — Basse — Classification échouée: Response status code does not indicate success: 429 (Too Many Requests).
+[LoreAI] Reference — Basse — Classification échouée: Response status code does not indicate success: 429 (Too Many Requests).
 ```
 
 et **écrit cette chaîne dans la note du raindrop réel de l'utilisateur** (`UnsortedClassificationJob.cs:131`).
@@ -147,7 +147,7 @@ sûr — mais commenté comme volontairement plus prudent que le défaut du code
 ### F-03 — Aucune isolation d'erreur par item : une exception annule l'avancement de tout le batch
 
 - **Axe** : Correction · **Statut** : ✅ `corrigé` (commit `f-03`)
-- **Localisation** : `src/RaindropAI.Worker/Services/UnsortedClassificationJob.cs:71-100`
+- **Localisation** : `src/LoreAI.Worker/Services/UnsortedClassificationJob.cs:71-100`
 
 **Constat.** La boucle `foreach (var item in newItems)` n'a pas de `try/catch` par item. Seul
 `ApplyClassificationAsync` protège son propre périmètre. Une exception venant de `UpsertAsync` (verrou SQLite),
@@ -178,35 +178,35 @@ un arrêt partiel visible.
 ### F-04 — La note appliquée à Raindrop n'est pas idempotente
 
 - **Axe** : Correction · **Statut** : ✅ `corrigé` (commit `f-04`)
-- **Localisation** : `src/RaindropAI.Worker/Services/UnsortedClassificationJob.cs:131-134`
+- **Localisation** : `src/LoreAI.Worker/Services/UnsortedClassificationJob.cs:131-134`
 
 **Constat.**
 
 ```csharp
-var classificationNote = $"[RaindropAI] {classification.Action} — {classification.Priority} — {classification.Reason}";
+var classificationNote = $"[LoreAI] {classification.Action} — {classification.Priority} — {classification.Reason}";
 var mergedNote = string.IsNullOrWhiteSpace(item.Note) ? classificationNote : $"{item.Note}\n\n{classificationNote}";
 ```
 
-`item.Note` est relu depuis l'API à chaque cycle et contient donc déjà le bloc `[RaindropAI]` d'un passage
+`item.Note` est relu depuis l'API à chaque cycle et contient donc déjà le bloc `[LoreAI]` d'un passage
 précédent. Rien ne détecte ce marqueur. Le contraste avec la fusion des tags est net : celle-ci est
 explicitement dédupliquée (`Distinct(StringComparer.OrdinalIgnoreCase)`, `:126-129`), la note ne l'est pas.
 
 **Impact.** Tout rejeu (F-03, ou un item resté dans « Non trié » et re-remonté après reset du `PollingState`)
-empile les blocs `[RaindropAI]`. La note d'un bookmark peut grossir sans limite.
+empile les blocs `[LoreAI]`. La note d'un bookmark peut grossir sans limite.
 
-**Correctif proposé.** Retirer le bloc `[RaindropAI] …` existant avant d'ajouter le nouveau (regex ancrée sur
-le marqueur), ou délimiter la zone gérée par l'outil (`<!-- raindropai:start --> … <!-- raindropai:end -->`)
+**Correctif proposé.** Retirer le bloc `[LoreAI] …` existant avant d'ajouter le nouveau (regex ancrée sur
+le marqueur), ou délimiter la zone gérée par l'outil (`<!-- loreai:start --> … <!-- loreai:end -->`)
 et la remplacer intégralement.
 
 **Correction appliquée.** Logique extraite dans `Core/Services/ClassificationNoteBuilder` (pure, même esprit
 que `DigestMessageBuilder`), ce qui la rend testable sans attendre le projet de tests Worker de F-07 —
-8 tests dans `RaindropAI.Core.Tests`.
+8 tests dans `LoreAI.Core.Tests`.
 
 Trois décisions à noter :
 - **Filtrage ligne à ligne** plutôt que troncature à partir du marqueur : l'utilisateur peut avoir écrit
   *sous* le bloc, et son texte doit survivre (couvert par un test).
 - **Pas de délimiteurs `<!-- … -->`** : les notes Raindrop s'affichent en texte brut, les commentaires HTML
-  seraient visibles. Le marqueur `[RaindropAI]` en début de ligne suffit.
+  seraient visibles. Le marqueur `[LoreAI]` en début de ligne suffit.
 - **La justification est aplatie sur une ligne** : un `reason` multi-ligne produirait un bloc irrécupérable au
   passage suivant, donc non idempotent. C'est le seul trou qu'un filtrage ligne à ligne laisserait ouvert.
 
@@ -217,7 +217,7 @@ Les notes déjà polluées par des blocs empilés sont nettoyées au prochain pa
 ### F-05 — Aucune validation de configuration : `required` n'est pas appliqué au binding (vérifié)
 
 - **Axe** : Architecture · **Statut** : ✅ `corrigé` (commit `f-05`)
-- **Localisation** : `src/RaindropAI.Worker/Program.cs:31-36` ; toutes les classes `*Options`
+- **Localisation** : `src/LoreAI.Worker/Program.cs:31-36` ; toutes les classes `*Options`
 
 **Constat.** Les options utilisent `required` (`RaindropApiOptions.Token`, `ClassifierOptions.ApiKey`,
 `EmailOptions.*`, `DiscordOptions.WebhookUrl`, `SqliteOptions.ConnectionString`), ce qui donne l'illusion d'une
@@ -312,7 +312,7 @@ le digest au redémarrage, c'est-à-dire exactement le dommage que ce finding ch
 ### F-07 — Le projet Worker n'a aucun test
 
 - **Axe** : Tests · **Statut** : ✅ `corrigé` (commit `f-07`)
-- **Localisation** : `tests/` — seuls `RaindropAI.Core.Tests` et `RaindropAI.Infrastructure.Tests` existent
+- **Localisation** : `tests/` — seuls `LoreAI.Core.Tests` et `LoreAI.Infrastructure.Tests` existent
 
 **Constat.** Les 45 tests couvrent honnêtement Infrastructure (WireMock sur les 3 clients HTTP, SQLite réel
 sur les 2 repositories, builders purs) et la policy de notification. Mais **toute la logique métier
@@ -329,13 +329,13 @@ Ce sont précisément les points touchés par F-01, F-03 et F-04.
 
 **Impact.** Les correctifs ci-dessus se feraient sans filet, sur le code qui écrit dans un compte réel.
 
-**Correctif proposé.** Créer `tests/RaindropAI.Worker.Tests` et couvrir `UnsortedClassificationJob` avec
+**Correctif proposé.** Créer `tests/LoreAI.Worker.Tests` et couvrir `UnsortedClassificationJob` avec
 NSubstitute sur les six interfaces (la classe est déjà entièrement injectée — aucun refactoring nécessaire).
 Cas prioritaires : fallback ⇒ pas d'écriture (F-01), collection inconnue ⇒ tags seuls sans déplacement,
 `WriteBackToRaindrop=false` ⇒ aucun appel à `UpdateRaindropAsync`, exception au *k*-ième item ⇒ les *k-1*
 premiers restent acquis (F-03).
 
-**Correction appliquée.** Nouveau projet `tests/RaindropAI.Worker.Tests` (ajouté au `.slnx`), 20 tests sur
+**Correction appliquée.** Nouveau projet `tests/LoreAI.Worker.Tests` (ajouté au `.slnx`), 20 tests sur
 `UnsortedClassificationJob` (17) et `DigestNotificationJob` (3), via NSubstitute sur les six interfaces —
 la classe était déjà entièrement injectée, aucun refactoring n'a été nécessaire. Une petite `JobFixture`
 interne porte les doubles et les valeurs par défaut pour que chaque cas tienne en trois lignes.
@@ -359,7 +359,7 @@ Total après correctifs : **75 tests** (14 Core + 41 Infrastructure + 20 Worker)
 ### F-08 — Injection HTML dans le digest email : le lien n'est pas encodé
 
 - **Axe** : Sécurité · **Statut** : ✅ `corrigé` (commit `f-08`)
-- **Localisation** : `src/RaindropAI.Infrastructure/Notifications/DigestMessageBuilder.cs:38`
+- **Localisation** : `src/LoreAI.Infrastructure/Notifications/DigestMessageBuilder.cs:38`
 
 ```csharp
 $"<li><a href=\"{article.Item.Link}\">{WebUtility.HtmlEncode(article.Item.Title)}</a> " +
@@ -387,7 +387,7 @@ injectable. 3 tests ajoutés (ancre normale avec `&` encodé en `&amp;`, tentati
 ### F-09 — SMTP : `UseSsl=false` bascule en clair, et le nom de l'option est trompeur
 
 - **Axe** : Sécurité · **Statut** : ✅ `corrigé` (commit `f-09`)
-- **Localisation** : `src/RaindropAI.Infrastructure/Notifications/EmailNotifier.cs:39-41`
+- **Localisation** : `src/LoreAI.Infrastructure/Notifications/EmailNotifier.cs:39-41`
 
 ```csharp
 var secureSocketOptions = _options.UseSsl ? SecureSocketOptions.StartTls : SecureSocketOptions.None;
@@ -425,7 +425,7 @@ reste inchangée en pratique. Une valeur invalide échoue au démarrage :
 ### F-10 — Le conteneur tourne en root
 
 - **Axe** : Sécurité · **Statut** : ✅ `corrigé` (commit `f-10`)
-- **Localisation** : `src/RaindropAI.Worker/Dockerfile:12-17`
+- **Localisation** : `src/LoreAI.Worker/Dockerfile:12-17`
 
 L'image finale (`mcr.microsoft.com/dotnet/runtime:9.0`) ne définit pas de `USER` : le process s'exécute en
 root, avec `/data` monté depuis l'hôte (`docker-compose.yml`). Les images .NET 8+ exposent `$APP_UID` pour
@@ -472,7 +472,7 @@ aucun endpoint) — sans quoi il ne détecterait rien de plus que le crash déj�
 ### F-11 — Prompt injection : le contenu des pages bookmarkées alimente directement le prompt
 
 - **Axe** : Sécurité · **Statut** : ✅ `corrigé` (commit `f-11`)
-- **Localisation** : `src/RaindropAI.Infrastructure/Classification/ClassificationPromptBuilder.cs:83-93`
+- **Localisation** : `src/LoreAI.Infrastructure/Classification/ClassificationPromptBuilder.cs:83-93`
 
 `Title`, `Excerpt`, `Note` et `Domain` sont interpolés tels quels dans le message utilisateur. `Excerpt` est
 extrait de la page distante par Raindrop : il est intégralement sous contrôle de l'auteur de cette page
@@ -512,7 +512,7 @@ aucun existant ne convient. Les plafonds atteignent le même objectif sans amput
 ### F-12 — La pagination s'arrête dès qu'une page est plus courte que `PageSize`
 
 - **Axe** : Correction · **Statut** : ✅ `corrigé` (commit `f-12`)
-- **Localisation** : `src/RaindropAI.Infrastructure/Raindrop/RaindropClient.cs:33-65`
+- **Localisation** : `src/LoreAI.Infrastructure/Raindrop/RaindropClient.cs:33-65`
 
 ```csharp
 if (reachedKnownItem || payload.Items.Count < _options.PageSize) break;
@@ -548,7 +548,7 @@ l'ancien algorithme demandait. Validé par mutation — restaurer `|| Items.Coun
 ### F-13 — Le seed de `PollingState` par date seule est ignoré
 
 - **Axe** : Correction · **Statut** : ✅ `corrigé` (commit `f-13`)
-- **Localisation** : `src/RaindropAI.Infrastructure/Raindrop/RaindropClient.cs:115-128`
+- **Localisation** : `src/LoreAI.Infrastructure/Raindrop/RaindropClient.cs:115-128`
 
 ```csharp
 if (lastState.LastRaindropId is null) return false;   // ← sortie avant tout test de date
@@ -582,7 +582,7 @@ de date qui prend le relais. Le rendre inconditionnel fiabilise donc le cas nomi
 ### F-14 — Résilience HTTP non calibrée pour un appel LLM
 
 - **Axe** : Architecture · **Statut** : ✅ `corrigé` (commit `f-14`)
-- **Localisation** : `src/RaindropAI.Worker/Program.cs:44-51`
+- **Localisation** : `src/LoreAI.Worker/Program.cs:44-51`
 
 `AddStandardResilienceHandler()` est appliqué à l'identique aux trois clients typés. Ses valeurs par défaut
 (timeout par tentative 10 s, timeout total 30 s, 3 tentatives) conviennent à Raindrop et Discord, mais sont
@@ -624,7 +624,7 @@ démarrage. Le test tient lieu de garde-fou.
 ### F-15 — `DefaultNotificationPolicy` : des paramètres « injectables » qui ne le sont pas
 
 - **Axe** : Design patterns · **Statut** : ✅ `corrigé` (commit `f-15`)
-- **Localisation** : `src/RaindropAI.Core/Services/DefaultNotificationPolicy.cs:16-23` · `Program.cs:41`
+- **Localisation** : `src/LoreAI.Core/Services/DefaultNotificationPolicy.cs:16-23` · `Program.cs:41`
 
 Le commentaire annonce « Seuils injectables pour rester configurables sans toucher à l'appelant », mais
 `AddSingleton<INotificationPolicy, DefaultNotificationPolicy>()` résout toujours les valeurs par défaut
@@ -688,7 +688,7 @@ change complètement l'analyse, et la documentation ne le décrivait pas.
 produit alors uniquement l'architecture du runner, soit `linux/amd64`. Vérifié sur l'image réellement publiée :
 
 ```
-docker manifest inspect ghcr.io/slucky31/raindropai-worker:latest
+docker manifest inspect ghcr.io/slucky31/loreai-worker:latest
   "architecture": "amd64"        ← seule plateforme réelle
   "architecture": "unknown"      ← attestation buildx, pas une plateforme
 ```
@@ -706,7 +706,7 @@ l'étage final ne faisant que des `COPY`, aucune émulation n'est nécessaire. B
 
 `platforms: linux/amd64,linux/arm64` ajouté à la CD **et à la CI**, pour qu'une régression arm64 échoue sur la
 PR et non au moment de la release. `docker-compose.yml` passe de `build:` à
-`image: ghcr.io/…:${RAINDROPAI_TAG:-latest}`, et le README décrit le vrai flux (`pull`, pas `build`).
+`image: ghcr.io/…:${LOREAI_TAG:-latest}`, et le README décrit le vrai flux (`pull`, pas `build`).
 
 Vérifié localement : build multi-arch complet, puis image **arm64 chargée et démarrée sous QEMU**
 (`Application started`, `/data/logs` écrit en `1654:1654`).

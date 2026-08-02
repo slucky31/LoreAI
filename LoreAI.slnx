@@ -1,0 +1,17 @@
+<Solution>
+  <Configurations>
+    <Platform Name="Any CPU" />
+    <Platform Name="x64" />
+    <Platform Name="x86" />
+  </Configurations>
+  <Folder Name="/src/">
+    <Project Path="src/LoreAI.Core/LoreAI.Core.csproj" />
+    <Project Path="src/LoreAI.Infrastructure/LoreAI.Infrastructure.csproj" />
+    <Project Path="src/LoreAI.Worker/LoreAI.Worker.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/LoreAI.Core.Tests/LoreAI.Core.Tests.csproj" />
+    <Project Path="tests/LoreAI.Infrastructure.Tests/LoreAI.Infrastructure.Tests.csproj" />
+    <Project Path="tests/LoreAI.Worker.Tests/LoreAI.Worker.Tests.csproj" />
+  </Folder>
+</Solution>

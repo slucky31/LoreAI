@@ -1,4 +1,4 @@
-# RaindropAI
+# LoreAI
 
 Outil .NET 10 qui trie automatiquement le backlog de la collection **« Non trié »** de Raindrop.io. Il apprend vos collections et tags réels (via l'API Raindrop), classifie chaque nouvel article avec Claude Haiku en s'appuyant sur cette taxonomie, puis applique directement le résultat : tags fusionnés et déplacement vers la collection identifiée si elle correspond — sans étape de validation manuelle. Une notification Discord signale en plus les articles jugés prioritaires à tester, et un digest email quotidien récapitule tout le reste.
 
@@ -9,9 +9,9 @@ Voir [docs/adr/](docs/adr/) pour le détail des décisions d'architecture, notam
 ## Architecture
 
 ```
-src/RaindropAI.Core            modèles, enums, interfaces (zéro dépendance externe)
-src/RaindropAI.Infrastructure  Raindrop API (raindrops + collections + tags), classification Anthropic, persistance SQLite, notifications
-src/RaindropAI.Worker          Worker Service (Coravel pour la planification, Serilog pour les logs)
+src/LoreAI.Core            modèles, enums, interfaces (zéro dépendance externe)
+src/LoreAI.Infrastructure  Raindrop API (raindrops + collections + tags), classification Anthropic, persistance SQLite, notifications
+src/LoreAI.Worker          Worker Service (Coravel pour la planification, Serilog pour les logs)
 tests/                         xUnit.v3 + NSubstitute + WireMock.Net
 docs/adr/                      Architecture Decision Records
 ```
@@ -34,9 +34,9 @@ Copier `.env.example` en `.env` et renseigner les valeurs (voir commentaires dan
 ## Lancer en local
 
 ```bash
-dotnet build RaindropAI.slnx
-dotnet test RaindropAI.slnx
-dotnet run --project src/RaindropAI.Worker
+dotnet build LoreAI.slnx
+dotnet test LoreAI.slnx
+dotnet run --project src/LoreAI.Worker
 ```
 
 En local, `appsettings.Development.json` pointe vers un fichier SQLite `raindropai.dev.db` dans le dossier courant et des logs dans `logs/`.
@@ -57,14 +57,14 @@ docker compose up -d
 docker compose logs -f
 ```
 
-Pour épingler une version plutôt que de suivre `latest` : `RAINDROPAI_TAG=0.3.0 docker compose up -d` (ou la variable dans le `.env`).
+Pour épingler une version plutôt que de suivre `latest` : `LOREAI_TAG=0.3.0 docker compose up -d` (ou la variable dans le `.env`).
 
 Le conteneur s'exécute sous l'utilisateur applicatif non-root de l'image .NET (`uid 1654`), à partir d'une image « chiselée » sans shell ni gestionnaire de paquets. Sur un bind mount, c'est la propriété côté hôte qui prime : sans le `chown` ci-dessus, SQLite échoue à créer sa base avec un `Permission denied` sur `/data`. Si vous mettez à jour une installation existante qui tournait en root, appliquez le `chown` sur le dossier `data/` déjà présent.
 
 Pour reconstruire l'image localement malgré tout (mise au point) :
 
 ```bash
-docker build -f src/RaindropAI.Worker/Dockerfile -t raindropai-worker:local .
+docker build -f src/LoreAI.Worker/Dockerfile -t loreai-worker:local .
 ```
 
 Le fichier SQLite (`/data/raindropai.db`) et les logs (`/data/logs/`) sont persistés via le volume `./data`.
@@ -90,7 +90,7 @@ VALUES (1, <id_du_dernier_raindrop_a_ignorer>, '<date_ISO8601_UTC>', '<date_ISO8
 ## Tests automatisés
 
 ```bash
-dotnet test RaindropAI.slnx
+dotnet test LoreAI.slnx
 ```
 
 Aucune vraie clé nécessaire : les appels Raindrop/Anthropic/Discord sont simulés via WireMock.Net, la base est un fichier SQLite temporaire par test.
@@ -99,7 +99,7 @@ Aucune vraie clé nécessaire : les appels Raindrop/Anthropic/Discord sont simul
 
 À faire avant un déploiement réel, pour observer le comportement sur votre compte Raindrop :
 
-1. Renseigner dans `src/RaindropAI.Worker/appsettings.Development.json` (ou via `dotnet user-secrets`, jamais commité) : `Raindrop__Token`, `Classifier__ApiKey`, `Discord__WebhookUrl`, `Email__Smtp*`.
+1. Renseigner dans `src/LoreAI.Worker/appsettings.Development.json` (ou via `dotnet user-secrets`, jamais commité) : `Raindrop__Token`, `Classifier__ApiKey`, `Discord__WebhookUrl`, `Email__Smtp*`.
 2. Pour ne pas attendre 15 min / 24h pendant les tests, surcharger temporairement les expressions cron :
    ```json
    "Worker": {
@@ -111,9 +111,9 @@ Aucune vraie clé nécessaire : les appels Raindrop/Anthropic/Discord sont simul
    Garder `WriteBackToRaindrop` à `false` le temps d'observer les suggestions dans les logs avant de laisser l'outil modifier vos raindrops.
 3. Lancer :
    ```bash
-   dotnet run --project src/RaindropAI.Worker
+   dotnet run --project src/LoreAI.Worker
    ```
-4. Observer les logs (console + `logs/raindropai-*.log`) : nombre de nouveaux articles détectés dans « Non trié », nombre de collections/tags appris, notifications envoyées.
+4. Observer les logs (console + `logs/loreai-*.log`) : nombre de nouveaux articles détectés dans « Non trié », nombre de collections/tags appris, notifications envoyées.
 5. Ajouter un raindrop test dans « Non trié » via l'app Raindrop pendant que le worker tourne, attendre le prochain cycle.
 6. Inspecter `raindropai.dev.db` (créé à la racine du projet en dev) avec DB Browser for SQLite ou `sqlite3` — vérifier les colonnes `SuggestedCollection`/`SuggestedTags`/`RecommendedAction`/`Priority`/`Reason`.
 7. Repasser `WriteBackToRaindrop` à `true` pour valider l'application réelle (tags + déplacement) sur un raindrop de test, puis vérifier dans l'app Raindrop que le résultat correspond à la ligne SQLite.
