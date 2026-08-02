@@ -2,7 +2,7 @@
 
 ## Pourquoi ce document
 
-RaindropAI ne fait aujourd'hui que la moitié du travail : il capte les nouveaux articles de « Non trié », les classe, les range, puis notifie (Discord immédiat, digest mail quotidien). Le résultat n'est qu'un **flux sortant** : une fois l'article rangé et l'email envoyé, la base ne sert plus à rien. `ArticleRepository` ne contient d'ailleurs qu'un seul `SELECT` (`GetUnsentDigestItemsAsync`) — tout le reste du schéma est en écriture seule.
+LoreAI ne fait aujourd'hui que la moitié du travail : il capte les nouveaux articles de « Non trié », les classe, les range, puis notifie (Discord immédiat, digest mail quotidien). Le résultat n'est qu'un **flux sortant** : une fois l'article rangé et l'email envoyé, la base ne sert plus à rien. `ArticleRepository` ne contient d'ailleurs qu'un seul `SELECT` (`GetUnsentDigestItemsAsync`) — tout le reste du schéma est en écriture seule.
 
 Ce document cartographie les scénarios qui transforment cette base en **actif exploitable**, sur quatre axes :
 
@@ -21,7 +21,7 @@ Ces points sont tranchés. Ils contraignent tout le reste du document.
 
 | # | Décision | Conséquence |
 |---|---|---|
-| D1 | **RaindropAI devient un hub multi-sources.** Raindrop n'est plus la source de vérité unique : newsletters Gmail et flux RSS deviennent des sources de premier rang. | Rouvre l'[ADR 0001](adr/0001-architecture-generale.md). Le modèle de données doit être générique **dès le lot 0** (voir ci-dessous). |
+| D1 | **LoreAI devient un hub multi-sources.** Raindrop n'est plus la source de vérité unique : newsletters Gmail et flux RSS deviennent des sources de premier rang. | Rouvre l'[ADR 0001](adr/0001-architecture-generale.md). Le modèle de données doit être générique **dès le lot 0** (voir ci-dessous). |
 | D2 | **Le serveur MCP reste strictement en LAN.** Jamais exposé sur Internet, pas de tunnel, pas d'accès nomade. | Écarte définitivement la migration vers une base hébergée (voir « Neon » dans les arbitrages). SQLite sur le Pi reste le bon choix, l'[ADR 0002](adr/0002-persistance-sqlite-embarquee.md) tient. |
 | D3 | **L'email disparaît complètement.** Le digest quotidien n'apporte rien (« liste des articles importés »), et aucun autre canal mail ne le remplace. | Rouvre l'[ADR 0005](adr/0005-canaux-notification.md). Supprime MailKit, `EmailNotifier`, `IDigestNotifier`, `DigestNotificationJob`, `EmailOptions` et la colonne `EmailDigestSentAtUtc`. **Tous les livrables périodiques doivent trouver un autre canal** — voir « Le Markdown devient le format de restitution ». |
 | D4 | **Le vault Obsidian est local au PC** (Obsidian Sync / iCloud / Dropbox) et n'est **pas** accessible depuis le Pi. | Aucune écriture Obsidian côté serveur n'est possible. Le pont doit être **tiré depuis le PC**, ce que le MCP en LAN permet nativement. |
@@ -66,7 +66,7 @@ C'est la partie la plus structurante de toute la roadmap, et la seule qui coûte
 |---|---|---|---|---|
 | C1 | **Noyau multi-sources** — modèle `Item`, `ISourceIngester`, curseur par source | 3 | 3 | Prérequis de tout l'axe. À faire dans le lot 0 (voir ci-dessus), pas après |
 | C2 | **Newsletters Gmail** — ingestion des mails portant un label Gmail donné | 3 | 3 | API Gmail en scope `gmail.readonly`, `users.messages.list?q=label:<tag>`. Le corps HTML doit être extrait : **même besoin que S1**, donc à faire après le lot 4, pas avant |
-| C3 | **Flux RSS** — remplacement de Feedly | 3 | 2 | Voir l'arbitrage Miniflux ci-dessous : l'ingestion RSS directe dans RaindropAI est plus simple que d'auto-héberger Miniflux *pour ce besoin-là* |
+| C3 | **Flux RSS** — remplacement de Feedly | 3 | 2 | Voir l'arbitrage Miniflux ci-dessous : l'ingestion RSS directe dans LoreAI est plus simple que d'auto-héberger Miniflux *pour ce besoin-là* |
 | C4 | **Veille automatique sur sujets** — surveiller des thèmes définis, pas seulement ce qu'on sauve | 3 | 2 | Se construit sur C3 (flux de recherche RSS) + filtrage LLM contre le corpus existant. Voir l'arbitrage « recherche web » : la recherche web facturée à l'appel est le seul poste qui menace vraiment le budget |
 | C5 | **Déduplication inter-sources** — le même article capté par Raindrop, une newsletter et un flux | 2 | 1 | Corollaire de N1 une fois C1 en place : la normalisation d'URL sert de clé de rapprochement |
 
@@ -90,7 +90,7 @@ C'est la partie la plus structurante de toute la roadmap, et la seule qui coûte
 | S4 | **Revue thématique périodique** — « ce mois-ci en .NET », narratif généré par Claude | 3 | 2 | Le livrable phare de l'axe. Nouveau job Coravel mensuel → **fichier Markdown** (plus de mail, cf. D3) |
 | S5 | **Articles liés** — « recoupe X que tu avais sauvé en mars » | 2 | 2 | FTS5 d'abord (gratuit, hors ligne) ; embeddings seulement si insuffisant |
 | S6 | **Coût et consommation LLM** | 2 | 1 | Exploitable **rétroactivement** : `ClassificationRawResponse` stocke la réponse Anthropic entière, bloc `usage` compris → `json_extract` suffit. Valeur relevée à 2 : c'est le garde-fou du budget de 10 €/mois |
-| S7 | **Base d'outils** — table dédiée + projection Markdown vers Obsidian | 3 | 2 | Voir « Le pont Obsidian » ci-dessous. La source de vérité reste RaindropAI ; Obsidian n'est qu'une projection |
+| S7 | **Base d'outils** — table dédiée + projection Markdown vers Obsidian | 3 | 2 | Voir « Le pont Obsidian » ci-dessous. La source de vérité reste LoreAI ; Obsidian n'est qu'une projection |
 | S8 | **Export Markdown du corpus** — un `.md` par article, frontmatter + résumé | 2 | 1 | Même mécanique que S7. Alimente un vrai second cerveau |
 
 ### Axe « Lire »
@@ -161,7 +161,7 @@ Trois contraintes concrètes, à connaître avant d'écrire la ligne `HEALTHCHEC
 1. **L'image est chiselée** (`runtime:10.0-noble-chiseled`) : ni shell, ni `curl`, ni gestionnaire de paquets. Un `HEALTHCHECK CMD curl ...` ne peut pas fonctionner. La forme viable est un **mode sonde de l'application elle-même**, en forme exec pour éviter le shell :
    ```dockerfile
    HEALTHCHECK --interval=5m --timeout=10s --start-period=30s \
-     CMD ["dotnet", "RaindropAI.Worker.dll", "--health-check"]
+     CMD ["dotnet", "LoreAI.Worker.dll", "--health-check"]
    ```
    La sonde lit la dernière ligne de `CycleRuns` et sort 0 ou 1. Contrepartie à accepter : chaque sonde démarre un second processus .NET sur le Pi — d'où l'intervalle de 5 minutes, pas 30 secondes.
 2. **Docker Compose ne redémarre pas un conteneur `unhealthy`.** `restart: unless-stopped` ne réagit qu'à la mort du processus. Le healthcheck apportera donc la **visibilité dans Portainer** — ce que demande l'issue — mais **pas la reprise automatique**. Pour ça il faudrait un conteneur `autoheal` en plus. À décider séparément.
@@ -187,12 +187,12 @@ Bénéfice collatéral : disparition de MailKit, de la configuration SMTP, et d'
 
 **D4** pose la contrainte : le Pi ne voit pas le vault. Toute écriture doit donc partir du PC. Le MCP en LAN strict (**D2**) est précisément le bon outil pour ça — le PC est sur le LAN.
 
-**Le sens de la synchro est descendant, comme demandé** : la source de vérité centralisée et gratuite, c'est RaindropAI lui-même (SQLite sur le Pi). Pas besoin d'introduire Notion, Airtable ou un service tiers : la base existe déjà, elle est gratuite, elle est chez toi, et le MCP l'expose.
+**Le sens de la synchro est descendant, comme demandé** : la source de vérité centralisée et gratuite, c'est LoreAI lui-même (SQLite sur le Pi). Pas besoin d'introduire Notion, Airtable ou un service tiers : la base existe déjà, elle est gratuite, elle est chez toi, et le MCP l'expose.
 
 Deux variantes, à prendre dans cet ordre :
 
 1. **À la demande, sans une ligne de code.** Claude Code a le vault en local et le MCP sur le LAN. « Génère la fiche de l'outil X dans mon vault », « quels articles recoupent mes notes du projet Y » — le recoupement se fait dans le client, avec le vault d'un côté et le corpus de l'autre. C'est **L6, et c'est gratuit** : le seul prérequis est le lot 3.
-2. **Automatisé, si l'usage se confirme.** Un petit CLI d'export (`raindropai-export --vault <chemin>`) appelé par une tâche planifiée Windows, qui interroge le MCP et écrit les `.md`. À n'écrire que si la variante 1 devient fastidieuse.
+2. **Automatisé, si l'usage se confirme.** Un petit CLI d'export (`loreai-export --vault <chemin>`) appelé par une tâche planifiée Windows, qui interroge le MCP et écrit les `.md`. À n'écrire que si la variante 1 devient fastidieuse.
 
 Pour la **base d'outils** (S7) : table `Tools` en base (nom, catégorie, statut d'évaluation, articles liés, verdict), alimentée par la classification quand `Action == ATester`, projetée en une fiche `.md` par outil. La fiche est **régénérée**, jamais éditée à la main dans Obsidian — sinon on crée un conflit de source de vérité. Si tu veux annoter, l'annotation doit vivre dans un fichier voisin (`X.notes.md`) que la projection ne touche pas.
 
@@ -217,7 +217,7 @@ Aucune valeur visible, mais sans lui chaque lot suivant rejoue la même plomberi
   ```
   Si absent, replier sur `LIKE` + index, ou changer de paquet natif.
 
-Fichiers concernés : `src/RaindropAI.Core/Models/`, `src/RaindropAI.Core/Interfaces/`, `src/RaindropAI.Infrastructure/Persistence/` (`SqliteConnectionFactory.cs`, `ArticleRepository.cs`, `Migrations/`), `src/RaindropAI.Infrastructure/Raindrop/`.
+Fichiers concernés : `src/LoreAI.Core/Models/`, `src/LoreAI.Core/Interfaces/`, `src/LoreAI.Infrastructure/Persistence/` (`SqliteConnectionFactory.cs`, `ArticleRepository.cs`, `Migrations/`), `src/LoreAI.Infrastructure/Raindrop/`.
 
 ⚠️ **ADR 0009 à écrire avant de coder** : le passage multi-sources rouvre l'ADR 0001 bien plus franchement que le serveur MCP ne le faisait.
 
@@ -246,19 +246,19 @@ Zéro appel LLM, zéro nouvelle dépendance, et une dépendance en moins. Le seu
 
 #### Lot 3 — Serveur MCP en lecture seule (LAN strict)
 
-Nouveau projet `src/RaindropAI.Mcp`, SDK C# officiel `ModelContextProtocol` (vérifier la version stable au moment d'attaquer), transport Streamable HTTP, conteneur dédié.
+Nouveau projet `src/LoreAI.Mcp`, SDK C# officiel `ModelContextProtocol` (vérifier la version stable au moment d'attaquer), transport Streamable HTTP, conteneur dédié.
 
 ```yaml
 # docker-compose.yml
-raindropai:            # worker existant, inchangé
-raindropai-mcp:        # nouveau
+loreai:            # worker existant, inchangé
+loreai-mcp:        # nouveau
   ports: ["5099:8080"]
   volumes: ["./data:/data:ro"]
 ```
 
 ```jsonc
 // .mcp.json, côté poste de développement
-{ "raindropai": {
+{ "loreai": {
     "type": "http",
     "url": "http://raspberrypi.local:5099/mcp",
     "headers": { "Authorization": "Bearer ..." } } }
@@ -358,7 +358,7 @@ Trois obstacles, dont deux sont bloquants au régime actuel.
 
 **1. Le seuil minimal n'est pas atteint, et de loin.** Le [cache de prompt](https://platform.claude.com/docs/en/build-with-claude/prompt-caching) impose une longueur minimale par modèle : **4 096 tokens pour Claude Haiku 4.5**, le modèle utilisé ici. En dessous, la requête est traitée normalement, **sans erreur ni avertissement** — les champs `cache_creation_input_tokens` et `cache_read_input_tokens` restent simplement à 0.
 
-Or le préfixe stable de RaindropAI, c'est le prompt système (~450 tokens) plus le `tools` / `input_schema` (~300 tokens) : **de l'ordre de 900 tokens**, soit un quart du seuil. Même après le lot 4, l'article — c'est-à-dire la partie *variable* — grossit, mais le préfixe stable, lui, ne bouge pas.
+Or le préfixe stable de LoreAI, c'est le prompt système (~450 tokens) plus le `tools` / `input_schema` (~300 tokens) : **de l'ordre de 900 tokens**, soit un quart du seuil. Même après le lot 4, l'article — c'est-à-dire la partie *variable* — grossit, mais le préfixe stable, lui, ne bouge pas.
 
 **2. L'ordre du prompt interdit toute mise en cache.** Le cache fonctionne par préfixe : tout ce qui suit la première variation est perdu. Dans `BuildUserMessage` (`ClassificationPromptBuilder.cs:93`), le bloc `<article>` — variable à chaque appel — est placé **avant** la liste des collections et des tags, qui est pourtant stable d'un cycle à l'autre. La partie réutilisable est donc située derrière la partie variable : structurellement incachable.
 
@@ -391,7 +391,7 @@ Il y a deux besoins distincts derrière « migrer Feedly vers Miniflux » :
 | Besoin | Réponse |
 |---|---|
 | **Une interface de lecture** pour remplacer Feedly côté humain | Miniflux fait très bien le travail : léger, écrit en Go, tourne sans problème sur un Pi. À noter : il **exige Postgres**, donc un conteneur de plus sur la machine |
-| **Ingérer des flux dans le pipeline** | Ingestion RSS directe dans RaindropAI (lot 7). Passer par Miniflux ajouterait un intermédiaire, une base Postgres et une API à interroger pour du contenu qu'on sait parser en une classe |
+| **Ingérer des flux dans le pipeline** | Ingestion RSS directe dans LoreAI (lot 7). Passer par Miniflux ajouterait un intermédiaire, une base Postgres et une API à interroger pour du contenu qu'on sait parser en une classe |
 
 Les deux ne s'excluent pas, et le bon ordre est : **lot 7 d'abord** (le pipeline fonctionne), Miniflux ensuite *si* tu veux l'interface de lecture. Dans ce cas, on lui prend ses flux via son API REST plutôt que de maintenir deux listes d'abonnements.
 
