@@ -11,7 +11,7 @@ Ce document cartographie les scénarios qui transforment cette base en **actif e
 3. **Nettoyer** — doublons, liens morts, tags redondants, articles périmés.
 4. **Lire** — pousser la bonne chose au bon moment, et boucler la boucle.
 
-Plus deux axes transverses : **Interroger** (serveur MCP) et **Opérer** (dette opérationnelle — issues [#31](https://github.com/slucky31/RaindropAI/issues/31), [#34](https://github.com/slucky31/RaindropAI/issues/34), [#35](https://github.com/slucky31/RaindropAI/issues/35)).
+Plus deux axes transverses : **Interroger** (serveur MCP) et **Opérer** (dette opérationnelle — issues [#31](https://github.com/slucky31/LoreAI/issues/31), [#34](https://github.com/slucky31/LoreAI/issues/34), [#35](https://github.com/slucky31/LoreAI/issues/35)).
 
 C'est une carte, pas un engagement de livraison : les lots sont indépendants et peuvent être pris dans un autre ordre, à condition de respecter les dépendances signalées.
 
@@ -116,9 +116,9 @@ C'est la partie la plus structurante de toute la roadmap, et la seule qui coûte
 
 | # | Scénario | V | E | Notes |
 |---|---|---|---|---|
-| O1 | **Compte-rendu de cycle sur Discord** ([#31](https://github.com/slucky31/RaindropAI/issues/31)) — fin de traitement, articles triés ou non, nombre de tags appliqués | 3 | 1 | Valeur relevée à 3 par **D3** : une fois l'email supprimé, c'est la **seule** preuve que l'outil tourne. Les compteurs existent déjà, ils sont journalisés puis jetés |
-| O2 | **Healthcheck Docker pour Portainer** ([#35](https://github.com/slucky31/RaindropAI/issues/35)) | 2 | 2 | Reste ouvert depuis [F-10 de l'audit](audit/2026-08-01-audit-code.md) faute de « vrai signal de vivacité ». Ce signal, c'est le journal de cycle ci-dessous |
-| O3 | **Cache de prompt Anthropic** ([#34](https://github.com/slucky31/RaindropAI/issues/34)) | 1 | 2 | **Sans effet au régime actuel** — voir l'arbitrage dédié. C'est une optimisation de *backfill*, pas de croisière. À mesurer (30 min) avant de planifier |
+| O1 | **Compte-rendu de cycle sur Discord** ([#31](https://github.com/slucky31/LoreAI/issues/31)) — fin de traitement, articles triés ou non, nombre de tags appliqués | 3 | 1 | Valeur relevée à 3 par **D3** : une fois l'email supprimé, c'est la **seule** preuve que l'outil tourne. Les compteurs existent déjà, ils sont journalisés puis jetés |
+| O2 | **Healthcheck Docker pour Portainer** ([#35](https://github.com/slucky31/LoreAI/issues/35)) | 2 | 2 | Reste ouvert depuis [F-10 de l'audit](audit/2026-08-01-audit-code.md) faute de « vrai signal de vivacité ». Ce signal, c'est le journal de cycle ci-dessous |
+| O3 | **Cache de prompt Anthropic** ([#34](https://github.com/slucky31/LoreAI/issues/34)) | 1 | 2 | **Sans effet au régime actuel** — voir l'arbitrage dédié. C'est une optimisation de *backfill*, pas de croisière. À mesurer (30 min) avant de planifier |
 
 ## Le worker n'a aucune mémoire de son dernier cycle
 
@@ -141,7 +141,7 @@ Une ligne par cycle, y compris les cycles vides. C'est aussi la seule façon de 
 
 Le cron tourne toutes les 15 minutes : **96 cycles par jour, dont la grande majorité sans aucun nouvel article**. Notifier à chaque fin de cycle transformerait Discord en flux de « rien à signaler » et tuerait la valeur du canal d'alerte existant.
 
-Règle, arrêtée dans [#31](https://github.com/slucky31/RaindropAI/issues/31) : **pas d'import, pas de notification.**
+Règle, arrêtée dans [#31](https://github.com/slucky31/LoreAI/issues/31) : **pas d'import, pas de notification.**
 
 | Situation | Notification |
 |---|---|
