@@ -61,8 +61,8 @@ Pas besoin de cloner le repo entier : seuls `docker-compose.yml` et `.env` sont 
 
 ```bash
 mkdir -p ~/loreai && cd ~/loreai
-curl -O https://raw.githubusercontent.com/slucky31/RaindropAI/main/docker-compose.yml
-curl -O https://raw.githubusercontent.com/slucky31/RaindropAI/main/.env.example
+curl -O https://raw.githubusercontent.com/slucky31/LoreAI/main/docker-compose.yml
+curl -O https://raw.githubusercontent.com/slucky31/LoreAI/main/.env.example
 cp .env.example .env
 ```
 
@@ -129,7 +129,7 @@ sudo docker compose up -d
 ## 9. Dépannage
 
 **`You must install or update .NET to run this application` dans les logs**
-L'image publiée ciblait une version de framework .NET différente de celle embarquée dans le runtime du conteneur (bug corrigé en v0.3.5 — voir [PR #26](https://github.com/slucky31/RaindropAI/pull/26)). Repasser par l'étape 8 pour récupérer une image à jour.
+L'image publiée ciblait une version de framework .NET différente de celle embarquée dans le runtime du conteneur (bug corrigé en v0.3.5 — voir [PR #26](https://github.com/slucky31/LoreAI/pull/26)). Repasser par l'étape 8 pour récupérer une image à jour.
 
 **`Permission denied` sur `/data` au démarrage**
 Le dossier `data/` côté hôte n'appartient pas à l'uid 1654. Refaire l'étape 6 (`sudo chown -R 1654:1654 data`) — nécessaire aussi après mise à jour d'une installation qui tournait auparavant en root.
