@@ -1,9 +1,9 @@
 services:
-  raindropai:
+  loreai:
     # Image construite et publiée par la CD GitHub (multi-arch amd64 + arm64), pas de build ici :
     # `docker compose pull && docker compose up -d` suffit sur le Raspberry Pi.
-    # RAINDROPAI_TAG permet d'épingler une version précise plutôt que de suivre latest.
-    image: ghcr.io/slucky31/raindropai-worker:${RAINDROPAI_TAG:-latest}
+    # LOREAI_TAG permet d'épingler une version précise plutôt que de suivre latest.
+    image: ghcr.io/slucky31/loreai-worker:${LOREAI_TAG:-latest}
     restart: unless-stopped
     env_file:
       - .env

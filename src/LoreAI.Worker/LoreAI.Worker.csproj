@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk.Worker">
+
+  <PropertyGroup>
+    <!-- Volontairement conservé sous l'ancien nom : cet identifiant est le nom du dossier
+         %APPDATA%\Microsoft\UserSecrets\ où sont stockés les secrets de développement.
+         Le renommer rendrait invisibles les secrets déjà en place sur les postes existants. -->
+    <UserSecretsId>dotnet-RaindropAI.Worker-09f11de5-4c4a-41d2-96e9-2e40e4d0111c</UserSecretsId>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Coravel" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" />
+    <PackageReference Include="Microsoft.Extensions.Http.Resilience" />
+    <PackageReference Include="Microsoft.Extensions.Options.DataAnnotations" />
+    <PackageReference Include="Serilog.Extensions.Hosting" />
+    <PackageReference Include="Serilog.Settings.Configuration" />
+    <PackageReference Include="Serilog.Sinks.Console" />
+    <PackageReference Include="Serilog.Sinks.File" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\LoreAI.Core\LoreAI.Core.csproj" />
+    <ProjectReference Include="..\LoreAI.Infrastructure\LoreAI.Infrastructure.csproj" />
+  </ItemGroup>
+</Project>

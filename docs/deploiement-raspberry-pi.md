@@ -38,7 +38,7 @@ Le script officiel installe Docker Engine + le plugin Compose (`docker compose`,
 Gmail exige un mot de passe d'application (le mot de passe du compte ne fonctionne pas pour SMTP), ce qui nécessite la validation en deux étapes.
 
 1. Activer la 2FA : [myaccount.google.com/security](https://myaccount.google.com/security) → **Validation en deux étapes**.
-2. Créer le mot de passe d'application : [myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords) → nommer (ex. `RaindropAI`) → **Créer**. Copier le mot de passe de 16 caractères **sans les espaces** (non réaffiché ensuite).
+2. Créer le mot de passe d'application : [myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords) → nommer (ex. `LoreAI`) → **Créer**. Copier le mot de passe de 16 caractères **sans les espaces** (non réaffiché ensuite).
 3. Renseigner dans `.env` :
    ```bash
    Email__SmtpHost=smtp.gmail.com
@@ -60,9 +60,9 @@ Une erreur `535-5.7.8 Username and Password not accepted` dans les logs indique 
 Pas besoin de cloner le repo entier : seuls `docker-compose.yml` et `.env` sont nécessaires.
 
 ```bash
-mkdir -p ~/raindropai && cd ~/raindropai
-curl -O https://raw.githubusercontent.com/slucky31/RaindropAI/main/docker-compose.yml
-curl -O https://raw.githubusercontent.com/slucky31/RaindropAI/main/.env.example
+mkdir -p ~/loreai && cd ~/loreai
+curl -O https://raw.githubusercontent.com/slucky31/LoreAI/main/docker-compose.yml
+curl -O https://raw.githubusercontent.com/slucky31/LoreAI/main/.env.example
 cp .env.example .env
 ```
 
@@ -76,7 +76,7 @@ Renseigner les secrets récupérés à l'étape 3. Points d'attention :
 
 - `Raindrop__CollectionId` doit rester à `-1` (« Non trié ») — `0` viserait toute la bibliothèque, y compris ce qui est déjà rangé.
 - Laisser `Worker__WriteBackToRaindrop=false` au premier lancement, pour observer les suggestions dans les logs sans rien modifier dans Raindrop. Repasser à `true` une fois rassuré.
-- `RAINDROPAI_TAG` (optionnel, dans `.env`) permet d'épingler une version précise (ex. `0.3.5`) plutôt que de suivre `latest`.
+- `LOREAI_TAG` (optionnel, dans `.env`) permet d'épingler une version précise (ex. `0.3.5`) plutôt que de suivre `latest`.
 
 ## 6. Préparer le dossier de données
 
@@ -121,7 +121,7 @@ Le fichier SQLite (`/data/raindropai.db`) et les logs (`/data/logs/`) sont persi
 ## 8. Mettre à jour une installation existante
 
 ```bash
-cd ~/raindropai
+cd ~/loreai
 sudo docker compose pull
 sudo docker compose up -d
 ```
@@ -129,7 +129,7 @@ sudo docker compose up -d
 ## 9. Dépannage
 
 **`You must install or update .NET to run this application` dans les logs**
-L'image publiée ciblait une version de framework .NET différente de celle embarquée dans le runtime du conteneur (bug corrigé en v0.3.5 — voir [PR #26](https://github.com/slucky31/RaindropAI/pull/26)). Repasser par l'étape 8 pour récupérer une image à jour.
+L'image publiée ciblait une version de framework .NET différente de celle embarquée dans le runtime du conteneur (bug corrigé en v0.3.5 — voir [PR #26](https://github.com/slucky31/LoreAI/pull/26)). Repasser par l'étape 8 pour récupérer une image à jour.
 
 **`Permission denied` sur `/data` au démarrage**
 Le dossier `data/` côté hôte n'appartient pas à l'uid 1654. Refaire l'étape 6 (`sudo chown -R 1654:1654 data`) — nécessaire aussi après mise à jour d'une installation qui tournait auparavant en root.

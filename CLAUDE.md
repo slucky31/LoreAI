@@ -4,22 +4,22 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-RaindropAI is a personal .NET 10 tool that auto-triages the backlog of the **"Non trié"** ("Unsorted", collection id `-1`) collection in Raindrop.io. Each cycle it learns the user's real collections/tags via the Raindrop API, classifies each new unsorted article with Claude Haiku against that learned taxonomy, and writes the result straight back — no human-in-the-loop validation step. Everything outside "Non trié" is considered already sorted by the user and is never touched.
+LoreAI is a personal .NET 10 tool that auto-triages the backlog of the **"Non trié"** ("Unsorted", collection id `-1`) collection in Raindrop.io. Each cycle it learns the user's real collections/tags via the Raindrop API, classifies each new unsorted article with Claude Haiku against that learned taxonomy, and writes the result straight back — no human-in-the-loop validation step. Everything outside "Non trié" is considered already sorted by the user and is never touched.
 
 Read `docs/adr/` before making architectural changes — decisions and their rationale are recorded there, not duplicated here. Most relevant: [0007](docs/adr/0007-apprentissage-taxonomie-non-trie.md) (learned taxonomy, why manual validation was rejected), [0001](docs/adr/0001-architecture-generale.md) (why this stays a simple 3-project split, not Clean Architecture/CQRS/MediatR), and [0008](docs/adr/0008-versioning-semver-conventional-commits.md) (SemVer versioning via Conventional Commits).
 
 ## Commands
 
 ```bash
-dotnet build RaindropAI.slnx
-dotnet test RaindropAI.slnx
-dotnet run --project src/RaindropAI.Worker
+dotnet build LoreAI.slnx
+dotnet test LoreAI.slnx
+dotnet run --project src/LoreAI.Worker
 ```
 
 Run a single test (xUnit.v3 on Microsoft.Testing.Platform, not `vstest`):
 
 ```bash
-dotnet test RaindropAI.slnx --filter-method "*GetNewRaindropsAsync_StopsAtAlreadyKnownItem*"
+dotnet test LoreAI.slnx --filter-method "*GetNewRaindropsAsync_StopsAtAlreadyKnownItem*"
 ```
 
 No real API keys are needed for tests: Raindrop/Anthropic/Discord calls are simulated with WireMock.Net (a real local HTTP server), and persistence uses a temp SQLite file per test.
@@ -32,9 +32,9 @@ Docker deployment target is Raspberry Pi 64-bit (arm64); `docker compose build &
 
 Three-project split, dependency direction strictly `Worker → Infrastructure → Core`:
 
-- **`src/RaindropAI.Core`** — models, enums, interfaces only. Zero external dependencies. This is the seam: every cross-cutting concern (Raindrop API, LLM, SQLite, notifications) is an interface here (`IRaindropClient`, `IClassifier`, `IArticleRepository`, `IPollingStateRepository`, `IImmediateNotifier`, `IDigestNotifier`, `INotificationPolicy`) with a single concrete implementation in `Infrastructure`. Swapping a library (e.g. Anthropic → another LLM provider) means writing a new `IClassifier` implementation, nothing else.
-- **`src/RaindropAI.Infrastructure`** — concrete implementations, grouped by concern: `Raindrop/` (API client + DTOs), `Classification/` (Anthropic tool-use call + prompt building + response parsing), `Persistence/` (Dapper + `Microsoft.Data.Sqlite`), `Notifications/` (Discord immediate alert, email digest via MailKit).
-- **`src/RaindropAI.Worker`** — Generic Host that wires everything up in `Program.cs` and runs two Coravel-scheduled jobs (`Services/UnsortedClassificationJob.cs`, `Services/DigestNotificationJob.cs`).
+- **`src/LoreAI.Core`** — models, enums, interfaces only. Zero external dependencies. This is the seam: every cross-cutting concern (Raindrop API, LLM, SQLite, notifications) is an interface here (`IRaindropClient`, `IClassifier`, `IArticleRepository`, `IPollingStateRepository`, `IImmediateNotifier`, `IDigestNotifier`, `INotificationPolicy`) with a single concrete implementation in `Infrastructure`. Swapping a library (e.g. Anthropic → another LLM provider) means writing a new `IClassifier` implementation, nothing else.
+- **`src/LoreAI.Infrastructure`** — concrete implementations, grouped by concern: `Raindrop/` (API client + DTOs), `Classification/` (Anthropic tool-use call + prompt building + response parsing), `Persistence/` (Dapper + `Microsoft.Data.Sqlite`), `Notifications/` (Discord immediate alert, email digest via MailKit).
+- **`src/LoreAI.Worker`** — Generic Host that wires everything up in `Program.cs` and runs two Coravel-scheduled jobs (`Services/UnsortedClassificationJob.cs`, `Services/DigestNotificationJob.cs`).
 
 ### Per-cycle flow (`UnsortedClassificationJob`, driven by `Worker__PollingCronExpression`, default every 15 min)
 
