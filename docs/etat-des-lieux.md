@@ -43,12 +43,15 @@ Le worker classe la collection « Non trié » toutes les 15 min (Claude Haiku, 
 
 ## Environnement, à ne pas re-découvrir
 
-- **Deux postes.** Un **Shadow PC** (Windows hébergé dans le cloud) et un second environnement disposant de Docker. Aucun des deux n'est supposé être sur le LAN domestique — c'est ce constat qui a invalidé la formulation d'origine de D2, voir [ADR 0010](adr/0010-topologie-reseau-tailscale.md).
-- **Le développement et les tests se font depuis l'environnement doté de Docker**, puisque `Testcontainers.PostgreSql` l'exige. Le Shadow reste utilisable pour le reste : lecture, rédaction, `git`, appels d'API.
+- **Deux postes.** `shadow-p9t9qc7h` (**Shadow PC**, Windows hébergé dans le cloud) et **`afl-it-ndu`**, la machine de développement. Aucun des deux n'est sur le LAN domestique — c'est ce constat qui a invalidé la formulation d'origine de D2, voir [ADR 0010](adr/0010-topologie-reseau-tailscale.md).
+- **Le développement et les tests se font depuis `afl-it-ndu`**, puisque `Testcontainers.PostgreSql` exige un daemon Docker. Le Shadow reste utilisable pour le reste : lecture, rédaction, `git`, appels d'API.
 - **Le Shadow ne pourra jamais exécuter la suite de tests** : sa plateforme n'expose pas la virtualisation imbriquée (`HCS_E_HYPERV_NOT_INSTALLED`), donc ni WSL2, ni Hyper-V, ni Docker Desktop. Inutile de réessayer.
 - **Tailscale** relie les postes et le Pi. Tailnet `piranha-pollux.ts.net`, le Pi est le nœud **`mcm8`** — donc `mcm8.piranha-pollux.ts.net`. C'est cette adresse que vise le MCP du lot 3, jamais `raspberrypi.local`. Un second nœud Linux, `proxy`, existe (rôle non documenté ici).
 - ⚠️ **Piège vécu, à ne pas repayer** : Tailscale fait expirer les clés de nœud au bout de quelques mois. Le nœud quitte alors le tailnet **sans panne et sans message** — c'est ce qui a rendu `mcm8` et `proxy` invisibles le 2026-08-04. Désactiver l'expiration de clé sur tout nœud serveur, dans la console d'admin.
-- ⚠️ À vérifier depuis le nouveau poste : qu'il soit bien sur le tailnet.
+- ⚠️ **À vérifier sur `afl-it-ndu` avant d'attaquer le lot 0** — il n'était pas encore sur le tailnet au 2026-08-22 :
+  1. `tailscale status` doit l'y faire apparaître. Attention aux conflits possibles avec un VPN d'entreprise, et aux ACL du tailnet.
+  2. Un **daemon Docker** doit répondre à `docker info`. Testcontainers a besoin d'un daemon, **pas de Docker Desktop** : Docker CE installé dans WSL2 suffit, et évite la question de licence de Docker Desktop (payant hors usage personnel / petite structure). Rancher Desktop et Podman conviennent aussi.
+  3. Droits d'administration suffisants pour activer WSL2 si ce n'est pas déjà fait.
 
 ## Comment tenir ce fichier
 
