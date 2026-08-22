@@ -22,7 +22,7 @@ Ces points sont tranchés. Ils contraignent tout le reste du document.
 | # | Décision | Conséquence |
 |---|---|---|
 | D1 | **LoreAI devient un hub multi-sources.** Raindrop n'est plus la source de vérité unique : newsletters Gmail et flux RSS deviennent des sources de premier rang. | Rouvre l'[ADR 0001](adr/0001-architecture-generale.md). Le modèle de données doit être générique **dès le lot 0** (voir ci-dessous). |
-| D2 | **Le serveur MCP reste strictement en LAN.** Jamais exposé sur Internet, pas de tunnel, pas d'accès nomade. | Écarte définitivement la migration vers une base **hébergée** (voir « Neon » dans les arbitrages) : la persistance reste chez toi. Ne dit rien sur le moteur retenu — voir D7. |
+| D2 | **Le serveur MCP reste sur un réseau privé strict — LAN _ou_ tailnet.** Jamais d'exposition publique : aucune redirection de port, aucun DNS public, Tailscale Funnel proscrit. | Corrigée par l'[ADR 0010](adr/0010-topologie-reseau-tailscale.md) : la formulation d'origine (« LAN strict, pas de tunnel ») rendait le MCP inaccessible depuis le poste de travail réel, qui est un PC cloud. Écarte toujours la migration vers une base **hébergée** (voir « Neon ») : la persistance reste chez toi. Ne dit rien sur le moteur retenu — voir D7. |
 | D3 | **L'email disparaît complètement.** Le digest quotidien n'apporte rien (« liste des articles importés »), et aucun autre canal mail ne le remplace. | Rouvre l'[ADR 0005](adr/0005-canaux-notification.md). Supprime MailKit, `EmailNotifier`, `IDigestNotifier`, `DigestNotificationJob`, `EmailOptions` et la colonne `EmailDigestSentAtUtc`. **Tous les livrables périodiques doivent trouver un autre canal** — voir « Le Markdown devient le format de restitution ». |
 | D4 | **Le vault Obsidian est local au PC** (Obsidian Sync / iCloud / Dropbox) et n'est **pas** accessible depuis le Pi. | Aucune écriture Obsidian côté serveur n'est possible. Le pont doit être **tiré depuis le PC**, ce que le MCP en LAN permet nativement. |
 | D5 | La récupération du contenu réel des articles est **retenue**. | Sans elle, l'axe synthèse reste superficiel, et les newsletters sont inexploitables. |
@@ -254,7 +254,7 @@ C'est de loin le lot le plus lourd de la roadmap. Il est **découpable en trois 
 
 Fichiers concernés : `src/LoreAI.Core/Models/`, `src/LoreAI.Core/Interfaces/`, `src/LoreAI.Infrastructure/Persistence/` (intégralement réécrit), `src/LoreAI.Infrastructure/Raindrop/`, `docker-compose.yml`, `.env.example`, `README.md`, `docs/deploiement-raspberry-pi.md`, `CLAUDE.md`.
 
-⚠️ **ADR 0010 à écrire avant de coder** : le passage multi-sources rouvre l'ADR 0001 bien plus franchement que le serveur MCP ne le faisait. (L'[ADR 0009](adr/0009-postgresql-mutualise-sur-le-pi.md), qui couvre PostgreSQL, est déjà écrit.)
+⚠️ **Un ADR est à écrire avant de coder** (numéro attribué au moment de la rédaction) : le passage multi-sources rouvre l'ADR 0001 bien plus franchement que le serveur MCP ne le faisait. Les [ADR 0009](adr/0009-postgresql-mutualise-sur-le-pi.md) (PostgreSQL) et [0010](adr/0010-topologie-reseau-tailscale.md) (réseau) sont déjà écrits.
 
 #### Lot 1 — Indexation de la bibliothèque existante
 
@@ -297,20 +297,21 @@ networks:
 ```
 
 ```jsonc
-// .mcp.json, côté poste de développement
+// .mcp.json, côté poste de développement (un PC cloud, donc hors LAN — cf. ADR 0010)
 { "loreai": {
     "type": "http",
-    "url": "http://raspberrypi.local:5099/mcp",
+    "url": "http://<nom-magicdns-du-pi>:5099/mcp",
     "headers": { "Authorization": "Bearer ..." } } }
 ```
 
-- Sécurité : **LAN uniquement (D2)**, aucune redirection de port sur la box, token bearer obligatoire malgré tout, et surtout **rôle `loreai_ro` avec `GRANT SELECT`** — la lecture seule est garantie par la base, plus par une combinaison de deux réglages sur un fichier.
+- Sécurité : **réseau privé strict (D2, [ADR 0010](adr/0010-topologie-reseau-tailscale.md))** — écoute sur l'interface Tailscale, aucune redirection de port sur la box, Funnel proscrit, ACL Tailscale au plus juste. Token bearer obligatoire malgré tout, et surtout **rôle `loreai_ro` avec `GRANT SELECT`** : le réseau limite qui frappe à la porte, il ne remplace pas la serrure.
+- ⚠️ **Prérequis d'exploitation** : le Pi doit être un nœud **en ligne** du tailnet. Sinon le MCP est injoignable depuis le poste de travail.
 - La concurrence lecture/écriture n'est plus un sujet depuis D7 : plus de contrainte « un seul writer », plus de WAL à activer.
 - L'image chiselée n'a pas de shell : c'est une image distincte avec son propre `ENTRYPOINT`, pas un `docker exec`.
 - Inclut **Q2** : colonne `tsvector` générée + index GIN.
 - Débloque **L6** immédiatement, sans code supplémentaire.
 
-⚠️ ADR 0011 à écrire : quatrième projet, port ouvert sur le LAN, maintien de `Core` sans dépendance externe.
+⚠️ Un ADR est à écrire (numéro attribué à la rédaction) : quatrième projet, port ouvert sur le réseau privé, maintien de `Core` sans dépendance externe.
 
 #### Lot 4 — Contenu réel et résumés
 
@@ -452,7 +453,8 @@ Recommandation : **un spike d'une demi-journée avant d'attaquer le lot 3**, pas
 
 | Risque | Mitigation |
 |---|---|
-| **ADR 0001 rouvert** par D1 (multi-sources) et par le lot 3 (quatrième projet) | ADR 0010 (multi-sources) et 0011 (MCP) écrits *avant* le code. `Core` reste à zéro dépendance externe : ni `Npgsql` ni le projet MCP ne remontent au-delà d'`Infrastructure` |
+| **ADR 0001 rouvert** par D1 (multi-sources) et par le lot 3 (quatrième projet) | Un ADR par sujet, écrit *avant* le code — sans numéro pré-attribué, ils ont déjà glissé deux fois. `Core` reste à zéro dépendance externe : ni `Npgsql` ni le projet MCP ne remontent au-delà d'`Infrastructure` |
+| **Le Pi hors ligne rend tout injoignable** — poste de travail dans le cloud, Pi à la maison ([ADR 0010](adr/0010-topologie-reseau-tailscale.md)) | Le Pi doit être un nœud en ligne du tailnet : prérequis d'exploitation, au même titre que la disponibilité de la base. Ni les tests ni la CI n'en dépendent |
 | **Migration de données oubliée** si le multi-sources arrive après le lot 1 | C'est exactement pourquoi C1 est dans le lot 0. Ne pas indexer des milliers d'items sur un schéma qu'on sait devoir changer |
 | **Perte du filet « rien ne se perd »** par la suppression du digest (D3) | O1 (#31) livré **avant** la suppression, pour qu'un cycle en échec reste visible. Compensation complète au lot 6 par L1 |
 | **Échec silencieux du pipeline** : une classification en repli interrompt tout le cycle sans rien appliquer, et ne laisse qu'un `LogWarning` | `CycleRuns` persiste `Outcome` + `FailureReason`, O1 le pousse sur Discord, O2 le rend visible dans Portainer. Aujourd'hui, personne ne le voit |
@@ -473,7 +475,8 @@ Recommandation : **un spike d'une demi-journée avant d'attaquer le lot 3**, pas
 
 ## Questions ouvertes
 
-- **« Shadow »** et **« Hermes »** : références non identifiées dans le commentaire de la PR #32. À clarifier avant de pouvoir les évaluer.
+- ~~**« Shadow »**~~ : **résolu** — il s'agit du Shadow PC, la machine de développement (Windows hébergé dans le cloud). C'est ce constat qui a produit l'[ADR 0010](adr/0010-topologie-reseau-tailscale.md). **« Hermes »** reste non identifié.
+- **Docker sur le poste de travail** : indisponible aujourd'hui, et la virtualisation imbriquée du Shadow n'est pas vérifiée. Détermine la stratégie de test PostgreSQL — test décisif : `wsl --install -d Ubuntu`.
 - **Abonnement Claude en mode headless** : faisabilité technique établie, conditions d'usage à vérifier. Enjeu financier faible (quelques euros/mois).
 - **Unité d'ingestion d'une newsletter** : le mail, ou chaque lien qu'il contient ? Recommandation ci-dessus (le mail), à confirmer à l'usage.
 - **Embeddings pour S5** : seulement si la recherche plein texte s'avère insuffisante. Depuis D7 ce n'est plus une dépendance à ajouter (`pgvector` est là), mais le coût récurrent de génération des vecteurs reste, lui, entier.

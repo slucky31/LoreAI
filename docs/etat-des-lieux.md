@@ -15,7 +15,7 @@
 | **Lot en cours** | Aucun. La phase de cadrage vient de se terminer. |
 | **Prochain geste** | Lot 0 ([#41](https://github.com/slucky31/LoreAI/issues/41)), **PR 1** : socle PostgreSQL à schéma fonctionnellement constant. |
 | **Dernière décision** | **D7** — persistance sur PostgreSQL mutualisé auto-hébergé ([ADR 0009](adr/0009-postgresql-mutualise-sur-le-pi.md), remplace l'ADR 0002). |
-| **Bloqué par** | L'instance PostgreSQL n'est pas encore déployée sur le Pi. C'est un préalable **manuel**, hors dépôt. |
+| **Bloqué par** | **1.** Le Pi est hors ligne (nœud du tailnet, plus vu depuis 17 jours) — rien n'est joignable. **2.** L'instance PostgreSQL n'est pas encore déployée dessus. **3.** Docker est absent du poste de travail et sa faisabilité n'est pas tranchée. Les trois sont des préalables **manuels**, hors dépôt. |
 
 ## Ce qui tourne aujourd'hui
 
@@ -28,7 +28,7 @@ Le worker classe la collection « Non trié » toutes les 15 min (Claude Haiku, 
 | | Décision | Où c'est écrit |
 |---|---|---|
 | D1 | Hub multi-sources (Raindrop + Gmail + RSS) | [roadmap](roadmap.md), ADR 0010 **à écrire** |
-| D2 | MCP en LAN strict | [roadmap](roadmap.md) |
+| D2 | Réseau privé strict — LAN **ou tailnet**, jamais d'exposition publique | [ADR 0010](adr/0010-topologie-reseau-tailscale.md) ✅ |
 | D3 | L'email disparaît complètement | [roadmap](roadmap.md), rouvre l'ADR 0005 |
 | D4 | Le vault Obsidian n'est pas visible du Pi | [roadmap](roadmap.md) |
 | D5 | On récupère le contenu réel des articles | [roadmap](roadmap.md) |
@@ -39,7 +39,13 @@ Le worker classe la collection « Non trié » toutes les 15 min (Claude Haiku, 
 
 - **Spike OpenClaw** — une demi-journée, **avant** le lot 3 ([#44](https://github.com/slucky31/LoreAI/issues/44)). C'est le premier lot qui construit une surface que cet outil pourrait déjà fournir.
 - **Cache de prompt** ([#34](https://github.com/slucky31/LoreAI/issues/34)) — 30 min de mesure, à faire au lot 4. A priori sans effet au volume actuel, décisif au backfill.
-- **Stratégie de test PostgreSQL** — Testcontainers ou service CI. À trancher dans la PR 1 du lot 0.
+- **Docker sur le Shadow PC** — `wsl --install -d Ubuntu` répond en 5 min. Si la virtualisation imbriquée passe, Docker Desktop et Testcontainers suivent ; sinon on bascule sur une base `loreai_dev` (sur le Pi, via Tailscale) ou un PostgreSQL natif Windows, avec isolation par base jetable par exécution. **C'est le préalable à la PR 1 du lot 0.**
+
+## Environnement, à ne pas re-découvrir
+
+- **Poste de travail : un Shadow PC** (Windows hébergé dans le cloud), **pas sur le LAN domestique**. C'est ce qui a invalidé la formulation d'origine de D2 — voir [ADR 0010](adr/0010-topologie-reseau-tailscale.md).
+- **Tailscale** relie le poste et le Pi. Les services privés s'adressent par leur nom MagicDNS, jamais par `raspberrypi.local`.
+- **Pas de Docker** sur le poste à ce jour.
 
 ## Comment tenir ce fichier
 
