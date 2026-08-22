@@ -39,13 +39,14 @@ Le worker classe la collection « Non trié » toutes les 15 min (Claude Haiku, 
 
 - **Spike OpenClaw** — une demi-journée, **avant** le lot 3 ([#44](https://github.com/slucky31/LoreAI/issues/44)). C'est le premier lot qui construit une surface que cet outil pourrait déjà fournir.
 - **Cache de prompt** ([#34](https://github.com/slucky31/LoreAI/issues/34)) — 30 min de mesure, à faire au lot 4. A priori sans effet au volume actuel, décisif au backfill.
-- **Docker sur le Shadow PC** — `wsl --install -d Ubuntu` répond en 5 min. Si la virtualisation imbriquée passe, Docker Desktop et Testcontainers suivent ; sinon on bascule sur une base `loreai_dev` (sur le Pi, via Tailscale) ou un PostgreSQL natif Windows, avec isolation par base jetable par exécution. **C'est le préalable à la PR 1 du lot 0.**
+- ~~**Docker sur le poste de travail**~~ — **tranché.** Le Shadow PC ne peut pas faire tourner Docker (`HCS_E_HYPERV_NOT_INSTALLED` : pas de virtualisation imbriquée). Le développement se fait donc depuis un environnement qui en dispose, et les tests utilisent `Testcontainers.PostgreSql`.
 
 ## Environnement, à ne pas re-découvrir
 
-- **Poste de travail : un Shadow PC** (Windows hébergé dans le cloud), **pas sur le LAN domestique**. C'est ce qui a invalidé la formulation d'origine de D2 — voir [ADR 0010](adr/0010-topologie-reseau-tailscale.md).
-- **Tailscale** relie le poste et le Pi. Les services privés s'adressent par leur nom MagicDNS, jamais par `raspberrypi.local`.
-- **Pas de Docker** sur le poste à ce jour.
+- **Deux postes.** Un **Shadow PC** (Windows hébergé dans le cloud) et un second environnement disposant de Docker. Aucun des deux n'est supposé être sur le LAN domestique — c'est ce constat qui a invalidé la formulation d'origine de D2, voir [ADR 0010](adr/0010-topologie-reseau-tailscale.md).
+- **Le développement et les tests se font depuis l'environnement doté de Docker**, puisque `Testcontainers.PostgreSql` l'exige. Le Shadow reste utilisable pour le reste : lecture, rédaction, `git`, appels d'API.
+- **Le Shadow ne pourra jamais exécuter la suite de tests** : sa plateforme n'expose pas la virtualisation imbriquée (`HCS_E_HYPERV_NOT_INSTALLED`), donc ni WSL2, ni Hyper-V, ni Docker Desktop. Inutile de réessayer.
+- **Tailscale** relie les postes et le Pi. Les services privés s'adressent par leur nom MagicDNS, jamais par `raspberrypi.local`. ⚠️ À vérifier depuis le nouveau poste : qu'il soit bien sur le tailnet.
 
 ## Comment tenir ce fichier
 

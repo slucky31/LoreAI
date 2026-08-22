@@ -24,7 +24,7 @@ Ces points sont tranchés. Ils contraignent tout le reste du document.
 | D1 | **LoreAI devient un hub multi-sources.** Raindrop n'est plus la source de vérité unique : newsletters Gmail et flux RSS deviennent des sources de premier rang. | Rouvre l'[ADR 0001](adr/0001-architecture-generale.md). Le modèle de données doit être générique **dès le lot 0** (voir ci-dessous). |
 | D2 | **Le serveur MCP reste sur un réseau privé strict — LAN _ou_ tailnet.** Jamais d'exposition publique : aucune redirection de port, aucun DNS public, Tailscale Funnel proscrit. | Corrigée par l'[ADR 0010](adr/0010-topologie-reseau-tailscale.md) : la formulation d'origine (« LAN strict, pas de tunnel ») rendait le MCP inaccessible depuis le poste de travail réel, qui est un PC cloud. Écarte toujours la migration vers une base **hébergée** (voir « Neon ») : la persistance reste chez toi. Ne dit rien sur le moteur retenu — voir D7. |
 | D3 | **L'email disparaît complètement.** Le digest quotidien n'apporte rien (« liste des articles importés »), et aucun autre canal mail ne le remplace. | Rouvre l'[ADR 0005](adr/0005-canaux-notification.md). Supprime MailKit, `EmailNotifier`, `IDigestNotifier`, `DigestNotificationJob`, `EmailOptions` et la colonne `EmailDigestSentAtUtc`. **Tous les livrables périodiques doivent trouver un autre canal** — voir « Le Markdown devient le format de restitution ». |
-| D4 | **Le vault Obsidian est local au PC** (Obsidian Sync / iCloud / Dropbox) et n'est **pas** accessible depuis le Pi. | Aucune écriture Obsidian côté serveur n'est possible. Le pont doit être **tiré depuis le PC**, ce que le MCP en LAN permet nativement. |
+| D4 | **Le vault Obsidian est local au PC** (Obsidian Sync / iCloud / Dropbox) et n'est **pas** accessible depuis le Pi. | Aucune écriture Obsidian côté serveur n'est possible. Le pont doit être **tiré depuis le PC**, ce que le MCP sur réseau privé permet nativement. |
 | D5 | La récupération du contenu réel des articles est **retenue**. | Sans elle, l'axe synthèse reste superficiel, et les newsletters sont inexploitables. |
 | D6 | Le choix du modèle pour les synthèses reste **ouvert** ; seul le point d'extension est prévu (`Classifier__SummaryModel`). | Voir « Coût LLM » dans les arbitrages : ce n'est pas le facteur limitant. |
 | D7 | **La persistance passe sur PostgreSQL auto-hébergé sur le Pi**, sur une **instance mutualisée** avec les autres projets de la machine. | Remplace l'[ADR 0002](adr/0002-persistance-sqlite-embarquee.md) → [ADR 0009](adr/0009-postgresql-mutualise-sur-le-pi.md), déjà écrit. Absorbé **dans le lot 0**, avec le modèle multi-sources : les deux réécrivent le schéma. Supprime la vérification FTS5, la contrainte « un seul writer », et la question ouverte des embeddings. Coûte la propriété « tests sans dépendance ». |
@@ -78,7 +78,7 @@ Ce que ça retire de la roadmap :
 
 Ce que ça coûte, et qu'il faut regarder en face :
 
-- **`dotnet test` exigera Docker.** La persistance est aujourd'hui testée sur un fichier SQLite temporaire, sans rien installer. Il faudra `Testcontainers.PostgreSql` en local et un service `postgres` en CI. C'est la contrepartie la plus quotidienne de la décision.
+- **`dotnet test` exigera Docker.** La persistance est aujourd'hui testée sur un fichier SQLite temporaire, sans rien installer. Ce sera `Testcontainers.PostgreSql` en local et un service `postgres` en CI. Contrepartie assumée — et elle contraint la machine de développement, qui doit disposer de Docker.
 - **La sauvegarde n'est plus une copie de fichier** mais un `pg_dump` planifié — à mettre en place *avant* de supprimer le `.db`.
 - **L'instance n'appartient pas à LoreAI** : stack Compose séparée, réseau Docker externe, pas de `depends_on`. Le worker doit démarrer et réessayer si la base n'est pas encore là, au lieu de tomber.
 
@@ -240,7 +240,7 @@ C'est de loin le lot le plus lourd de la roadmap. Il est **découpable en trois 
 - Créer la base `loreai`, son rôle propriétaire, et le rôle `loreai_ro` en lecture seule destiné au MCP du lot 3.
 - Remplacer `Microsoft.Data.Sqlite` par `Npgsql` dans `Infrastructure` ; `SqliteConnectionFactory` cède la place au pooling natif de Npgsql. **Dapper ne bouge pas** (ADR 0006) : `@param` est identique, et `INSERT … ON CONFLICT DO UPDATE` — la construction centrale d'`ArticleRepository` — est de la syntaxe PostgreSQL d'origine.
 - Le worker doit traiter l'indisponibilité de la base comme une panne transitoire — journalisée, non fatale — au même titre que l'API Raindrop.
-- Adapter les tests de persistance (`Testcontainers.PostgreSql` ou service CI) et le workflow GitHub Actions.
+- Adapter les tests de persistance (`Testcontainers.PostgreSql`) et ajouter le service `postgres` au workflow GitHub Actions.
 - Mettre en place la sauvegarde `pg_dump` planifiée **avant** de supprimer le `.db`.
 
 **Fondations applicatives**
@@ -464,7 +464,7 @@ Recommandation : **un spike d'une demi-journée avant d'attaquer le lot 3**, pas
 | **Écriture hors « Non trié »** (N1 avec tag, L5) | Invariant historique du projet. Chaque écriture hors périmètre exige une décision explicite et son propre flag, jamais un effet de bord |
 | **Indisponibilité de la base** — nouveau risque introduit par D7 : un fichier SQLite n'a pas d'état « injoignable », une instance PostgreSQL si | Le worker traite la panne de base comme transitoire (journalisée, non fatale), au même titre que l'API Raindrop. Pas de `depends_on` vers une instance qu'il ne possède pas : il démarre et réessaie |
 | **La sauvegarde n'est plus une copie de fichier** (D7) | `pg_dump` planifié, mis en place **avant** la suppression du `.db`. C'est l'administration que l'ADR 0002 voulait éviter : mutualisée, mais réelle |
-| **`dotnet test` exige désormais Docker** (D7) | Contrepartie assumée. `Testcontainers.PostgreSql` en local, service `postgres` en CI. À trancher au lot 0 |
+| **`dotnet test` exige désormais Docker** (D7) | Tranché : `Testcontainers.PostgreSql` en local, service `postgres` en CI. Contraint la machine de développement — le Shadow PC en est exclu, faute de virtualisation imbriquée ([ADR 0009](adr/0009-postgresql-mutualise-sur-le-pi.md)) |
 | **Montées de version PostgreSQL transverses** — l'instance est partagée, plus aucun projet ne décide seul | Version majeure épinglée, mise à jour traitée comme une opération de la machine et non de LoreAI |
 | **Volume sur le Pi** (lot 1 : milliers d'items ; lot 4 : contenu HTML ; phase 2 : trois sources) | Pagination, curseur reprenable, `ContentText` tronqué, surveiller la taille de la base — et l'empreinte mémoire de l'instance, à répartir entre tous ses locataires |
 | **Coût LLM multiplié** (lots 4, 5 et 9) | S6 est livré dès le lot 2 : on mesure *avant* de dépenser. Backfill par lots, jamais d'un bloc. Plafond dur sur la recherche web |
@@ -475,11 +475,10 @@ Recommandation : **un spike d'une demi-journée avant d'attaquer le lot 3**, pas
 
 ## Questions ouvertes
 
-- ~~**« Shadow »**~~ : **résolu** — il s'agit du Shadow PC, la machine de développement (Windows hébergé dans le cloud). C'est ce constat qui a produit l'[ADR 0010](adr/0010-topologie-reseau-tailscale.md). **« Hermes »** reste non identifié.
-- **Docker sur le poste de travail** : indisponible aujourd'hui, et la virtualisation imbriquée du Shadow n'est pas vérifiée. Détermine la stratégie de test PostgreSQL — test décisif : `wsl --install -d Ubuntu`.
+- ~~**« Shadow »**~~ : **résolu** — il s'agit du Shadow PC, un des postes de travail (Windows hébergé dans le cloud). C'est ce constat qui a produit l'[ADR 0010](adr/0010-topologie-reseau-tailscale.md). **« Hermes »** reste non identifié.
 - **Abonnement Claude en mode headless** : faisabilité technique établie, conditions d'usage à vérifier. Enjeu financier faible (quelques euros/mois).
 - **Unité d'ingestion d'une newsletter** : le mail, ou chaque lien qu'il contient ? Recommandation ci-dessus (le mail), à confirmer à l'usage.
 - **Embeddings pour S5** : seulement si la recherche plein texte s'avère insuffisante. Depuis D7 ce n'est plus une dépendance à ajouter (`pgvector` est là), mais le coût récurrent de génération des vecteurs reste, lui, entier.
-- **Stratégie de test de la persistance** (suite de D7) : `Testcontainers.PostgreSql` — plus fidèle, mais Docker requis et démarrage plus lent — ou un service `postgres` partagé par toute la session de test ? À trancher au lot 0.
+- ~~**Stratégie de test de la persistance**~~ : **résolu** — `Testcontainers.PostgreSql` en local, service `postgres` en CI ([ADR 0009](adr/0009-postgresql-mutualise-sur-le-pi.md)). Impose une machine de développement dotée de Docker.
 - **Reprise automatique sur conteneur `unhealthy`** (suite de #35) : ajouter un conteneur `autoheal`, ou s'en tenir à la visibilité Portainer ? Dépend de la fréquence réelle des blocages, inconnue tant que `CycleRuns` n'existe pas.
 - **Inversion de l'ordre du prompt** (préalable à #34) : compatible avec la défense anti-injection actuelle, mais à faire délibérément et avec un test qui verrouille la nouvelle structure.
