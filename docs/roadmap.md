@@ -22,13 +22,16 @@ Ces points sont tranchés. Ils contraignent tout le reste du document.
 | # | Décision | Conséquence |
 |---|---|---|
 | D1 | **LoreAI devient un hub multi-sources.** Raindrop n'est plus la source de vérité unique : newsletters Gmail et flux RSS deviennent des sources de premier rang. | Rouvre l'[ADR 0001](adr/0001-architecture-generale.md). Le modèle de données doit être générique **dès le lot 0** (voir ci-dessous). |
-| D2 | **Le serveur MCP reste strictement en LAN.** Jamais exposé sur Internet, pas de tunnel, pas d'accès nomade. | Écarte définitivement la migration vers une base hébergée (voir « Neon » dans les arbitrages). SQLite sur le Pi reste le bon choix, l'[ADR 0002](adr/0002-persistance-sqlite-embarquee.md) tient. |
+| D2 | **Le serveur MCP reste strictement en LAN.** Jamais exposé sur Internet, pas de tunnel, pas d'accès nomade. | Écarte définitivement la migration vers une base **hébergée** (voir « Neon » dans les arbitrages) : la persistance reste chez toi. Ne dit rien sur le moteur retenu — voir D7. |
 | D3 | **L'email disparaît complètement.** Le digest quotidien n'apporte rien (« liste des articles importés »), et aucun autre canal mail ne le remplace. | Rouvre l'[ADR 0005](adr/0005-canaux-notification.md). Supprime MailKit, `EmailNotifier`, `IDigestNotifier`, `DigestNotificationJob`, `EmailOptions` et la colonne `EmailDigestSentAtUtc`. **Tous les livrables périodiques doivent trouver un autre canal** — voir « Le Markdown devient le format de restitution ». |
 | D4 | **Le vault Obsidian est local au PC** (Obsidian Sync / iCloud / Dropbox) et n'est **pas** accessible depuis le Pi. | Aucune écriture Obsidian côté serveur n'est possible. Le pont doit être **tiré depuis le PC**, ce que le MCP en LAN permet nativement. |
 | D5 | La récupération du contenu réel des articles est **retenue**. | Sans elle, l'axe synthèse reste superficiel, et les newsletters sont inexploitables. |
 | D6 | Le choix du modèle pour les synthèses reste **ouvert** ; seul le point d'extension est prévu (`Classifier__SummaryModel`). | Voir « Coût LLM » dans les arbitrages : ce n'est pas le facteur limitant. |
+| D7 | **La persistance passe sur PostgreSQL auto-hébergé sur le Pi**, sur une **instance mutualisée** avec les autres projets de la machine. | Remplace l'[ADR 0002](adr/0002-persistance-sqlite-embarquee.md) → [ADR 0009](adr/0009-postgresql-mutualise-sur-le-pi.md), déjà écrit. Absorbé **dans le lot 0**, avec le modèle multi-sources : les deux réécrivent le schéma. Supprime la vérification FTS5, la contrainte « un seul writer », et la question ouverte des embeddings. Coûte la propriété « tests sans dépendance ». |
 
-## Deux prérequis non négociables
+## Trois prérequis non négociables
+
+Ils partagent la même logique : **tout ce qui touche au schéma doit être fait avant la première indexation de masse.** Le lot 1 charge des milliers d'items ; chaque changement structurel reporté après lui se paie en migration de données.
 
 ### 1. Le corpus est presque vide
 
@@ -54,7 +57,30 @@ Le modèle générique doit donc exister **avant** la première indexation de ma
 - La classification devient source-agnostique : `IClassifier.ClassifyAsync` prend un `Item`, pas un `RaindropItem`.
 - Le write-back reste **spécifique à Raindrop** : on ne réécrit ni dans Gmail ni dans un flux RSS. L'invariant « on ne touche jamais hors Non trié » ne disparaît pas, il devient un invariant de *l'adaptateur Raindrop* plutôt qu'un invariant du projet.
 
-C'est la partie la plus structurante de toute la roadmap, et la seule qui coûte plus cher si on la reporte.
+C'est la partie la plus structurante de toute la roadmap, et celle qui coûte le plus cher si on la reporte.
+
+### 3. Le passage à PostgreSQL doit être dans le même lot
+
+Conséquence de **D7**, détaillée dans l'[ADR 0009](adr/0009-postgresql-mutualise-sur-le-pi.md).
+
+Le raisonnement est le même qu'au point 2, et les deux chantiers doivent être menés **ensemble** : ils réécrivent tous deux le schéma. Les enchaîner reviendrait à écrire deux fois le runner de migrations, puis à migrer deux fois les données.
+
+Ce que ça retire de la roadmap :
+
+| Élément | Devient |
+|---|---|
+| Vérification de la disponibilité de FTS5 (lot 0) | Sans objet — `to_tsvector('french', …)` est natif, avec un vrai dictionnaire et de la racinisation, là où FTS5 n'offre qu'un tokenizer sans stemming |
+| Table virtuelle `ItemsFts` + triggers (Q2) | Colonne `tsvector` générée + index GIN |
+| `Mode=ReadOnly` + montage `:ro` pour le MCP (lot 3) | Un rôle `loreai_ro` avec `GRANT SELECT` — un seul garde-fou, au bon endroit |
+| « Un seul writer à la fois » (ADR 0002) | Contrainte levée, ce qui débloque les trois ingéreurs concurrents de la phase 2 |
+| Question ouverte des embeddings (S5) | `pgvector`, disponible sans dépendance supplémentaire — sans obligation de s'en servir |
+| `json_extract` sur du texte pour le bloc `usage` (S6) | `jsonb` indexable |
+
+Ce que ça coûte, et qu'il faut regarder en face :
+
+- **`dotnet test` exigera Docker.** La persistance est aujourd'hui testée sur un fichier SQLite temporaire, sans rien installer. Il faudra `Testcontainers.PostgreSql` en local et un service `postgres` en CI. C'est la contrepartie la plus quotidienne de la décision.
+- **La sauvegarde n'est plus une copie de fichier** mais un `pg_dump` planifié — à mettre en place *avant* de supprimer le `.db`.
+- **L'instance n'appartient pas à LoreAI** : stack Compose séparée, réseau Docker externe, pas de `depends_on`. Le worker doit démarrer et réessayer si la base n'est pas encore là, au lieu de tomber.
 
 ## Carte des scénarios
 
@@ -88,8 +114,8 @@ C'est la partie la plus structurante de toute la roadmap, et la seule qui coûte
 | S2 | **Résumé par article** — points clés + « pourquoi ça t'intéresse » | 3 | 2 | Un champ `summary` ajouté au tool `classify` existant coûte moins cher qu'un second appel |
 | S3 | **Tendances et signaux faibles** — « 7 articles sur MCP ce mois-ci », domaines dominants, évolution des thèmes | 3 | 1 | **Pur SQL, aucun LLM.** Meilleur ratio valeur/effort de la roadmap |
 | S4 | **Revue thématique périodique** — « ce mois-ci en .NET », narratif généré par Claude | 3 | 2 | Le livrable phare de l'axe. Nouveau job Coravel mensuel → **fichier Markdown** (plus de mail, cf. D3) |
-| S5 | **Articles liés** — « recoupe X que tu avais sauvé en mars » | 2 | 2 | FTS5 d'abord (gratuit, hors ligne) ; embeddings seulement si insuffisant |
-| S6 | **Coût et consommation LLM** | 2 | 1 | Exploitable **rétroactivement** : `ClassificationRawResponse` stocke la réponse Anthropic entière, bloc `usage` compris → `json_extract` suffit. Valeur relevée à 2 : c'est le garde-fou du budget de 10 €/mois |
+| S5 | **Articles liés** — « recoupe X que tu avais sauvé en mars » | 2 | 2 | Recherche plein texte d'abord (gratuite, hors ligne) ; `pgvector` seulement si insuffisant — disponible sans dépendance supplémentaire depuis D7 |
+| S6 | **Coût et consommation LLM** | 2 | 1 | Exploitable **rétroactivement** : `ClassificationRawResponse` stocke la réponse Anthropic entière, bloc `usage` compris → une requête sur la colonne `jsonb` suffit. Valeur relevée à 2 : c'est le garde-fou du budget de 10 €/mois |
 | S7 | **Base d'outils** — table dédiée + projection Markdown vers Obsidian | 3 | 2 | Voir « Le pont Obsidian » ci-dessous. La source de vérité reste LoreAI ; Obsidian n'est qu'une projection |
 | S8 | **Export Markdown du corpus** — un `.md` par article, frontmatter + résumé | 2 | 1 | Même mécanique que S7. Alimente un vrai second cerveau |
 
@@ -109,7 +135,7 @@ C'est la partie la plus structurante de toute la roadmap, et la seule qui coûte
 | # | Scénario | V | E | Notes |
 |---|---|---|---|---|
 | Q1 | **Serveur MCP en lecture seule** — `search_items`, `get_item`, `list_recent`, `stats`, `find_similar`, `reading_queue`, `list_tools` | 3 | 2 | Sert les quatre axes d'un coup. Aucune interface à écrire : Claude Code devient le front. **Devient le canal principal** maintenant que le mail disparaît (D3) |
-| Q2 | **Recherche plein texte FTS5** | 3 | 1 | Table virtuelle + triggers de synchronisation. Socle de Q1 et S5 |
+| Q2 | **Recherche plein texte** | 3 | 1 | Colonne `tsvector` générée (`to_tsvector('french', …)`) + index GIN. Socle de Q1 et S5 |
 | Q3 | **Outils MCP en écriture** — « marque comme lu », « range dans X » | 2 | 2 | Après Q1, et seulement si l'usage le justifie |
 
 ### Axe transverse « Opérer » (issues ouvertes)
@@ -187,7 +213,7 @@ Bénéfice collatéral : disparition de MailKit, de la configuration SMTP, et d'
 
 **D4** pose la contrainte : le Pi ne voit pas le vault. Toute écriture doit donc partir du PC. Le MCP en LAN strict (**D2**) est précisément le bon outil pour ça — le PC est sur le LAN.
 
-**Le sens de la synchro est descendant, comme demandé** : la source de vérité centralisée et gratuite, c'est LoreAI lui-même (SQLite sur le Pi). Pas besoin d'introduire Notion, Airtable ou un service tiers : la base existe déjà, elle est gratuite, elle est chez toi, et le MCP l'expose.
+**Le sens de la synchro est descendant, comme demandé** : la source de vérité centralisée et gratuite, c'est LoreAI lui-même (PostgreSQL sur le Pi, cf. D7). Pas besoin d'introduire Notion, Airtable ou un service tiers : la base existe déjà, elle est gratuite, elle est chez toi, et le MCP l'expose.
 
 Deux variantes, à prendre dans cet ordre :
 
@@ -202,24 +228,33 @@ Chaque lot est livrable indépendamment. Deux phases : exploiter ce qu'on a, pui
 
 ### Phase 1 — Exploiter l'existant
 
-#### Lot 0 — Fondations techniques *(élargi par D1)*
+#### Lot 0 — Fondations techniques *(élargi par D1 et D7)*
 
-Aucune valeur visible, mais sans lui chaque lot suivant rejoue la même plomberie — et sans le volet multi-sources, chaque lot suivant devra être migré.
+Aucune valeur visible, mais sans lui chaque lot suivant rejoue la même plomberie — et sans les volets multi-sources et PostgreSQL, chaque lot suivant devra être migré.
 
-- **Runner de migrations.** Il n'existe aujourd'hui qu'un seul script (`0001_InitialSchema.sql`, ressource embarquée rejouée intégralement au démarrage) et **aucun runner** : la table `SchemaVersion` existe mais personne ne la lit. Lister les ressources `Migrations/NNNN_*.sql`, comparer à `SchemaVersion`, appliquer dans une transaction.
+C'est de loin le lot le plus lourd de la roadmap. Il est **découpable en trois PR**, dans cet ordre : bascule PostgreSQL à schéma constant → modèle `Item` générique → journal de cycle et healthcheck.
+
+**Socle PostgreSQL (D7, [ADR 0009](adr/0009-postgresql-mutualise-sur-le-pi.md))**
+
+- Déployer l'**instance mutualisée** : stack Compose distincte de celle de LoreAI, réseau Docker externe partagé, volume sur le SSD, version majeure épinglée, image compatible arm64. LoreAI n'a **pas** de `depends_on` vers elle.
+- Créer la base `loreai`, son rôle propriétaire, et le rôle `loreai_ro` en lecture seule destiné au MCP du lot 3.
+- Remplacer `Microsoft.Data.Sqlite` par `Npgsql` dans `Infrastructure` ; `SqliteConnectionFactory` cède la place au pooling natif de Npgsql. **Dapper ne bouge pas** (ADR 0006) : `@param` est identique, et `INSERT … ON CONFLICT DO UPDATE` — la construction centrale d'`ArticleRepository` — est de la syntaxe PostgreSQL d'origine.
+- Le worker doit traiter l'indisponibilité de la base comme une panne transitoire — journalisée, non fatale — au même titre que l'API Raindrop.
+- Adapter les tests de persistance (`Testcontainers.PostgreSql` ou service CI) et le workflow GitHub Actions.
+- Mettre en place la sauvegarde `pg_dump` planifiée **avant** de supprimer le `.db`.
+
+**Fondations applicatives**
+
+- **Runner de migrations**, écrit directement pour PostgreSQL. Il n'existe aujourd'hui qu'un seul script (`0001_InitialSchema.sql`, ressource embarquée rejouée intégralement au démarrage) et **aucun runner** : la table `SchemaVersion` existe mais personne ne la lit. Lister les ressources `Migrations/NNNN_*.sql`, comparer à `SchemaVersion`, appliquer dans une transaction.
+- **Transposer le schéma** plutôt que le porter à l'identique : `TEXT` horodaté → `timestamptz`, tags JSON sérialisé → `text[]`, réponse brute du modèle → `jsonb`, `INTEGER` booléen → `boolean`. Reprise des données existantes par un script ponctuel, non conservé — le volume est faible.
 - **Modèle `Item` générique + `ISourceIngester`** (voir « prérequis n°2 »). `PollingState` devient une ligne par source. Le `RaindropClient` actuel devient la première implémentation d'`ISourceIngester`, sans changement de comportement.
 - **Élargir `IArticleRepository`.** Le contrat n'expose que cinq méthodes et un seul `SELECT`. Ajouter `GetByIdAsync`, `GetByFilterAsync`, `SearchAsync`, `CountByAsync` — et cesser au passage de jeter `FetchedAtUtc` et `WriteBackStatus`, aujourd'hui lus depuis SQL puis perdus dans `MapToClassifiedArticle`.
 - **Journal de cycle** (table `CycleRuns`, voir plus haut) : prérequis commun de O1 (#31) et O2 (#35). Une ligne par cycle, cycles vides compris. C'est le « vrai signal de vivacité » qui manquait à [F-10](audit/2026-08-01-audit-code.md).
 - **Healthcheck Docker** (O2, #35) : mode `--health-check` de l'application + `HEALTHCHECK` en forme exec dans le `Dockerfile`. Livrable dès que `CycleRuns` existe, indépendamment du reste.
-- **Vérifier la disponibilité de FTS5** avant de bâtir dessus :
-  ```sql
-  SELECT 1 FROM pragma_compile_options WHERE compile_options = 'ENABLE_FTS5';
-  ```
-  Si absent, replier sur `LIKE` + index, ou changer de paquet natif.
 
-Fichiers concernés : `src/LoreAI.Core/Models/`, `src/LoreAI.Core/Interfaces/`, `src/LoreAI.Infrastructure/Persistence/` (`SqliteConnectionFactory.cs`, `ArticleRepository.cs`, `Migrations/`), `src/LoreAI.Infrastructure/Raindrop/`.
+Fichiers concernés : `src/LoreAI.Core/Models/`, `src/LoreAI.Core/Interfaces/`, `src/LoreAI.Infrastructure/Persistence/` (intégralement réécrit), `src/LoreAI.Infrastructure/Raindrop/`, `docker-compose.yml`, `.env.example`, `README.md`, `docs/deploiement-raspberry-pi.md`, `CLAUDE.md`.
 
-⚠️ **ADR 0009 à écrire avant de coder** : le passage multi-sources rouvre l'ADR 0001 bien plus franchement que le serveur MCP ne le faisait.
+⚠️ **ADR 0010 à écrire avant de coder** : le passage multi-sources rouvre l'ADR 0001 bien plus franchement que le serveur MCP ne le faisait. (L'[ADR 0009](adr/0009-postgresql-mutualise-sur-le-pi.md), qui couvre PostgreSQL, est déjà écrit.)
 
 #### Lot 1 — Indexation de la bibliothèque existante
 
@@ -240,7 +275,7 @@ Première valeur visible, et exécution de **D3**.
 - Retirer ensuite `DigestNotificationJob`, `IDigestNotifier`, `EmailNotifier`, `EmailOptions`, `DigestMessageBuilder`, la dépendance MailKit et la colonne `EmailDigestSentAtUtc` (migration `0003_*.sql`).
 - Introduire `MarkdownReportBuilder` (pur, statique) + l'envoi de pièce jointe via le webhook Discord existant.
 - Un `WeeklyInsightsJob` produit le rapport : **N1** doublons · **N2** tags redondants · **N5** collections déséquilibrées · **S3** tendances · **S6** coût LLM.
-- **S6 expose aussi `cache_creation_input_tokens` / `cache_read_input_tokens`** : c'est le même `json_extract` sur le bloc `usage`, et c'est ce qui rendra la décision O3 (#34) factuelle au lot 4.
+- **S6 expose aussi `cache_creation_input_tokens` / `cache_read_input_tokens`** : c'est la même requête `jsonb` sur le bloc `usage`, et c'est ce qui rendra la décision O3 (#34) factuelle au lot 4.
 
 Zéro appel LLM, zéro nouvelle dépendance, et une dépendance en moins. Le seul risque est de perdre le filet « rien ne se perd » qu'assurait le digest exhaustif — c'est un choix assumé (D3), atténué immédiatement par O1 et compensé plus tard par L1.
 
@@ -253,7 +288,12 @@ Nouveau projet `src/LoreAI.Mcp`, SDK C# officiel `ModelContextProtocol` (vérifi
 loreai:            # worker existant, inchangé
 loreai-mcp:        # nouveau
   ports: ["5099:8080"]
-  volumes: ["./data:/data:ro"]
+  environment:     # rôle en lecture seule, pas le rôle propriétaire
+    Postgres__ConnectionString: "Host=...;Database=loreai;Username=loreai_ro;..."
+networks:
+  default:
+    name: pi-postgres   # réseau externe de l'instance mutualisée
+    external: true
 ```
 
 ```jsonc
@@ -264,13 +304,13 @@ loreai-mcp:        # nouveau
     "headers": { "Authorization": "Bearer ..." } } }
 ```
 
-- Sécurité : **LAN uniquement (D2)**, aucune redirection de port sur la box, token bearer obligatoire malgré tout, connexion SQLite en `Mode=ReadOnly` **et** montage `:ro`.
-- Le worker reste le seul writer ([ADR 0002](adr/0002-persistance-sqlite-embarquee.md)) — activer WAL pour que la lecture concurrente ne bloque pas.
+- Sécurité : **LAN uniquement (D2)**, aucune redirection de port sur la box, token bearer obligatoire malgré tout, et surtout **rôle `loreai_ro` avec `GRANT SELECT`** — la lecture seule est garantie par la base, plus par une combinaison de deux réglages sur un fichier.
+- La concurrence lecture/écriture n'est plus un sujet depuis D7 : plus de contrainte « un seul writer », plus de WAL à activer.
 - L'image chiselée n'a pas de shell : c'est une image distincte avec son propre `ENTRYPOINT`, pas un `docker exec`.
-- Inclut **Q2** : table virtuelle `ItemsFts` + triggers.
+- Inclut **Q2** : colonne `tsvector` générée + index GIN.
 - Débloque **L6** immédiatement, sans code supplémentaire.
 
-⚠️ ADR 0010 à écrire : quatrième projet, port ouvert sur le LAN, maintien de `Core` sans dépendance externe.
+⚠️ ADR 0011 à écrire : quatrième projet, port ouvert sur le LAN, maintien de `Core` sans dépendance externe.
 
 #### Lot 4 — Contenu réel et résumés
 
@@ -288,7 +328,7 @@ loreai-mcp:        # nouveau
 #### Lot 5 — Synthèse et projections
 
 - **S4** `MonthlyReviewJob` : regroupe le mois par collection ou tag, un appel LLM par thème, rapport narratif en Markdown poussé sur Discord.
-- **S5** articles liés via FTS5 (déjà en place depuis le lot 3), exposé aussi comme outil MCP `find_similar`.
+- **S5** articles liés via la recherche plein texte (déjà en place depuis le lot 3), exposé aussi comme outil MCP `find_similar`.
 - **S7** base d'outils + projection Markdown, **S8** export corpus. Même `MarkdownReportBuilder` que le lot 2.
 
 #### Lot 6 — Boucle de retour
@@ -326,15 +366,20 @@ Une fois trois sources actives, le même article arrive plusieurs fois. Réutili
 
 ## Arbitrages tranchés
 
-### Neon Postgres gratuit — **écarté**
+### PostgreSQL : **hébergé écarté, auto-hébergé retenu**
 
-Trois raisons, dans l'ordre :
+Deux questions distinctes, longtemps confondues, et qui reçoivent des réponses opposées.
 
-1. **D2 supprime le besoin.** La seule bonne raison de quitter SQLite était de rendre la base accessible depuis l'extérieur. Décision prise : le MCP reste en LAN. Il ne reste aucun bénéfice.
-2. **Le plan gratuit est trop juste.** [0,5 Go de stockage et 100 CU-heures/mois par projet](https://neon.com/faqs/free-plan-limits-and-quotas). Le lot 1 (des milliers d'items) tient, le lot 4 (`ContentText` en clair pour chaque article) probablement pas. Découvrir la limite après avoir migré serait le pire scénario.
-3. **Ça fragilise le worker.** Aujourd'hui une coupure Internet interrompt les appels Raindrop et Anthropic mais la base reste saine et locale. Avec une base distante, le worker ne peut plus rien persister — y compris son propre curseur de polling.
+**Neon et les Postgres hébergés — toujours écartés.** Deux des trois raisons d'origine tiennent intégralement :
 
-L'[ADR 0002](adr/0002-persistance-sqlite-embarquee.md) reste valide. À rouvrir seulement si D2 change.
+1. **Le plan gratuit est trop juste.** [0,5 Go de stockage et 100 CU-heures/mois par projet](https://neon.com/faqs/free-plan-limits-and-quotas). Le lot 1 (des milliers d'items) tient, le lot 4 (`ContentText` en clair pour chaque article) probablement pas. Découvrir la limite après avoir migré serait le pire scénario.
+2. **Ça fragilise le worker.** Aujourd'hui une coupure Internet interrompt les appels Raindrop et Anthropic mais la base reste saine et locale. Avec une base distante, le worker ne peut plus rien persister — **y compris son propre curseur de polling**. C'est exactement ce que l'auto-hébergement préserve.
+
+La troisième raison, en revanche, ne s'applique qu'à l'hébergement : *« D2 supprime le besoin — la seule bonne raison de quitter SQLite était de rendre la base accessible depuis l'extérieur »*. Elle disqualifiait **le cloud**, pas **PostgreSQL**.
+
+**PostgreSQL auto-hébergé sur le Pi — retenu (D7).** Le raisonnement qui maintenait SQLite reposait sur l'argument de l'[ADR 0002](adr/0002-persistance-sqlite-embarquee.md) : éviter un **serveur à administrer**. Cet argument suppose que LoreAI serait la raison d'installer ce serveur. Ce n'est plus le cas : d'autres projets de la machine en ont besoin, et Miniflux l'exige. L'instance existera de toute façon — **le coût d'administration est payé par ailleurs**, et refuser d'en profiter reviendrait à le payer sans contrepartie.
+
+Il faut rester honnête sur ce que ça n'est pas : SQLite ne bloquait rien pour LoreAI seul. Ni volume, ni performance, ni contention. C'est un arbitrage de **mutualisation et d'outillage**, pas une correction de limite technique. Le détail, les alternatives pesées et les contreparties sont dans l'[ADR 0009](adr/0009-postgresql-mutualise-sur-le-pi.md).
 
 ### Coût LLM et autre fournisseur — **pas le sujet, mais à instrumenter**
 
@@ -390,8 +435,8 @@ Il y a deux besoins distincts derrière « migrer Feedly vers Miniflux » :
 
 | Besoin | Réponse |
 |---|---|
-| **Une interface de lecture** pour remplacer Feedly côté humain | Miniflux fait très bien le travail : léger, écrit en Go, tourne sans problème sur un Pi. À noter : il **exige Postgres**, donc un conteneur de plus sur la machine |
-| **Ingérer des flux dans le pipeline** | Ingestion RSS directe dans LoreAI (lot 7). Passer par Miniflux ajouterait un intermédiaire, une base Postgres et une API à interroger pour du contenu qu'on sait parser en une classe |
+| **Une interface de lecture** pour remplacer Feedly côté humain | Miniflux fait très bien le travail : léger, écrit en Go, tourne sans problème sur un Pi. Son prérequis PostgreSQL, autrefois compté comme un coût, est **satisfait d'avance depuis D7** — il lui suffit d'une base de plus sur l'instance mutualisée (vérifier au passage sa version minimale et ses extensions requises) |
+| **Ingérer des flux dans le pipeline** | Ingestion RSS directe dans LoreAI (lot 7). Passer par Miniflux ajouterait un intermédiaire et une API à interroger pour du contenu qu'on sait parser en une classe |
 
 Les deux ne s'excluent pas, et le bon ordre est : **lot 7 d'abord** (le pipeline fonctionne), Miniflux ensuite *si* tu veux l'interface de lecture. Dans ce cas, on lui prend ses flux via son API REST plutôt que de maintenir deux listes d'abonnements.
 
@@ -407,7 +452,7 @@ Recommandation : **un spike d'une demi-journée avant d'attaquer le lot 3**, pas
 
 | Risque | Mitigation |
 |---|---|
-| **ADR 0001 rouvert** par D1 (multi-sources) et par le lot 3 (quatrième projet) | ADR 0009 (multi-sources) et 0010 (MCP) écrits *avant* le code. `Core` reste à zéro dépendance externe : le projet MCP dépend de `Infrastructure`, jamais l'inverse |
+| **ADR 0001 rouvert** par D1 (multi-sources) et par le lot 3 (quatrième projet) | ADR 0010 (multi-sources) et 0011 (MCP) écrits *avant* le code. `Core` reste à zéro dépendance externe : ni `Npgsql` ni le projet MCP ne remontent au-delà d'`Infrastructure` |
 | **Migration de données oubliée** si le multi-sources arrive après le lot 1 | C'est exactement pourquoi C1 est dans le lot 0. Ne pas indexer des milliers d'items sur un schéma qu'on sait devoir changer |
 | **Perte du filet « rien ne se perd »** par la suppression du digest (D3) | O1 (#31) livré **avant** la suppression, pour qu'un cycle en échec reste visible. Compensation complète au lot 6 par L1 |
 | **Échec silencieux du pipeline** : une classification en repli interrompt tout le cycle sans rien appliquer, et ne laisse qu'un `LogWarning` | `CycleRuns` persiste `Outcome` + `FailureReason`, O1 le pousse sur Discord, O2 le rend visible dans Portainer. Aujourd'hui, personne ne le voit |
@@ -415,8 +460,11 @@ Recommandation : **un spike d'une demi-journée avant d'attaquer le lot 3**, pas
 | **Healthcheck qui ne répare rien** (#35) | Compose ne redémarre pas un conteneur `unhealthy` : le healthcheck donne la visibilité Portainer demandée, pas la reprise. Ajouter `autoheal` est une décision distincte |
 | **Cache de prompt inefficace ou contre-productif** (#34) | Seuil de 4 096 tokens sur Haiku 4.5 et préfixe stable à ~900 tokens : mesurer via `usage` avant d'implémenter. Réservé au backfill |
 | **Écriture hors « Non trié »** (N1 avec tag, L5) | Invariant historique du projet. Chaque écriture hors périmètre exige une décision explicite et son propre flag, jamais un effet de bord |
-| **Concurrence SQLite** (le worker écrit, le MCP lit) | L'ADR 0002 pose « un seul writer à la fois ». Activer WAL, MCP en `Mode=ReadOnly` et montage `:ro` |
-| **Volume sur le Pi** (lot 1 : milliers d'items ; lot 4 : contenu HTML ; phase 2 : trois sources) | Pagination, curseur reprenable, `ContentText` tronqué, surveiller la taille du `.db` |
+| **Indisponibilité de la base** — nouveau risque introduit par D7 : un fichier SQLite n'a pas d'état « injoignable », une instance PostgreSQL si | Le worker traite la panne de base comme transitoire (journalisée, non fatale), au même titre que l'API Raindrop. Pas de `depends_on` vers une instance qu'il ne possède pas : il démarre et réessaie |
+| **La sauvegarde n'est plus une copie de fichier** (D7) | `pg_dump` planifié, mis en place **avant** la suppression du `.db`. C'est l'administration que l'ADR 0002 voulait éviter : mutualisée, mais réelle |
+| **`dotnet test` exige désormais Docker** (D7) | Contrepartie assumée. `Testcontainers.PostgreSql` en local, service `postgres` en CI. À trancher au lot 0 |
+| **Montées de version PostgreSQL transverses** — l'instance est partagée, plus aucun projet ne décide seul | Version majeure épinglée, mise à jour traitée comme une opération de la machine et non de LoreAI |
+| **Volume sur le Pi** (lot 1 : milliers d'items ; lot 4 : contenu HTML ; phase 2 : trois sources) | Pagination, curseur reprenable, `ContentText` tronqué, surveiller la taille de la base — et l'empreinte mémoire de l'instance, à répartir entre tous ses locataires |
 | **Coût LLM multiplié** (lots 4, 5 et 9) | S6 est livré dès le lot 2 : on mesure *avant* de dépenser. Backfill par lots, jamais d'un bloc. Plafond dur sur la recherche web |
 | **Explosion du bruit** en phase 2 (une newsletter = 20 liens) | Le mail comme unité d'`Item`, pas chaque lien. C5/lot 10 pour la déduplication |
 | **Secrets Gmail** (refresh token OAuth) | `dotnet user-secrets` en local, variables d'environnement en production, jamais dans le dépôt. Scope strictement `gmail.readonly` |
@@ -428,6 +476,7 @@ Recommandation : **un spike d'une demi-journée avant d'attaquer le lot 3**, pas
 - **« Shadow »** et **« Hermes »** : références non identifiées dans le commentaire de la PR #32. À clarifier avant de pouvoir les évaluer.
 - **Abonnement Claude en mode headless** : faisabilité technique établie, conditions d'usage à vérifier. Enjeu financier faible (quelques euros/mois).
 - **Unité d'ingestion d'une newsletter** : le mail, ou chaque lien qu'il contient ? Recommandation ci-dessus (le mail), à confirmer à l'usage.
-- **Embeddings pour S5** : seulement si FTS5 s'avère insuffisant. Ajouterait une dépendance et un coût récurrent.
+- **Embeddings pour S5** : seulement si la recherche plein texte s'avère insuffisante. Depuis D7 ce n'est plus une dépendance à ajouter (`pgvector` est là), mais le coût récurrent de génération des vecteurs reste, lui, entier.
+- **Stratégie de test de la persistance** (suite de D7) : `Testcontainers.PostgreSql` — plus fidèle, mais Docker requis et démarrage plus lent — ou un service `postgres` partagé par toute la session de test ? À trancher au lot 0.
 - **Reprise automatique sur conteneur `unhealthy`** (suite de #35) : ajouter un conteneur `autoheal`, ou s'en tenir à la visibilité Portainer ? Dépend de la fréquence réelle des blocages, inconnue tant que `CycleRuns` n'existe pas.
 - **Inversion de l'ordre du prompt** (préalable à #34) : compatible avec la défense anti-injection actuelle, mais à faire délibérément et avec un test qui verrouille la nouvelle structure.

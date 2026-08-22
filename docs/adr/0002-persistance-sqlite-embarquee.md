@@ -1,7 +1,7 @@
 # 0002 — Persistance SQLite embarquée
 
 ## Statut
-Acceptée
+Remplacée par l'[ADR 0009](0009-postgresql-mutualise-sur-le-pi.md) — le raisonnement ci-dessous (éviter un **serveur** à administrer) reste juste, mais sa prémisse a changé : une instance PostgreSQL mutualisée existe désormais sur la machine pour d'autres projets, ce qui annule le coût marginal invoqué ici.
 
 ## Contexte
 La contrainte initiale exprimée était « pas de base de données ». L'outil a néanmoins besoin de conserver deux choses entre les cycles d'exécution : l'état de polling (dernier raindrop connu) et le résultat de classification de chaque article, avec des requêtes de regroupement pour le digest (par catégorie/action, articles non encore envoyés).
