@@ -66,7 +66,11 @@ C'est le point structurant, et il conditionne tout le reste.
 
 ### Négatives, et assumées
 
-- **Le suite de tests perd sa propriété « zéro dépendance ».** Aujourd'hui la persistance est testée sur un fichier SQLite temporaire par test, sans rien installer. Avec PostgreSQL il faut soit `Testcontainers.PostgreSql` (donc **Docker requis pour lancer `dotnet test`**, en local comme en CI), soit un service `postgres` dans le workflow GitHub Actions. C'est la contrepartie la plus concrète de cette décision, et elle touche le quotidien de développement. À trancher au moment de la migration du code.
+- **La suite de tests perd sa propriété « zéro dépendance ».** Aujourd'hui la persistance est testée sur un fichier SQLite temporaire par test, sans rien installer. Avec PostgreSQL il faut une vraie base joignable. C'est la contrepartie la plus concrète de cette décision, et elle touche le quotidien de développement.
+
+  **Stratégie retenue : `Testcontainers.PostgreSql` en local, service `postgres` dans le workflow GitHub Actions en CI.** Chaque exécution obtient une base jetable et isolée, ce qui préserve la propriété qui comptait vraiment dans le montage SQLite — des tests indépendants et parallélisables — au prix d'un démarrage plus lent et d'un daemon Docker requis.
+
+  **Contrainte connue, à ne pas re-découvrir :** le Shadow PC ne peut pas exécuter la suite de tests. Sa plateforme n'expose pas la virtualisation imbriquée (`wsl --install` échoue sur `HCS_E_HYPERV_NOT_INSTALLED`), donc ni WSL2, ni Hyper-V, ni Docker Desktop. Le développement se fait depuis un environnement disposant de Docker ; le Shadow reste utilisable pour tout le reste — lecture, rédaction, `git`, appels d'API. Si un jour il devait redevenir le poste principal, il faudrait replier sur un PostgreSQL natif Windows avec isolation par schéma, et non sur Testcontainers.
 - **La sauvegarde n'est plus une copie de fichier.** `/data/loreai.db` disparaît au profit d'un `pg_dump` planifié. C'est précisément l'administration que l'ADR 0002 voulait éviter — mutualisée, mais réelle.
 - **Une panne de l'instance arrête LoreAI**, alors qu'un fichier SQLite n'a pas d'état « indisponible ». Le worker doit traiter l'indisponibilité de la base comme une panne transitoire, journalisée, non fatale — au même titre que l'API Raindrop.
 - **Les montées de version majeures deviennent transverses** : elles ne peuvent plus être décidées projet par projet.
@@ -82,6 +86,6 @@ Ils doivent être faits **dans le même lot que le passage au modèle multi-sour
 3. Remplacer `Microsoft.Data.Sqlite` par `Npgsql` dans `Infrastructure`, et `SqliteConnectionFactory` par son équivalent — idéalement adossé au pooling de connexions natif de Npgsql.
 4. Écrire le runner de migrations directement en PostgreSQL, et transposer `0001_InitialSchema.sql` (`TEXT` horodaté → `timestamptz`, tags JSON → `text[]`, réponse brute → `jsonb`, `INTEGER` booléen → `boolean`).
 5. Reprendre les données existantes. Volume attendu : faible. Un script de transfert ponctuel suffit — il n'a pas vocation à être conservé.
-6. Adapter les tests de persistance (choix Testcontainers ou service CI) et le workflow GitHub Actions.
+6. Adapter les tests de persistance (`Testcontainers.PostgreSql`) et ajouter le service `postgres` au workflow GitHub Actions.
 7. Mettre à jour `README.md`, `.env.example` (`Sqlite__ConnectionString` → `Postgres__ConnectionString`), `docker-compose.yml`, le guide de déploiement Raspberry Pi et `CLAUDE.md`.
 8. Mettre en place la sauvegarde `pg_dump` planifiée **avant** de supprimer le fichier SQLite.
