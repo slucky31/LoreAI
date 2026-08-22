@@ -6,6 +6,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 LoreAI is a personal .NET 10 tool that auto-triages the backlog of the **"Non trié"** ("Unsorted", collection id `-1`) collection in Raindrop.io. Each cycle it learns the user's real collections/tags via the Raindrop API, classifies each new unsorted article with Claude Haiku against that learned taxonomy, and writes the result straight back — no human-in-the-loop validation step. Everything outside "Non trié" is considered already sorted by the user and is never touched.
 
+**Start here: read [`docs/etat-des-lieux.md`](docs/etat-des-lieux.md) first.** It is short and deliberately kept current: which lot is in progress, the next concrete step, what is blocked. Reading it is cheaper and more reliable than re-deriving the state from the repo. Where the project is heading is in [`docs/roadmap.md`](docs/roadmap.md); per-lot tracking lives in GitHub issues #41–#51, grouped under two milestones.
+
 Read `docs/adr/` before making architectural changes — decisions and their rationale are recorded there, not duplicated here. Most relevant: [0007](docs/adr/0007-apprentissage-taxonomie-non-trie.md) (learned taxonomy, why manual validation was rejected), [0001](docs/adr/0001-architecture-generale.md) (why this stays a simple 3-project split, not Clean Architecture/CQRS/MediatR), and [0008](docs/adr/0008-versioning-semver-conventional-commits.md) (SemVer versioning via Conventional Commits).
 
 ## Commands
