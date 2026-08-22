@@ -1,7 +1,7 @@
 # 0006 — Stack technique (librairies)
 
 ## Statut
-Acceptée
+Acceptée — le choix Dapper (premier point de la section Décision) est remplacé par l'[ADR 0011](0011-ef-core-remplace-dapper.md) ; les autres décisions ci-dessous (Coravel, Serilog, résilience HTTP, MailKit, tests, versions centralisées, warnings-as-errors) restent valables.
 
 ## Contexte
 Plusieurs choix de librairies mineures ne changent pas la structure de la solution ni les interfaces de `Core`, seulement les classes concrètes d'`Infrastructure`/`Worker`. Ils sont regroupés dans un seul ADR pour éviter la fragmentation.

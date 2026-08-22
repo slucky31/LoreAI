@@ -238,14 +238,14 @@ C'est de loin le lot le plus lourd de la roadmap. Il est **découpable en trois 
 
 - Déployer l'**instance mutualisée** : stack Compose distincte de celle de LoreAI, réseau Docker externe partagé, volume sur le SSD, version majeure épinglée, image compatible arm64. LoreAI n'a **pas** de `depends_on` vers elle.
 - Créer la base `loreai`, son rôle propriétaire, et le rôle `loreai_ro` en lecture seule destiné au MCP du lot 3.
-- Remplacer `Microsoft.Data.Sqlite` par `Npgsql` dans `Infrastructure` ; `SqliteConnectionFactory` cède la place au pooling natif de Npgsql. **Dapper ne bouge pas** (ADR 0006) : `@param` est identique, et `INSERT … ON CONFLICT DO UPDATE` — la construction centrale d'`ArticleRepository` — est de la syntaxe PostgreSQL d'origine.
+- ~~Remplacer `Microsoft.Data.Sqlite` par `Npgsql` dans `Infrastructure` ; `SqliteConnectionFactory` cède la place au pooling natif de Npgsql. **Dapper ne bouge pas** (ADR 0006)~~ — **revu par l'[ADR 0011](adr/0011-ef-core-remplace-dapper.md)** : EF Core remplace Dapper intégralement (schéma et requêtes), pas seulement le moteur de base. `IDbContextFactory` fournit le pooling natif de Npgsql.
 - Le worker doit traiter l'indisponibilité de la base comme une panne transitoire — journalisée, non fatale — au même titre que l'API Raindrop.
 - Adapter les tests de persistance (`Testcontainers.PostgreSql`) et ajouter le service `postgres` au workflow GitHub Actions.
 - Mettre en place la sauvegarde `pg_dump` planifiée **avant** de supprimer le `.db`.
 
 **Fondations applicatives**
 
-- **Runner de migrations**, écrit directement pour PostgreSQL. Il n'existe aujourd'hui qu'un seul script (`0001_InitialSchema.sql`, ressource embarquée rejouée intégralement au démarrage) et **aucun runner** : la table `SchemaVersion` existe mais personne ne la lit. Lister les ressources `Migrations/NNNN_*.sql`, comparer à `SchemaVersion`, appliquer dans une transaction.
+- ~~**Runner de migrations**, écrit directement pour PostgreSQL~~ — **superseded par l'[ADR 0011](adr/0011-ef-core-remplace-dapper.md)** : EF Core remplace Dapper (pas seulement `Microsoft.Data.Sqlite` par `Npgsql`), et ses migrations génèrent leur propre table de suivi (`__EFMigrationsHistory`) — plus de runner maison ni de `SchemaVersion` à écrire.
 - **Transposer le schéma** plutôt que le porter à l'identique : `TEXT` horodaté → `timestamptz`, tags JSON sérialisé → `text[]`, réponse brute du modèle → `jsonb`, `INTEGER` booléen → `boolean`. Reprise des données existantes par un script ponctuel, non conservé — le volume est faible.
 - **Modèle `Item` générique + `ISourceIngester`** (voir « prérequis n°2 »). `PollingState` devient une ligne par source. Le `RaindropClient` actuel devient la première implémentation d'`ISourceIngester`, sans changement de comportement.
 - **Élargir `IArticleRepository`.** Le contrat n'expose que cinq méthodes et un seul `SELECT`. Ajouter `GetByIdAsync`, `GetByFilterAsync`, `SearchAsync`, `CountByAsync` — et cesser au passage de jeter `FetchedAtUtc` et `WriteBackStatus`, aujourd'hui lus depuis SQL puis perdus dans `MapToClassifiedArticle`.

@@ -41,7 +41,7 @@ C'est le point structurant, et il conditionne tout le reste.
 
 ### Ce qui ne change pas
 
-- **Dapper reste l'accès aux données** (ADR 0006), avec `Npgsql` à la place de `Microsoft.Data.Sqlite`. La syntaxe des paramètres (`@param`) est identique, et `INSERT ... ON CONFLICT DO UPDATE` — la construction centrale d'`ArticleRepository` — est de la syntaxe PostgreSQL d'origine. La réécriture porte sur les types et les fonctions de date, pas sur la forme des requêtes.
+- ~~Dapper reste l'accès aux données~~ — **amendé par l'[ADR 0011](0011-ef-core-remplace-dapper.md)**, décidée après cet ADR : EF Core remplace Dapper intégralement (schéma et requêtes), pas seulement `Npgsql` à la place de `Microsoft.Data.Sqlite`.
 - **Pas d'EF Core, pas de migrations automatiques.** L'ADR 0006 tient : SQL explicite, runner de migrations maison lisant des scripts numérotés.
 - **`Core` reste sans dépendance externe.** `Npgsql` ne remonte pas au-delà d'`Infrastructure`.
 - **Le rythme de sauvegarde reste une contrainte de la machine**, pas de LoreAI — mais LoreAI cesse d'être sauvegardable par simple copie de fichier (voir Conséquences).
@@ -68,7 +68,7 @@ C'est le point structurant, et il conditionne tout le reste.
 
 - **La suite de tests perd sa propriété « zéro dépendance ».** Aujourd'hui la persistance est testée sur un fichier SQLite temporaire par test, sans rien installer. Avec PostgreSQL il faut une vraie base joignable. C'est la contrepartie la plus concrète de cette décision, et elle touche le quotidien de développement.
 
-  **Stratégie retenue : `Testcontainers.PostgreSql` en local, service `postgres` dans le workflow GitHub Actions en CI.** Chaque exécution obtient une base jetable et isolée, ce qui préserve la propriété qui comptait vraiment dans le montage SQLite — des tests indépendants et parallélisables — au prix d'un démarrage plus lent et d'un daemon Docker requis.
+  **Stratégie retenue : `Testcontainers.PostgreSql`, local et CI identiques** (revu par l'[ADR 0011](0011-ef-core-remplace-dapper.md) — la version d'origine de cet ADR prévoyait un service `postgres` natif distinct en CI ; `ubuntu-latest` a déjà Docker, ce qui rend Testcontainers suffisant partout sans mécanisme séparé). Chaque exécution obtient une base jetable et isolée, ce qui préserve la propriété qui comptait vraiment dans le montage SQLite — des tests indépendants et parallélisables — au prix d'un démarrage plus lent et d'un daemon Docker requis.
 
   **Contrainte connue, à ne pas re-découvrir :** le Shadow PC ne peut pas exécuter la suite de tests. Sa plateforme n'expose pas la virtualisation imbriquée (`wsl --install` échoue sur `HCS_E_HYPERV_NOT_INSTALLED`), donc ni WSL2, ni Hyper-V, ni Docker Desktop. Le développement se fait depuis un environnement disposant de Docker ; le Shadow reste utilisable pour tout le reste — lecture, rédaction, `git`, appels d'API. Si un jour il devait redevenir le poste principal, il faudrait replier sur un PostgreSQL natif Windows avec isolation par schéma, et non sur Testcontainers.
 - **La sauvegarde n'est plus une copie de fichier.** `/data/loreai.db` disparaît au profit d'un `pg_dump` planifié. C'est précisément l'administration que l'ADR 0002 voulait éviter — mutualisée, mais réelle.
@@ -83,9 +83,9 @@ Ils doivent être faits **dans le même lot que le passage au modèle multi-sour
 
 1. Déployer l'instance mutualisée (stack Compose dédiée, réseau externe, volume sur le SSD, version majeure épinglée, image compatible arm64).
 2. Créer la base `loreai`, le rôle propriétaire et le rôle `loreai_ro` en lecture seule destiné au MCP.
-3. Remplacer `Microsoft.Data.Sqlite` par `Npgsql` dans `Infrastructure`, et `SqliteConnectionFactory` par son équivalent — idéalement adossé au pooling de connexions natif de Npgsql.
-4. Écrire le runner de migrations directement en PostgreSQL, et transposer `0001_InitialSchema.sql` (`TEXT` horodaté → `timestamptz`, tags JSON → `text[]`, réponse brute → `jsonb`, `INTEGER` booléen → `boolean`).
+3. ~~Remplacer `Microsoft.Data.Sqlite` par `Npgsql`~~ — remplacer Dapper par EF Core (`Npgsql.EntityFrameworkCore.PostgreSQL`) dans `Infrastructure` : voir [ADR 0011](0011-ef-core-remplace-dapper.md). `IDbContextFactory` fournit le pooling de connexions natif de Npgsql.
+4. ~~Écrire le runner de migrations directement en PostgreSQL~~ — superflu : les migrations EF Core (fichiers C# générés) et leur table de suivi `__EFMigrationsHistory` en tiennent lieu (ADR 0011). Transposer `0001_InitialSchema.sql` (`TEXT` horodaté → `timestamptz`, tags JSON → `text[]`, réponse brute → `jsonb`, `INTEGER` booléen → `boolean`) reste vrai, obtenu par les types C# du modèle EF Core plutôt qu'écrit à la main.
 5. Reprendre les données existantes. Volume attendu : faible. Un script de transfert ponctuel suffit — il n'a pas vocation à être conservé.
-6. Adapter les tests de persistance (`Testcontainers.PostgreSql`) et ajouter le service `postgres` au workflow GitHub Actions.
+6. Adapter les tests de persistance (`Testcontainers.PostgreSql`, local et CI identiques — voir [ADR 0011](0011-ef-core-remplace-dapper.md), pas de service `postgres` séparé dans le workflow GitHub Actions).
 7. Mettre à jour `README.md`, `.env.example` (`Sqlite__ConnectionString` → `Postgres__ConnectionString`), `docker-compose.yml`, le guide de déploiement Raspberry Pi et `CLAUDE.md`.
 8. Mettre en place la sauvegarde `pg_dump` planifiée **avant** de supprimer le fichier SQLite.

@@ -8,7 +8,7 @@ LoreAI is a personal .NET 10 tool that auto-triages the backlog of the **"Non tr
 
 **Start here: read [`docs/etat-des-lieux.md`](docs/etat-des-lieux.md) first.** It is short and deliberately kept current: which lot is in progress, the next concrete step, what is blocked. Reading it is cheaper and more reliable than re-deriving the state from the repo. Where the project is heading is in [`docs/roadmap.md`](docs/roadmap.md); per-lot tracking lives in GitHub issues #41–#51, grouped under two milestones.
 
-Read `docs/adr/` before making architectural changes — decisions and their rationale are recorded there, not duplicated here. Most relevant: [0007](docs/adr/0007-apprentissage-taxonomie-non-trie.md) (learned taxonomy, why manual validation was rejected), [0001](docs/adr/0001-architecture-generale.md) (why this stays a simple 3-project split, not Clean Architecture/CQRS/MediatR), and [0008](docs/adr/0008-versioning-semver-conventional-commits.md) (SemVer versioning via Conventional Commits).
+Read `docs/adr/` before making architectural changes — decisions and their rationale are recorded there, not duplicated here. Most relevant: [0007](docs/adr/0007-apprentissage-taxonomie-non-trie.md) (learned taxonomy, why manual validation was rejected), [0001](docs/adr/0001-architecture-generale.md) (why this stays a simple 3-project split, not Clean Architecture/CQRS/MediatR), [0008](docs/adr/0008-versioning-semver-conventional-commits.md) (SemVer versioning via Conventional Commits), [0009](docs/adr/0009-postgresql-mutualise-sur-le-pi.md) (self-hosted shared PostgreSQL instance on the Pi, not SQLite) and [0011](docs/adr/0011-ef-core-remplace-dapper.md) (EF Core replaces Dapper for schema and queries).
 
 ## Commands
 
@@ -24,9 +24,9 @@ Run a single test (xUnit.v3 on Microsoft.Testing.Platform, not `vstest`):
 dotnet test LoreAI.slnx --filter-method "*GetNewRaindropsAsync_StopsAtAlreadyKnownItem*"
 ```
 
-No real API keys are needed for tests: Raindrop/Anthropic/Discord calls are simulated with WireMock.Net (a real local HTTP server), and persistence uses a temp SQLite file per test.
+No real API keys are needed for tests: Raindrop/Anthropic/Discord calls are simulated with WireMock.Net (a real local HTTP server), and persistence uses a disposable PostgreSQL container per test collection (`Testcontainers.PostgreSql`) — **Docker is required to run `dotnet test`** (ADR 0009, ADR 0011).
 
-Local dev config (`appsettings.Development.json`) points at a SQLite file `raindropai.dev.db` in the working directory and logs under `logs/`. Never commit real secrets there — use `dotnet user-secrets` or `.env` (see `.env.example`) instead.
+Local dev config (`appsettings.Development.json`) points at the shared PostgreSQL instance on the Pi (reached via its Tailscale MagicDNS name, ADR 0010) and logs under `logs/`. Never commit real secrets there — use `dotnet user-secrets` or `.env` (see `.env.example`) instead.
 
 Docker deployment target is Raspberry Pi 64-bit (arm64); `docker compose build && docker compose up -d`, built directly on the Pi since the `mcr.microsoft.com/dotnet/*` base images are multi-arch.
 
@@ -34,8 +34,8 @@ Docker deployment target is Raspberry Pi 64-bit (arm64); `docker compose build &
 
 Three-project split, dependency direction strictly `Worker → Infrastructure → Core`:
 
-- **`src/LoreAI.Core`** — models, enums, interfaces only. Zero external dependencies. This is the seam: every cross-cutting concern (Raindrop API, LLM, SQLite, notifications) is an interface here (`IRaindropClient`, `IClassifier`, `IArticleRepository`, `IPollingStateRepository`, `IImmediateNotifier`, `IDigestNotifier`, `INotificationPolicy`) with a single concrete implementation in `Infrastructure`. Swapping a library (e.g. Anthropic → another LLM provider) means writing a new `IClassifier` implementation, nothing else.
-- **`src/LoreAI.Infrastructure`** — concrete implementations, grouped by concern: `Raindrop/` (API client + DTOs), `Classification/` (Anthropic tool-use call + prompt building + response parsing), `Persistence/` (Dapper + `Microsoft.Data.Sqlite`), `Notifications/` (Discord immediate alert, email digest via MailKit).
+- **`src/LoreAI.Core`** — models, enums, interfaces only. Zero external dependencies. This is the seam: every cross-cutting concern (Raindrop API, LLM, PostgreSQL, notifications) is an interface here (`IRaindropClient`, `IClassifier`, `IArticleRepository`, `IPollingStateRepository`, `IImmediateNotifier`, `IDigestNotifier`, `INotificationPolicy`) with a single concrete implementation in `Infrastructure`. Swapping a library (e.g. Anthropic → another LLM provider) means writing a new `IClassifier` implementation, nothing else.
+- **`src/LoreAI.Infrastructure`** — concrete implementations, grouped by concern: `Raindrop/` (API client + DTOs), `Classification/` (Anthropic tool-use call + prompt building + response parsing), `Persistence/` (EF Core + `Npgsql.EntityFrameworkCore.PostgreSQL`, generated migrations), `Notifications/` (Discord immediate alert, email digest via MailKit).
 - **`src/LoreAI.Worker`** — Generic Host that wires everything up in `Program.cs` and runs two Coravel-scheduled jobs (`Services/UnsortedClassificationJob.cs`, `Services/DigestNotificationJob.cs`).
 
 ### Per-cycle flow (`UnsortedClassificationJob`, driven by `Worker__PollingCronExpression`, default every 15 min)

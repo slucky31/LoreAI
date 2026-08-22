@@ -1,5 +1,6 @@
 using System.Globalization;
 using Coravel;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using LoreAI.Core.Interfaces;
 using LoreAI.Core.Services;
@@ -39,7 +40,7 @@ try
     // Validées au démarrage : une configuration incomplète doit arrêter le service tout de suite,
     // pas produire un worker qui tourne et échoue en silence toutes les 15 minutes.
     builder.Services
-        .AddValidatedOptions<SqliteOptions>(builder.Configuration, "Sqlite")
+        .AddValidatedOptions<PostgresOptions>(builder.Configuration, "Postgres")
         .AddValidatedOptions<RaindropApiOptions>(builder.Configuration, "Raindrop")
         .AddValidatedOptions<ClassifierOptions>(builder.Configuration, "Classifier")
         .AddValidatedOptions<DiscordOptions>(builder.Configuration, "Discord")
@@ -47,8 +48,15 @@ try
         .AddValidatedOptions<WorkerOptions>(builder.Configuration, "Worker")
         .AddValidatedOptions<NotificationOptions>(builder.Configuration, "Notification");
 
-    builder.Services.AddSingleton<SqliteConnectionFactory>();
-    builder.Services.AddHostedService<DatabaseInitializer>();
+    // IDbContextFactory plutôt qu'AddDbContext : les repositories restent des singletons (inchangé),
+    // et un DbContext n'est ni thread-safe ni fait pour être partagé sur la durée de vie du host.
+    builder.Services.AddDbContextFactory<LoreAiDbContext>((serviceProvider, options) =>
+    {
+        var postgresOptions = serviceProvider.GetRequiredService<IOptions<PostgresOptions>>().Value;
+        options.UseNpgsql(postgresOptions.ConnectionString);
+    });
+    builder.Services.AddSingleton<PostgresSchemaGuard>();
+    builder.Services.AddHostedService<PostgresSchemaInitializer>();
     builder.Services.AddSingleton<IArticleRepository, ArticleRepository>();
     builder.Services.AddSingleton<IPollingStateRepository, PollingStateRepository>();
     // DefaultNotificationPolicy expose des seuils en paramètres de constructeur ; ils étaient annoncés
@@ -93,6 +101,13 @@ try
     });
 
     host.Run();
+}
+// L'outillage `dotnet ef` (migrations, etc.) construit le host jusqu'à sa configuration puis l'interrompt
+// volontairement ici pour en extraire le DbContext, sans jamais appeler host.Run() — un fonctionnement
+// normal à laisser remonter tel quel, pas un crash à journaliser en fatal.
+catch (HostAbortedException)
+{
+    throw;
 }
 catch (Exception ex)
 {

@@ -9,6 +9,11 @@
 
   <ItemGroup>
     <PackageReference Include="Coravel" />
+    <!-- Outillage design-time pour `dotnet ef` (génération des migrations) : PrivateAssets="all" exclut
+         la dépendance de tout ce qui remonte, y compris de l'image publiée (chiselée, sans besoin d'elle). -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design">
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
     <PackageReference Include="Microsoft.Extensions.Hosting" />
     <PackageReference Include="Microsoft.Extensions.Http.Resilience" />
     <PackageReference Include="Microsoft.Extensions.Options.DataAnnotations" />

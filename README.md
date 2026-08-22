@@ -10,7 +10,7 @@ Voir [docs/adr/](docs/adr/) pour le détail des décisions d'architecture, notam
 
 ```
 src/LoreAI.Core            modèles, enums, interfaces (zéro dépendance externe)
-src/LoreAI.Infrastructure  Raindrop API (raindrops + collections + tags), classification Anthropic, persistance SQLite, notifications
+src/LoreAI.Infrastructure  Raindrop API (raindrops + collections + tags), classification Anthropic, persistance PostgreSQL (EF Core), notifications
 src/LoreAI.Worker          Worker Service (Coravel pour la planification, Serilog pour les logs)
 tests/                         xUnit.v3 + NSubstitute + WireMock.Net
 docs/adr/                      Architecture Decision Records
@@ -23,7 +23,8 @@ L'outil classe et range, mais n'exploite pas encore ce qu'il a accumulé. [docs/
 ## Prérequis
 
 - .NET 10 SDK (dev local)
-- Docker + Docker Compose (déploiement, notamment sur Raspberry Pi 64-bit / arm64)
+- Docker + Docker Compose (déploiement, notamment sur Raspberry Pi 64-bit / arm64 ; requis aussi en dev pour `dotnet test`, cf. section Tests)
+- Un accès réseau à l'instance PostgreSQL mutualisée du Pi (ADR 0009) — base `loreai` et rôle applicatif provisionnés au préalable, voir [docs/deploiement-raspberry-pi.md](docs/deploiement-raspberry-pi.md)
 - Un token API Raindrop.io (App Management Console → Test token)
 - Une clé API Anthropic
 - Un webhook Discord
@@ -43,7 +44,7 @@ dotnet test LoreAI.slnx
 dotnet run --project src/LoreAI.Worker
 ```
 
-En local, `appsettings.Development.json` pointe vers un fichier SQLite `raindropai.dev.db` dans le dossier courant et des logs dans `logs/`.
+En local, `appsettings.Development.json` pointe vers l'instance PostgreSQL mutualisée du Pi (à joindre via son nom MagicDNS Tailscale, ADR 0010) et des logs dans `logs/`.
 
 Le worker **refuse de démarrer** si la configuration est incomplète (token Raindrop, clé Anthropic, webhook Discord, SMTP) et indique précisément le champ fautif — par exemple `DataAnnotation validation failed for 'RaindropApiOptions' members: 'Token'`. Renseignez les valeurs via `dotnet user-secrets` ou `.env` avant de lancer.
 
@@ -63,7 +64,7 @@ docker compose logs -f
 
 Pour épingler une version plutôt que de suivre `latest` : `LOREAI_TAG=0.3.0 docker compose up -d` (ou la variable dans le `.env`).
 
-Le conteneur s'exécute sous l'utilisateur applicatif non-root de l'image .NET (`uid 1654`), à partir d'une image « chiselée » sans shell ni gestionnaire de paquets. Sur un bind mount, c'est la propriété côté hôte qui prime : sans le `chown` ci-dessus, SQLite échoue à créer sa base avec un `Permission denied` sur `/data`. Si vous mettez à jour une installation existante qui tournait en root, appliquez le `chown` sur le dossier `data/` déjà présent.
+Le conteneur s'exécute sous l'utilisateur applicatif non-root de l'image .NET (`uid 1654`), à partir d'une image « chiselée » sans shell ni gestionnaire de paquets. Sur un bind mount, c'est la propriété côté hôte qui prime pour le dossier de logs : sans le `chown` ci-dessus, l'écriture échoue avec un `Permission denied` sur `/data`. Si vous mettez à jour une installation existante qui tournait en root, appliquez le `chown` sur le dossier `data/` déjà présent.
 
 Pour reconstruire l'image localement malgré tout (mise au point) :
 
@@ -71,14 +72,14 @@ Pour reconstruire l'image localement malgré tout (mise au point) :
 docker build -f src/LoreAI.Worker/Dockerfile -t loreai-worker:local .
 ```
 
-Le fichier SQLite (`/data/raindropai.db`) et les logs (`/data/logs/`) sont persistés via le volume `./data`.
+Seuls les logs (`/data/logs/`) sont persistés via le volume `./data` : la base de données vit sur l'instance PostgreSQL mutualisée du Pi (ADR 0009), pas dans ce volume.
 
 ## ⚠️ Premier lancement
 
-Sans état de polling préexistant, l'outil remonte **tout l'historique** de la collection « Non trié » au premier cycle (aucun webhook natif disponible côté API, cf. [ADR 0003](docs/adr/0003-strategie-polling-raindrop.md)). Si elle contient déjà beaucoup d'articles, cela peut être long et générer un volume d'appels LLM important, **et modifier automatiquement un grand nombre de raindrops d'un coup** (tags + déplacements). Pour éviter un traitement massif au premier lancement, insérez manuellement une ligne dans `PollingState` avant de démarrer :
+Sans état de polling préexistant, l'outil remonte **tout l'historique** de la collection « Non trié » au premier cycle (aucun webhook natif disponible côté API, cf. [ADR 0003](docs/adr/0003-strategie-polling-raindrop.md)). Si elle contient déjà beaucoup d'articles, cela peut être long et générer un volume d'appels LLM important, **et modifier automatiquement un grand nombre de raindrops d'un coup** (tags + déplacements). Pour éviter un traitement massif au premier lancement, insérez manuellement une ligne dans `PollingStates` avant de démarrer :
 
 ```sql
-INSERT INTO PollingState (Id, LastRaindropId, LastCreatedUtc, UpdatedAtUtc)
+INSERT INTO "PollingStates" ("Id", "LastRaindropId", "LastCreatedUtc", "UpdatedAtUtc")
 VALUES (1, <id_du_dernier_raindrop_a_ignorer>, '<date_ISO8601_UTC>', '<date_ISO8601_UTC>');
 ```
 
@@ -97,7 +98,7 @@ VALUES (1, <id_du_dernier_raindrop_a_ignorer>, '<date_ISO8601_UTC>', '<date_ISO8
 dotnet test LoreAI.slnx
 ```
 
-Aucune vraie clé nécessaire : les appels Raindrop/Anthropic/Discord sont simulés via WireMock.Net, la base est un fichier SQLite temporaire par test.
+Aucune vraie clé nécessaire : les appels Raindrop/Anthropic/Discord sont simulés via WireMock.Net, la persistance utilise un conteneur PostgreSQL jetable par lot de tests (`Testcontainers.PostgreSql`) — **Docker est requis** pour lancer `dotnet test` (cf. ADR 0009).
 
 ## Vérification manuelle bout-en-bout (avec de vraies clés)
 
@@ -119,8 +120,8 @@ Aucune vraie clé nécessaire : les appels Raindrop/Anthropic/Discord sont simul
    ```
 4. Observer les logs (console + `logs/loreai-*.log`) : nombre de nouveaux articles détectés dans « Non trié », nombre de collections/tags appris, notifications envoyées.
 5. Ajouter un raindrop test dans « Non trié » via l'app Raindrop pendant que le worker tourne, attendre le prochain cycle.
-6. Inspecter `raindropai.dev.db` (créé à la racine du projet en dev) avec DB Browser for SQLite ou `sqlite3` — vérifier les colonnes `SuggestedCollection`/`SuggestedTags`/`RecommendedAction`/`Priority`/`Reason`.
-7. Repasser `WriteBackToRaindrop` à `true` pour valider l'application réelle (tags + déplacement) sur un raindrop de test, puis vérifier dans l'app Raindrop que le résultat correspond à la ligne SQLite.
+6. Inspecter la table `Articles` sur l'instance PostgreSQL (`psql` ou un client graphique) — vérifier les colonnes `SuggestedCollection`/`SuggestedTags`/`RecommendedAction`/`Priority`/`Reason`.
+7. Repasser `WriteBackToRaindrop` à `true` pour valider l'application réelle (tags + déplacement) sur un raindrop de test, puis vérifier dans l'app Raindrop que le résultat correspond à la ligne en base.
 8. Vérifier la réception Discord (si le raindrop test matche le seuil ATester/Haute) et le digest email (regroupement par collection puis action).
 
 ⚠️ Ce test réel consomme de vrais appels à l'API Anthropic (coût minime mais réel) et modifie votre vrai compte Raindrop dès que `WriteBackToRaindrop=true`.

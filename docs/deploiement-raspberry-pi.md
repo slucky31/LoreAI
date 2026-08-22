@@ -24,7 +24,36 @@ sudo docker compose version
 
 Le script officiel installe Docker Engine + le plugin Compose (`docker compose`, sans tiret) sur les architectures arm64.
 
-## 3. Récupérer les secrets
+## 3. Provisionner la base PostgreSQL
+
+L'instance PostgreSQL mutualisée ([ADR 0009](adr/0009-postgresql-mutualise-sur-le-pi.md)) est un composant d'infrastructure de la machine, déployé par sa propre stack Compose — hors de ce guide, qui suppose qu'elle tourne déjà. LoreAI a besoin d'y créer sa propre base et ses propres rôles, une seule fois.
+
+Connectez-vous en tant que superutilisateur de l'instance (`psql`, depuis le Pi ou un poste qui l'atteint) et exécutez :
+
+```sql
+CREATE DATABASE loreai;
+\c loreai
+CREATE ROLE loreai LOGIN PASSWORD '<mot_de_passe_a_choisir>';
+GRANT ALL ON SCHEMA public TO loreai;
+CREATE ROLE loreai_ro LOGIN PASSWORD '<mot_de_passe_a_choisir>';
+GRANT CONNECT ON DATABASE loreai TO loreai_ro;
+GRANT USAGE ON SCHEMA public TO loreai_ro;
+-- Les migrations EF Core (lancees par le worker, role "loreai") creent les tables apres coup :
+-- ALTER DEFAULT PRIVILEGES garantit que loreai_ro les voit sans regrant manuel a chaque migration.
+ALTER DEFAULT PRIVILEGES FOR ROLE loreai IN SCHEMA public GRANT SELECT ON TABLES TO loreai_ro;
+```
+
+`loreai_ro` (lecture seule) n'est pas utilisé avant le lot 3 (serveur MCP) mais créé maintenant pour ne pas rejouer cette étape plus tard. Le mot de passe du rôle `loreai` va dans `Postgres__ConnectionString`, à l'étape 5.
+
+Vérifiez ensuite que LoreAI pourra rejoindre le réseau Docker externe de l'instance (`pi-postgres` par défaut, voir `docker-compose.yml`) :
+
+```bash
+sudo docker network ls | grep pi-postgres
+```
+
+S'il n'existe pas encore sous ce nom, créez-le (`sudo docker network create pi-postgres`) et rattachez-y le conteneur Postgres de la stack mutualisée, ou ajustez le nom dans `docker-compose.yml` pour qu'il corresponde au réseau réel.
+
+## 4. Récupérer les secrets
 
 | Secret | Où le récupérer |
 |---|---|
@@ -55,7 +84,7 @@ Si le lien du mot de passe d'application ne s'affiche pas : la 2FA n'est probabl
 
 Une erreur `535-5.7.8 Username and Password not accepted` dans les logs indique presque toujours un mot de passe d'application mal copié ou la 2FA non activée.
 
-## 4. Récupérer les fichiers de déploiement
+## 5. Récupérer les fichiers de déploiement
 
 Pas besoin de cloner le repo entier : seuls `docker-compose.yml` et `.env` sont nécessaires.
 
@@ -66,28 +95,28 @@ curl -O https://raw.githubusercontent.com/slucky31/LoreAI/main/.env.example
 cp .env.example .env
 ```
 
-## 5. Configurer le `.env`
+## 6. Configurer le `.env`
 
 ```bash
 nano .env
 ```
 
-Renseigner les secrets récupérés à l'étape 3. Points d'attention :
+Renseigner les secrets récupérés à l'étape 4, et la chaîne de connexion Postgres provisionnée à l'étape 3 (`Postgres__ConnectionString`). Points d'attention :
 
 - `Raindrop__CollectionId` doit rester à `-1` (« Non trié ») — `0` viserait toute la bibliothèque, y compris ce qui est déjà rangé.
 - Laisser `Worker__WriteBackToRaindrop=false` au premier lancement, pour observer les suggestions dans les logs sans rien modifier dans Raindrop. Repasser à `true` une fois rassuré.
 - `LOREAI_TAG` (optionnel, dans `.env`) permet d'épingler une version précise (ex. `0.3.5`) plutôt que de suivre `latest`.
 
-## 6. Préparer le dossier de données
+## 7. Préparer le dossier de logs
 
 ```bash
 mkdir -p data
 sudo chown -R 1654:1654 data
 ```
 
-Le conteneur tourne en non-root (uid 1654, image « chiselée » sans shell). Sur un bind mount, c'est la propriété côté hôte qui prime : sans ce `chown`, SQLite échoue à créer sa base avec un `Permission denied` sur `/data`.
+Le conteneur tourne en non-root (uid 1654, image « chiselée » sans shell). Sur un bind mount, c'est la propriété côté hôte qui prime : sans ce `chown`, l'écriture des logs échoue avec un `Permission denied` sur `/data`. Ce dossier ne porte plus la base de données depuis la bascule PostgreSQL (ADR 0009) — seulement `logs/`.
 
-## 7. Premier démarrage et limitation du backfill
+## 8. Premier démarrage et limitation du backfill
 
 Sans état de polling préexistant, l'outil remonte **tout l'historique** de « Non trié » dès le premier cycle (pas de webhook natif côté API, cf. [ADR 0003](adr/0003-strategie-polling-raindrop.md)). Si cette collection contient déjà beaucoup d'articles, cela peut déclencher un gros volume d'appels Anthropic et, si `WriteBackToRaindrop=true`, modifier énormément de raindrops d'un coup. Le cycle de polling tourne toutes les 15 min par défaut (`Worker__PollingCronExpression`) : il y a donc une fenêtre pour agir après le tout premier démarrage.
 
@@ -96,16 +125,15 @@ sudo docker compose pull
 sudo docker compose up -d
 ```
 
-Le premier démarrage crée le fichier SQLite (`/data/raindropai.db`, schéma appliqué immédiatement) avant même le premier cycle de polling. Pour repartir d'un point précis plutôt que de tout l'historique, arrêtez le conteneur tout de suite et seedez `PollingState` :
+Le premier démarrage applique les migrations EF Core sur la base `loreai` (schéma créé à ce moment-là) avant même le premier cycle de polling. Pour repartir d'un point précis plutôt que de tout l'historique, arrêtez le conteneur tout de suite et seedez `PollingStates` :
 
 ```bash
 sudo docker compose stop
-sudo apt install -y sqlite3
-sqlite3 data/raindropai.db
+psql "postgresql://loreai:<mot_de_passe>@<hote-postgres>:5432/loreai"
 ```
 
 ```sql
-INSERT INTO PollingState (Id, LastRaindropId, LastCreatedUtc, UpdatedAtUtc)
+INSERT INTO "PollingStates" ("Id", "LastRaindropId", "LastCreatedUtc", "UpdatedAtUtc")
 VALUES (1, <id_du_dernier_raindrop_a_ignorer>, '<date_ISO8601_UTC>', '<date_ISO8601_UTC>');
 ```
 
@@ -116,9 +144,9 @@ sudo docker compose up -d
 sudo docker compose logs -f
 ```
 
-Le fichier SQLite (`/data/raindropai.db`) et les logs (`/data/logs/`) sont persistés via le volume `./data`.
+Seuls les logs (`/data/logs/`) sont persistés via le volume `./data` : la base de données vit sur l'instance PostgreSQL mutualisée (étape 3), pas dans ce volume.
 
-## 8. Mettre à jour une installation existante
+## 9. Mettre à jour une installation existante
 
 ```bash
 cd ~/loreai
@@ -126,13 +154,16 @@ sudo docker compose pull
 sudo docker compose up -d
 ```
 
-## 9. Dépannage
+## 10. Dépannage
 
 **`You must install or update .NET to run this application` dans les logs**
-L'image publiée ciblait une version de framework .NET différente de celle embarquée dans le runtime du conteneur (bug corrigé en v0.3.5 — voir [PR #26](https://github.com/slucky31/LoreAI/pull/26)). Repasser par l'étape 8 pour récupérer une image à jour.
+L'image publiée ciblait une version de framework .NET différente de celle embarquée dans le runtime du conteneur (bug corrigé en v0.3.5 — voir [PR #26](https://github.com/slucky31/LoreAI/pull/26)). Repasser par l'étape 9 pour récupérer une image à jour.
 
 **`Permission denied` sur `/data` au démarrage**
-Le dossier `data/` côté hôte n'appartient pas à l'uid 1654. Refaire l'étape 6 (`sudo chown -R 1654:1654 data`) — nécessaire aussi après mise à jour d'une installation qui tournait auparavant en root.
+Le dossier `data/` côté hôte n'appartient pas à l'uid 1654. Refaire l'étape 7 (`sudo chown -R 1654:1654 data`) — nécessaire aussi après mise à jour d'une installation qui tournait auparavant en root.
+
+**Le worker démarre mais rien ne se passe, logs `LogWarning` répétés sur Postgres injoignable**
+Conforme à l'ADR 0009 (panne transitoire, non fatale) : vérifiez que le réseau Docker externe `pi-postgres` existe et que le conteneur du worker y est bien rattaché (`sudo docker network inspect pi-postgres`), et que `Postgres__ConnectionString` dans `.env` pointe vers le bon hôte/rôle/mot de passe (étape 3).
 
 **Aucune notification Discord / email reçue**
 Vérifier `Discord__WebhookUrl` et les `Email__Smtp*` dans `.env`, puis `sudo docker compose logs -f` pour l'erreur d'envoi exacte.
