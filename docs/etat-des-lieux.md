@@ -15,7 +15,7 @@
 | **Lot en cours** | Aucun. La phase de cadrage vient de se terminer. |
 | **Prochain geste** | Lot 0 ([#41](https://github.com/slucky31/LoreAI/issues/41)), **PR 1** : socle PostgreSQL à schéma fonctionnellement constant. |
 | **Dernière décision** | **D7** — persistance sur PostgreSQL mutualisé auto-hébergé ([ADR 0009](adr/0009-postgresql-mutualise-sur-le-pi.md), remplace l'ADR 0002). |
-| **Bloqué par** | **1.** Le Pi est hors ligne (nœud du tailnet, plus vu depuis 17 jours) — rien n'est joignable. **2.** L'instance PostgreSQL n'est pas encore déployée dessus. **3.** Docker est absent du poste de travail et sa faisabilité n'est pas tranchée. Les trois sont des préalables **manuels**, hors dépôt. |
+| **Bloqué par** | **1.** Le Pi (`mcm8`) est hors du tailnet : **clé de nœud expirée**, pas une panne — la machine tourne probablement. À ré-authentifier (`sudo tailscale up`), puis **désactiver l'expiration de clé**. **2.** L'instance PostgreSQL n'est pas encore déployée dessus. Les deux sont des préalables **manuels**, hors dépôt. |
 
 ## Ce qui tourne aujourd'hui
 
@@ -46,7 +46,9 @@ Le worker classe la collection « Non trié » toutes les 15 min (Claude Haiku, 
 - **Deux postes.** Un **Shadow PC** (Windows hébergé dans le cloud) et un second environnement disposant de Docker. Aucun des deux n'est supposé être sur le LAN domestique — c'est ce constat qui a invalidé la formulation d'origine de D2, voir [ADR 0010](adr/0010-topologie-reseau-tailscale.md).
 - **Le développement et les tests se font depuis l'environnement doté de Docker**, puisque `Testcontainers.PostgreSql` l'exige. Le Shadow reste utilisable pour le reste : lecture, rédaction, `git`, appels d'API.
 - **Le Shadow ne pourra jamais exécuter la suite de tests** : sa plateforme n'expose pas la virtualisation imbriquée (`HCS_E_HYPERV_NOT_INSTALLED`), donc ni WSL2, ni Hyper-V, ni Docker Desktop. Inutile de réessayer.
-- **Tailscale** relie les postes et le Pi. Les services privés s'adressent par leur nom MagicDNS, jamais par `raspberrypi.local`. ⚠️ À vérifier depuis le nouveau poste : qu'il soit bien sur le tailnet.
+- **Tailscale** relie les postes et le Pi. Tailnet `piranha-pollux.ts.net`, le Pi est le nœud **`mcm8`** — donc `mcm8.piranha-pollux.ts.net`. C'est cette adresse que vise le MCP du lot 3, jamais `raspberrypi.local`. Un second nœud Linux, `proxy`, existe (rôle non documenté ici).
+- ⚠️ **Piège vécu, à ne pas repayer** : Tailscale fait expirer les clés de nœud au bout de quelques mois. Le nœud quitte alors le tailnet **sans panne et sans message** — c'est ce qui a rendu `mcm8` et `proxy` invisibles le 2026-08-04. Désactiver l'expiration de clé sur tout nœud serveur, dans la console d'admin.
+- ⚠️ À vérifier depuis le nouveau poste : qu'il soit bien sur le tailnet.
 
 ## Comment tenir ce fichier
 

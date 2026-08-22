@@ -300,12 +300,12 @@ networks:
 // .mcp.json, côté poste de développement (un PC cloud, donc hors LAN — cf. ADR 0010)
 { "loreai": {
     "type": "http",
-    "url": "http://<nom-magicdns-du-pi>:5099/mcp",
+    "url": "http://mcm8.piranha-pollux.ts.net:5099/mcp",
     "headers": { "Authorization": "Bearer ..." } } }
 ```
 
 - Sécurité : **réseau privé strict (D2, [ADR 0010](adr/0010-topologie-reseau-tailscale.md))** — écoute sur l'interface Tailscale, aucune redirection de port sur la box, Funnel proscrit, ACL Tailscale au plus juste. Token bearer obligatoire malgré tout, et surtout **rôle `loreai_ro` avec `GRANT SELECT`** : le réseau limite qui frappe à la porte, il ne remplace pas la serrure.
-- ⚠️ **Prérequis d'exploitation** : le Pi doit être un nœud **en ligne** du tailnet. Sinon le MCP est injoignable depuis le poste de travail.
+- ⚠️ **Prérequis d'exploitation** : le Pi (`mcm8`) doit être un nœud **en ligne** du tailnet, et son **expiration de clé doit être désactivée**. Sans quoi le MCP se coupe tout seul au bout de quelques mois, sans panne ni message — c'est exactement ce qui s'est produit le 2026-08-04.
 - La concurrence lecture/écriture n'est plus un sujet depuis D7 : plus de contrainte « un seul writer », plus de WAL à activer.
 - L'image chiselée n'a pas de shell : c'est une image distincte avec son propre `ENTRYPOINT`, pas un `docker exec`.
 - Inclut **Q2** : colonne `tsvector` générée + index GIN.
@@ -454,7 +454,7 @@ Recommandation : **un spike d'une demi-journée avant d'attaquer le lot 3**, pas
 | Risque | Mitigation |
 |---|---|
 | **ADR 0001 rouvert** par D1 (multi-sources) et par le lot 3 (quatrième projet) | Un ADR par sujet, écrit *avant* le code — sans numéro pré-attribué, ils ont déjà glissé deux fois. `Core` reste à zéro dépendance externe : ni `Npgsql` ni le projet MCP ne remontent au-delà d'`Infrastructure` |
-| **Le Pi hors ligne rend tout injoignable** — poste de travail dans le cloud, Pi à la maison ([ADR 0010](adr/0010-topologie-reseau-tailscale.md)) | Le Pi doit être un nœud en ligne du tailnet : prérequis d'exploitation, au même titre que la disponibilité de la base. Ni les tests ni la CI n'en dépendent |
+| **Le Pi hors ligne rend tout injoignable** — poste de travail dans le cloud, Pi à la maison ([ADR 0010](adr/0010-topologie-reseau-tailscale.md)) | Nœud en ligne **et expiration de clé désactivée** : sans ça, le lien se coupe de lui-même après quelques mois. Prérequis d'exploitation, au même titre que la disponibilité de la base. Ni les tests ni la CI n'en dépendent |
 | **Migration de données oubliée** si le multi-sources arrive après le lot 1 | C'est exactement pourquoi C1 est dans le lot 0. Ne pas indexer des milliers d'items sur un schéma qu'on sait devoir changer |
 | **Perte du filet « rien ne se perd »** par la suppression du digest (D3) | O1 (#31) livré **avant** la suppression, pour qu'un cycle en échec reste visible. Compensation complète au lot 6 par L1 |
 | **Échec silencieux du pipeline** : une classification en repli interrompt tout le cycle sans rien appliquer, et ne laisse qu'un `LogWarning` | `CycleRuns` persiste `Outcome` + `FailureReason`, O1 le pousse sur Discord, O2 le rend visible dans Portainer. Aujourd'hui, personne ne le voit |

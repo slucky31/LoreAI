@@ -26,7 +26,10 @@ Le périmètre d'accès est un **réseau privé**, entendu comme **LAN _ou_ tail
 2. **Les services privés écoutent sur l'interface Tailscale**, et sont adressés par leur nom MagicDNS plutôt que par `raspberrypi.local` ou une IP de LAN — le nom MagicDNS fonctionne depuis n'importe quel nœud du tailnet, à la maison comme depuis le Shadow.
 3. **Le tailnet n'est pas considéré comme une frontière de sécurité suffisante à lui seul.** Le token bearer du serveur MCP reste obligatoire, et le rôle PostgreSQL en lecture seule (`loreai_ro`, cf. [ADR 0009](0009-postgresql-mutualise-sur-le-pi.md)) reste la garantie de non-écriture. Défense en profondeur : le réseau limite qui peut frapper à la porte, il ne remplace pas la serrure.
 4. **Les ACL Tailscale restreignent les accès au strict nécessaire** — quel nœud peut atteindre quel port — plutôt que d'ouvrir tout à tous les nœuds du tailnet.
-5. **Le Pi doit être un nœud en ligne du tailnet.** Ce n'est pas un détail de configuration : c'est un **prérequis d'exploitation**. Au moment d'écrire cet ADR, les deux nœuds Linux du tailnet sont hors ligne depuis 17 jours.
+5. **Le Pi (`mcm8`, soit `mcm8.piranha-pollux.ts.net`) doit être un nœud en ligne du tailnet.** Ce n'est pas un détail de configuration : c'est un **prérequis d'exploitation**.
+6. **L'expiration de clé doit être désactivée sur les nœuds serveurs.** Par défaut, Tailscale fait expirer la clé d'un nœud au bout de plusieurs mois : le nœud quitte alors le tailnet **sans panne, sans message et sans que la machine ne s'arrête**. Pour un serveur toujours allumé, c'est une bombe à retardement silencieuse.
+
+   Ce point n'est pas théorique. Au moment d'écrire cet ADR, `mcm8` et `proxy` étaient hors du tailnet depuis 17 jours, et `tailscale ping` répondait `peer's node key has expired`. Les deux se sont tus à **5 min 36 s d'intervalle** — un écart incompatible avec une coupure de courant, mais exactement ce que produisent deux minuteries d'expiration lancées lors d'une même session d'installation. Les machines n'étaient jamais tombées ; elles étaient devenues invisibles.
 
 ## Alternatives écartées
 
