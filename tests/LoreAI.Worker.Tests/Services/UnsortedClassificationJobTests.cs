@@ -468,6 +468,76 @@ public class UnsortedClassificationJobTests
         Assert.Null(exception);
     }
 
+    // --- Compte-rendu de cycle sur Discord (#31) ------------------------------------------------
+
+    [Fact]
+    public async Task Invoke_NoNewItems_DoesNotSendCycleReport()
+    {
+        var fixture = new JobFixture().WithNewItems();
+
+        await fixture.Build().Invoke();
+
+        await fixture.CycleReportNotifier.DidNotReceive().NotifyCycleCompletedAsync(
+            Arg.Any<CycleRun>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Invoke_RaindropUnavailable_DoesNotSendCycleReport()
+    {
+        var fixture = new JobFixture();
+        fixture.RaindropClient
+            .GetNewItemsAsync(Arg.Any<PollingState>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new HttpRequestException("401 Unauthorized"));
+
+        await fixture.Build().Invoke();
+
+        await fixture.CycleReportNotifier.DidNotReceive().NotifyCycleCompletedAsync(
+            Arg.Any<CycleRun>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Invoke_AllItemsProcessed_SendsCycleReport()
+    {
+        var fixture = new JobFixture()
+            .WithNewItems(CreateItem(1))
+            .WithClassification(CreateClassification(".NET", ["dotnet"]));
+
+        await fixture.Build().Invoke();
+
+        await fixture.CycleReportNotifier.Received(1).NotifyCycleCompletedAsync(
+            Arg.Is<CycleRun>(r => r!.Outcome == CycleOutcome.Ok), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Invoke_FallbackClassification_StillSendsCycleReportWithReason()
+    {
+        var fixture = new JobFixture()
+            .WithNewItems(CreateItem(1), CreateItem(2))
+            .WithClassification(ClassificationResult.Fallback("model", "Classification échouée: 429", "{}"));
+
+        await fixture.Build().Invoke();
+
+        await fixture.CycleReportNotifier.Received(1).NotifyCycleCompletedAsync(
+            Arg.Is<CycleRun>(r => r!.Outcome == CycleOutcome.Interrupted && r.FailureReason != null),
+            Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>Un échec d'envoi du compte-rendu est un détail d'observabilité : jamais fatal au cycle.</summary>
+    [Fact]
+    public async Task Invoke_CycleReportNotifierFails_DoesNotThrow()
+    {
+        var fixture = new JobFixture()
+            .WithNewItems(CreateItem(1))
+            .WithClassification(CreateClassification(".NET", ["dotnet"]));
+        fixture.CycleReportNotifier
+            .NotifyCycleCompletedAsync(Arg.Any<CycleRun>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new HttpRequestException("500"));
+
+        var exception = await Record.ExceptionAsync(() => fixture.Build().Invoke());
+
+        Assert.Null(exception);
+    }
+
     // --- Fixture ------------------------------------------------------------------------------
 
     private static Item CreateItem(long id, IReadOnlyList<string>? tags = null) => new(
@@ -492,6 +562,7 @@ public class UnsortedClassificationJobTests
         public IPollingStateRepository PollingStateRepository { get; } = Substitute.For<IPollingStateRepository>();
         public IArticleRepository ArticleRepository { get; } = Substitute.For<IArticleRepository>();
         public ICycleRunRepository CycleRunRepository { get; } = Substitute.For<ICycleRunRepository>();
+        public ICycleReportNotifier CycleReportNotifier { get; } = Substitute.For<ICycleReportNotifier>();
         public IClassifier Classifier { get; } = Substitute.For<IClassifier>();
         public IImmediateNotifier ImmediateNotifier { get; } = Substitute.For<IImmediateNotifier>();
         public INotificationPolicy NotificationPolicy { get; } = Substitute.For<INotificationPolicy>();
@@ -544,6 +615,7 @@ public class UnsortedClassificationJobTests
             PollingStateRepository,
             ArticleRepository,
             CycleRunRepository,
+            CycleReportNotifier,
             Classifier,
             ImmediateNotifier,
             NotificationPolicy,

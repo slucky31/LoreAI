@@ -1,6 +1,6 @@
 # LoreAI
 
-Outil .NET 10 qui trie automatiquement le backlog de la collection **« Non trié »** de Raindrop.io. Il apprend vos collections et tags réels (via l'API Raindrop), classifie chaque nouvel article avec Claude Haiku en s'appuyant sur cette taxonomie, puis applique directement le résultat : tags fusionnés et déplacement vers la collection identifiée si elle correspond — sans étape de validation manuelle. Une notification Discord signale en plus les articles jugés prioritaires à tester, et un digest email quotidien récapitule tout le reste.
+Outil .NET 10 qui trie automatiquement le backlog de la collection **« Non trié »** de Raindrop.io. Il apprend vos collections et tags réels (via l'API Raindrop), classifie chaque nouvel article avec Claude Haiku en s'appuyant sur cette taxonomie, puis applique directement le résultat : tags fusionnés et déplacement vers la collection identifiée si elle correspond — sans étape de validation manuelle. Une notification Discord signale en plus les articles jugés prioritaires à tester, un compte-rendu Discord clôture chaque cycle ayant traité au moins un article, et un digest email quotidien récapitule tout le reste.
 
 Tout ce qui se trouve **en dehors** de « Non trié » est considéré comme déjà classé par vos soins et n'est jamais retouché.
 
@@ -126,6 +126,6 @@ Aucune vraie clé nécessaire : les appels Raindrop/Anthropic/Discord sont simul
 5. Ajouter un raindrop test dans « Non trié » via l'app Raindrop pendant que le worker tourne, attendre le prochain cycle.
 6. Inspecter la table `Articles` sur l'instance PostgreSQL (`psql` ou un client graphique) — vérifier les colonnes `SuggestedCollection`/`SuggestedTags`/`RecommendedAction`/`Priority`/`Reason`.
 7. Repasser `WriteBackToRaindrop` à `true` pour valider l'application réelle (tags + déplacement) sur un raindrop de test, puis vérifier dans l'app Raindrop que le résultat correspond à la ligne en base.
-8. Vérifier la réception Discord (si le raindrop test matche le seuil ATester/Haute) et le digest email (regroupement par collection puis action).
+8. Vérifier la réception Discord : l'alerte immédiate (si le raindrop test matche le seuil ATester/Haute), le compte-rendu de fin de cycle (traités/déplacés/tags), et le digest email (regroupement par collection puis action).
 
 ⚠️ Ce test réel consomme de vrais appels à l'API Anthropic (coût minime mais réel) et modifie votre vrai compte Raindrop dès que `WriteBackToRaindrop=true`.
