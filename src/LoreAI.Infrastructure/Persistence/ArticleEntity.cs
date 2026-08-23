@@ -33,5 +33,4 @@ public sealed class ArticleEntity
     public string? WriteBackStatus { get; set; }
     public DateTimeOffset? WriteBackAtUtc { get; set; }
     public DateTimeOffset? DiscordNotifiedAtUtc { get; set; }
-    public DateTimeOffset? EmailDigestSentAtUtc { get; set; }
 }

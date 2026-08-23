@@ -1,7 +1,7 @@
 # 0005 — Canaux de notification Discord + Email
 
 ## Statut
-Acceptée
+Acceptée — le volet Email est retiré par l'[ADR 0013](0013-retrait-canal-email.md) ; le volet Discord reste valable.
 
 ## Contexte
 L'utilisateur souhaite être informé des articles à lire/tester sur un média qu'il consulte facilement, sans que l'outil ne devienne une source d'information supplémentaire à surveiller activement.
