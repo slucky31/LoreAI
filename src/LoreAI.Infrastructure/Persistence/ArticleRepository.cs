@@ -165,6 +165,8 @@ public sealed class ArticleRepository : IArticleRepository
             entity.ClassifiedAtUtc ?? DateTimeOffset.UtcNow,
             entity.Moved,
             entity.DiscordNotifiedAtUtc,
-            entity.EmailDigestSentAtUtc);
+            entity.EmailDigestSentAtUtc,
+            entity.FetchedAtUtc,
+            entity.WriteBackStatus);
     }
 }

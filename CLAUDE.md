@@ -50,8 +50,13 @@ Three-project split, dependency direction strictly `Worker → Infrastructure �
    - `Worker__WriteBackToRaindrop=false` disables all of the above (classify + persist + report only) — the one remaining safety switch since there's no per-item human approval.
 5. If `INotificationPolicy.ShouldNotifyImmediately` (default: `Action == ATester && Priority == Haute`), `IImmediateNotifier` (Discord webhook) fires immediately; a send failure is logged but never aborts the batch.
 6. `PollingState` is advanced to the last processed item regardless of individual write-back outcomes.
+7. Exactly one `CycleRun` (`ICycleRunRepository`) is recorded per invocation, cycles with zero new items included — `Ok`/`Empty`/`Interrupted`/`Failed` outcome, item/tag/move/notification counts, failure reason. It's the only signal that the worker is actually alive; a failure to record it is logged but never fails the cycle.
 
 `DigestNotificationJob` (driven by `Worker__DigestCronExpression`, default daily 07:00) sends everything with `EmailDigestSentAtUtc IS NULL` via `IDigestNotifier` (MailKit SMTP), grouped by collection then recommended action — a catch-all so nothing is ever missed even if it didn't trigger a Discord alert.
+
+### Healthcheck
+
+`dotnet LoreAI.Worker.dll --health-check` is a second mode of the same binary, run by Docker's `HEALTHCHECK` (the image is chiseled — no shell, no `curl`). `Program.cs` intercepts `--health-check` right after building the host but before `host.Run()`, so no option outside Postgres/`CycleRuns` needs to be valid for the probe to work. `HealthCheckMode.RunAsync` reads the 3 most recent `CycleRun`s and `Core.Services.HealthEvaluator.IsHealthy` (pure, no I/O) decides: unhealthy if the latest is older than `Worker__HealthMaxCycleAgeMinutes` (default 45) or if the last 3 all have `Outcome == Failed`. Docker Compose won't auto-restart on `unhealthy` (`restart: unless-stopped` only reacts to process death) — this gives visibility (e.g. in Portainer), not automatic recovery.
 
 ### First-run caveat
 

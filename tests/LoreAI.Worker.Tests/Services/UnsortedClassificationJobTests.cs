@@ -335,6 +335,139 @@ public class UnsortedClassificationJobTests
             Arg.Is<PollingState>(s => s!.LastSourceItemId == "1"), Arg.Any<CancellationToken>());
     }
 
+    // --- Journal de cycle (CycleRuns) -----------------------------------------------------------
+
+    [Fact]
+    public async Task Invoke_NoNewItems_RecordsEmptyOutcome()
+    {
+        var fixture = new JobFixture().WithNewItems();
+
+        await fixture.Build().Invoke();
+
+        await fixture.CycleRunRepository.Received(1).RecordAsync(
+            Arg.Is<CycleRun>(r => r!.Outcome == CycleOutcome.Empty && r.ItemsSeen == 0),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Invoke_AllItemsProcessed_RecordsOkOutcomeWithCounts()
+    {
+        var fixture = new JobFixture()
+            .WithNewItems(CreateItem(1, tags: ["dotnet"]), CreateItem(2))
+            .WithClassification(CreateClassification(".NET", ["dotnet", "claude"]));
+        fixture.NotificationPolicy.ShouldNotifyImmediately(Arg.Any<ClassificationResult>()).Returns(true);
+
+        await fixture.Build().Invoke();
+
+        await fixture.CycleRunRepository.Received(1).RecordAsync(
+            Arg.Is<CycleRun>(r =>
+                r!.Outcome == CycleOutcome.Ok
+                && r.ItemsSeen == 2
+                && r.ItemsProcessed == 2
+                && r.Moved == 2
+                // Item 1 a déjà "dotnet" : seul "claude" est nouveau (1). Item 2 n'a rien : les deux sont nouveaux (2).
+                && r.TagsApplied == 3
+                && r.Notified == 2
+                && r.FailureReason == null),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Invoke_FallbackClassification_RecordsInterruptedOutcomeWithReason()
+    {
+        var fixture = new JobFixture()
+            .WithNewItems(CreateItem(1), CreateItem(2))
+            .WithClassification(ClassificationResult.Fallback("model", "Classification échouée: 429", "{}"));
+
+        await fixture.Build().Invoke();
+
+        await fixture.CycleRunRepository.Received(1).RecordAsync(
+            Arg.Is<CycleRun>(r =>
+                r!.Outcome == CycleOutcome.Interrupted
+                && r.ItemsSeen == 2
+                && r.ItemsProcessed == 0
+                && r.FailureReason != null && r.FailureReason.Contains("repli", StringComparison.Ordinal)),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Invoke_ExceptionOnItem_RecordsInterruptedOutcome()
+    {
+        var fixture = new JobFixture()
+            .WithNewItems(CreateItem(1), CreateItem(2))
+            .WithClassification(CreateClassification(".NET", ["dotnet"]));
+        fixture.ArticleRepository
+            .UpsertAsync(Arg.Is<Item>(i => i!.SourceId == "1"), Arg.Any<ClassificationResult>(), Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new InvalidOperationException("database is locked"));
+
+        await fixture.Build().Invoke();
+
+        await fixture.CycleRunRepository.Received(1).RecordAsync(
+            Arg.Is<CycleRun>(r =>
+                r!.Outcome == CycleOutcome.Interrupted
+                && r.ItemsSeen == 2
+                && r.ItemsProcessed == 0
+                && r.FailureReason == "database is locked"),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Invoke_RaindropUnavailable_RecordsFailedOutcome()
+    {
+        var fixture = new JobFixture();
+        fixture.RaindropClient
+            .GetNewItemsAsync(Arg.Any<PollingState>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new HttpRequestException("401 Unauthorized"));
+
+        await fixture.Build().Invoke();
+
+        await fixture.CycleRunRepository.Received(1).RecordAsync(
+            Arg.Is<CycleRun>(r => r!.Outcome == CycleOutcome.Failed && r.ItemsSeen == 0 && r.FailureReason == "401 Unauthorized"),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Invoke_CancelledDuringBatch_RecordsInterruptedOutcome()
+    {
+        using var cts = new CancellationTokenSource();
+        var fixture = new JobFixture()
+            .WithNewItems(CreateItem(1), CreateItem(2))
+            .WithClassification(CreateClassification(".NET", ["dotnet"]));
+
+        fixture.Classifier
+            .ClassifyAsync(Arg.Is<Item>(i => i!.SourceId == "2"), Arg.Any<RaindropTaxonomy>(), Arg.Any<CancellationToken>())
+            .Returns<ClassificationResult>(_ =>
+            {
+                cts.Cancel();
+                throw new OperationCanceledException(cts.Token);
+            });
+
+        var job = fixture.Build();
+        job.CancellationToken = cts.Token;
+
+        await job.Invoke();
+
+        await fixture.CycleRunRepository.Received(1).RecordAsync(
+            Arg.Is<CycleRun>(r => r!.Outcome == CycleOutcome.Interrupted && r.ItemsSeen == 2 && r.ItemsProcessed == 1),
+            Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>L'échec de l'écriture du journal lui-même est un détail d'observabilité : jamais fatal au cycle.</summary>
+    [Fact]
+    public async Task Invoke_CycleRunRecordingFails_DoesNotThrow()
+    {
+        var fixture = new JobFixture()
+            .WithNewItems(CreateItem(1))
+            .WithClassification(CreateClassification(".NET", ["dotnet"]));
+        fixture.CycleRunRepository
+            .RecordAsync(Arg.Any<CycleRun>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new InvalidOperationException("database is locked"));
+
+        var exception = await Record.ExceptionAsync(() => fixture.Build().Invoke());
+
+        Assert.Null(exception);
+    }
+
     // --- Fixture ------------------------------------------------------------------------------
 
     private static Item CreateItem(long id, IReadOnlyList<string>? tags = null) => new(
@@ -358,6 +491,7 @@ public class UnsortedClassificationJobTests
         public IRaindropClient RaindropClient { get; } = Substitute.For<IRaindropClient>();
         public IPollingStateRepository PollingStateRepository { get; } = Substitute.For<IPollingStateRepository>();
         public IArticleRepository ArticleRepository { get; } = Substitute.For<IArticleRepository>();
+        public ICycleRunRepository CycleRunRepository { get; } = Substitute.For<ICycleRunRepository>();
         public IClassifier Classifier { get; } = Substitute.For<IClassifier>();
         public IImmediateNotifier ImmediateNotifier { get; } = Substitute.For<IImmediateNotifier>();
         public INotificationPolicy NotificationPolicy { get; } = Substitute.For<INotificationPolicy>();
@@ -409,6 +543,7 @@ public class UnsortedClassificationJobTests
             RaindropClient,
             PollingStateRepository,
             ArticleRepository,
+            CycleRunRepository,
             Classifier,
             ImmediateNotifier,
             NotificationPolicy,

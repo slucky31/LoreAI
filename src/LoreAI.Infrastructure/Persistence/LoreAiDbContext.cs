@@ -6,6 +6,7 @@ public sealed class LoreAiDbContext(DbContextOptions<LoreAiDbContext> options) :
 {
     public DbSet<ArticleEntity> Articles => Set<ArticleEntity>();
     public DbSet<PollingStateEntity> PollingStates => Set<PollingStateEntity>();
+    public DbSet<CycleRunEntity> CycleRuns => Set<CycleRunEntity>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -24,6 +25,13 @@ public sealed class LoreAiDbContext(DbContextOptions<LoreAiDbContext> options) :
         {
             // Une ligne par source (ADR 0012) : la clé naturelle SourceType remplace la ligne unique Id = 1.
             pollingState.HasKey(p => p.SourceType);
+        });
+
+        modelBuilder.Entity<CycleRunEntity>(cycleRun =>
+        {
+            // Pas de clé applicative ici (contrairement à ArticleEntity/PollingStateEntity) : Id est généré.
+            cycleRun.Property(c => c.Outcome).HasConversion<string>();
+            cycleRun.HasIndex(c => c.CompletedUtc);
         });
     }
 }

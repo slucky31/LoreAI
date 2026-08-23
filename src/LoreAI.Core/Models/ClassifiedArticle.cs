@@ -6,4 +6,6 @@ public sealed record ClassifiedArticle(
     DateTimeOffset ClassifiedAtUtc,
     bool Moved,
     DateTimeOffset? DiscordNotifiedAtUtc,
-    DateTimeOffset? EmailDigestSentAtUtc);
+    DateTimeOffset? EmailDigestSentAtUtc,
+    DateTimeOffset FetchedAtUtc,
+    string? WriteBackStatus);
