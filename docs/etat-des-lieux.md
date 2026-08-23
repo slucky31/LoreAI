@@ -4,7 +4,7 @@
 > L'historique est dans `git log` et les Releases. La cible est dans [`roadmap.md`](roadmap.md). Les décisions sont dans [`adr/`](adr/).
 > Le suivi des lots est dans les [issues #41 à #51](https://github.com/slucky31/LoreAI/issues?q=is%3Aissue+milestone%3A*).
 
-**Dernière mise à jour :** 2026-08-23 · **Version publiée :** 0.6.0
+**Dernière mise à jour :** 2026-08-23 · **Version publiée :** 0.7.0
 
 ---
 
@@ -12,16 +12,16 @@
 
 | | |
 |---|---|
-| **Lot en cours** | Lot 0 ([#41](https://github.com/slucky31/LoreAI/issues/41)), sa **dernière PR**. **PR 1 en production** ([#53](https://github.com/slucky31/LoreAI/pull/53), v0.5.0) : socle PostgreSQL + EF Core. **PR 2 mergée** ([#55](https://github.com/slucky31/LoreAI/pull/55), v0.6.0) : modèle `Item` générique multi-sources ([ADR 0012](adr/0012-modele-item-generique-multi-sources.md)). **PR 3 codée** (branche `feat/lot0-pr3-journal-cycle-healthcheck`, pas encore poussée/PR ouverte) : table `CycleRuns` + healthcheck Docker (#35), build + 132 tests verts en local. Ni la v0.6.0 ni la PR 3 ne sont encore déployées/observées sur `mcm8`. |
-| **Prochain geste** | Pousser la branche PR 3, ouvrir la PR, merger. Puis déployer sur `mcm8` (`sudo docker compose pull && up -d`) — v0.6.0 et PR 3 d'un coup si aucun cycle réel n'a eu lieu entre-temps — et observer un cycle réel + le nouveau `HEALTHCHECK` (visible dans `docker ps`/Portainer). Le lot 0 sera alors complet. |
+| **Lot en cours** | **Lot 0 ([#41](https://github.com/slucky31/LoreAI/issues/41)) clos.** Ses 3 PR mergées et déployées sur `mcm8` (v0.7.0) : PR 1 socle PostgreSQL/EF Core ([#53](https://github.com/slucky31/LoreAI/pull/53)), PR 2 modèle `Item` générique multi-sources ([#55](https://github.com/slucky31/LoreAI/pull/55), [ADR 0012](adr/0012-modele-item-generique-multi-sources.md)), PR 3 journal de cycle `CycleRuns` + healthcheck Docker ([#56](https://github.com/slucky31/LoreAI/pull/56), #35). Cycle réel et `HEALTHCHECK` vérifiés en production. |
+| **Prochain geste** | Lot 1 — indexation en lecture seule de toute la bibliothèque Raindrop déjà triée (`LibraryIndexingJob`, `GET /raindrops/0`, sans classification ni write-back). C'est le vrai prérequis fonctionnel de tout le reste de la roadmap (synthèse, doublons, statistiques n'ont de valeur qu'à l'échelle du corpus complet — voir « Le corpus est presque vide » dans `roadmap.md`). |
 | **Dernière décision** | Élargir `IArticleRepository` (`GetByIdAsync`/`GetByFilterAsync`/`SearchAsync`/`CountByAsync`, 4e point de la checklist PR 3 de #41) est **reporté** : aucun consommateur concret avant le MCP du lot 3, signatures non spécifiées — décision explicite pour éviter d'inventer une forme spéculative. |
-| **Bloqué par** | Rien. Le Pi (`mcm8`) est en ligne, l'instance PostgreSQL mutualisée provisionnée (base `loreai`, rôles `loreai`/`loreai_ro`) et le worker tourne dessus en production (sur la version PR 1, pas encore mise à jour). |
+| **Bloqué par** | Rien. Le Pi (`mcm8`) est en ligne, l'instance PostgreSQL mutualisée provisionnée (base `loreai`, rôles `loreai`/`loreai_ro`) et le worker v0.7.0 tourne dessus en production. |
 
 ## Ce qui tourne aujourd'hui
 
-Le worker classe la collection « Non trié » toutes les 15 min (Claude Haiku, tool-use forcé), applique tags et déplacements dans Raindrop, alerte sur Discord les articles `ATester` / `Haute`, et envoie un digest email quotidien. **Persistance PostgreSQL (instance mutualisée sur `mcm8`, EF Core) depuis la PR 1.** Déploiement par image `ghcr.io` multi-arch, le Pi ne fait que `pull`.
+Le worker classe la collection « Non trié » toutes les 15 min (Claude Haiku, tool-use forcé), applique tags et déplacements dans Raindrop, alerte sur Discord les articles `ATester` / `Haute`, et envoie un digest email quotidien. Persistance PostgreSQL (instance mutualisée sur `mcm8`, EF Core), modèle `Item` générique multi-sources, journal `CycleRuns` (une ligne par cycle) et healthcheck Docker — le lot 0 en entier. Déploiement par image `ghcr.io` multi-arch, le Pi ne fait que `pull`.
 
-La PR 1 du lot 0 est en production. Le reste de la roadmap (multi-sources, journal de cycle, indexation, MCP...) n'est pas encore implémenté.
+Le reste de la roadmap (indexation de la bibliothèque, hygiène/signaux, MCP, contenu réel, sources Gmail/RSS...) n'est pas encore implémenté.
 
 ## Décisions actées, non encore appliquées
 
