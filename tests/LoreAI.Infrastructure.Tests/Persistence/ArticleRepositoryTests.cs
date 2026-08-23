@@ -38,47 +38,10 @@ public class ArticleRepositoryTests : IAsyncLifetime
         await _repository.UpsertAsync(item, classification, DateTimeOffset.UtcNow, TestContext.Current.CancellationToken);
         await _repository.UpsertAsync(item with { Title = "Titre mis à jour" }, classification, DateTimeOffset.UtcNow, TestContext.Current.CancellationToken);
 
-        var pending = await _repository.GetUnsentDigestItemsAsync(TestContext.Current.CancellationToken);
+        var all = await GetAllAsync();
 
-        var single = Assert.Single(pending);
-        Assert.Equal("Titre mis à jour", single.Item.Title);
-    }
-
-    [Fact]
-    public async Task GetUnsentDigestItemsAsync_ExcludesArticlesAlreadySent()
-    {
-        await _repository.UpsertAsync(CreateItem(1, "A"), CreateClassification(), DateTimeOffset.UtcNow, TestContext.Current.CancellationToken);
-        await _repository.UpsertAsync(CreateItem(2, "B"), CreateClassification(), DateTimeOffset.UtcNow, TestContext.Current.CancellationToken);
-
-        await _repository.MarkDigestSentAsync([1], DateTimeOffset.UtcNow, TestContext.Current.CancellationToken);
-
-        var pending = await _repository.GetUnsentDigestItemsAsync(TestContext.Current.CancellationToken);
-
-        var single = Assert.Single(pending);
-        Assert.Equal("2", single.Item.SourceId);
-    }
-
-    /// <summary>
-    /// F-21, hérité de l'ère SQLite : la clause IN était développée en un paramètre par identifiant par
-    /// Dapper, et dépassait la limite de variables de SQLite sans découpage en lots. `ExecuteUpdateAsync`
-    /// (EF Core) traduit le IN en une seule requête SQL, sans cette limite côté Postgres — ce test vérifie
-    /// que ça scale toujours sur un digest volumineux, pas qu'un découpage manuel fonctionne.
-    /// </summary>
-    [Fact]
-    public async Task MarkDigestSentAsync_WithManyIds_MarksThemAll()
-    {
-        const int count = 1200;
-        for (var id = 1; id <= count; id++)
-        {
-            await _repository.UpsertAsync(CreateItem(id, $"A{id}"), CreateClassification(), DateTimeOffset.UtcNow, TestContext.Current.CancellationToken);
-        }
-
-        await _repository.MarkDigestSentAsync(
-            Enumerable.Range(1, count).Select(i => (long)i).ToList(),
-            DateTimeOffset.UtcNow,
-            TestContext.Current.CancellationToken);
-
-        Assert.Empty(await _repository.GetUnsentDigestItemsAsync(TestContext.Current.CancellationToken));
+        var single = Assert.Single(all);
+        Assert.Equal("Titre mis à jour", single.Title);
     }
 
     [Fact]
@@ -88,9 +51,8 @@ public class ArticleRepositoryTests : IAsyncLifetime
 
         await _repository.MarkDiscordNotifiedAsync(1, DateTimeOffset.UtcNow, TestContext.Current.CancellationToken);
 
-        var pending = await _repository.GetUnsentDigestItemsAsync(TestContext.Current.CancellationToken);
-        var single = Assert.Single(pending);
-        Assert.NotNull(single.DiscordNotifiedAtUtc);
+        var entity = await GetAsync(1);
+        Assert.NotNull(entity.DiscordNotifiedAtUtc);
     }
 
     [Fact]
@@ -100,9 +62,8 @@ public class ArticleRepositoryTests : IAsyncLifetime
 
         await _repository.RecordWriteBackAsync(1, success: true, moved: true, DateTimeOffset.UtcNow, TestContext.Current.CancellationToken);
 
-        var pending = await _repository.GetUnsentDigestItemsAsync(TestContext.Current.CancellationToken);
-        var single = Assert.Single(pending);
-        Assert.True(single.Moved);
+        var entity = await GetAsync(1);
+        Assert.True(entity.Moved);
     }
 
     [Fact]
@@ -112,9 +73,8 @@ public class ArticleRepositoryTests : IAsyncLifetime
 
         await _repository.RecordWriteBackAsync(1, success: true, moved: false, DateTimeOffset.UtcNow, TestContext.Current.CancellationToken);
 
-        var pending = await _repository.GetUnsentDigestItemsAsync(TestContext.Current.CancellationToken);
-        var single = Assert.Single(pending);
-        Assert.False(single.Moved);
+        var entity = await GetAsync(1);
+        Assert.False(entity.Moved);
     }
 
     [Fact]
@@ -125,14 +85,13 @@ public class ArticleRepositoryTests : IAsyncLifetime
 
         await _repository.UpsertAsync(item, classification, DateTimeOffset.UtcNow, TestContext.Current.CancellationToken);
 
-        var pending = await _repository.GetUnsentDigestItemsAsync(TestContext.Current.CancellationToken);
-        var single = Assert.Single(pending);
+        var entity = await GetAsync(1);
 
-        Assert.Equal(["dotnet", "claude"], single.Item.Tags);
-        Assert.Equal("Claude", single.Classification.SuggestedCollection);
-        Assert.Equal(["claude", "ia"], single.Classification.Tags);
-        Assert.Equal(RecommendedAction.ATester, single.Classification.Action);
-        Assert.Equal(Priority.Haute, single.Classification.Priority);
+        Assert.Equal(["dotnet", "claude"], entity.OriginalTags);
+        Assert.Equal("Claude", entity.SuggestedCollection);
+        Assert.Equal(["claude", "ia"], entity.SuggestedTags);
+        Assert.Equal(RecommendedAction.ATester, entity.RecommendedAction);
+        Assert.Equal(Priority.Haute, entity.Priority);
     }
 
     [Fact]
@@ -143,10 +102,9 @@ public class ArticleRepositoryTests : IAsyncLifetime
 
         await _repository.UpsertAsync(item, classification, DateTimeOffset.UtcNow, TestContext.Current.CancellationToken);
 
-        var pending = await _repository.GetUnsentDigestItemsAsync(TestContext.Current.CancellationToken);
-        var single = Assert.Single(pending);
+        var entity = await GetAsync(1);
 
-        Assert.Null(single.Classification.SuggestedCollection);
+        Assert.Null(entity.SuggestedCollection);
     }
 
     /// <summary>
@@ -162,8 +120,19 @@ public class ArticleRepositoryTests : IAsyncLifetime
 
         await _repository.UpsertAsync(CreateItem(1, "A"), classification, DateTimeOffset.UtcNow, TestContext.Current.CancellationToken);
 
-        var pending = await _repository.GetUnsentDigestItemsAsync(TestContext.Current.CancellationToken);
-        Assert.Single(pending);
+        Assert.Single(await GetAllAsync());
+    }
+
+    private async Task<ArticleEntity> GetAsync(long id)
+    {
+        await using var context = _fixture.CreateContext();
+        return await context.Articles.SingleAsync(a => a.Id == id, TestContext.Current.CancellationToken);
+    }
+
+    private async Task<List<ArticleEntity>> GetAllAsync()
+    {
+        await using var context = _fixture.CreateContext();
+        return await context.Articles.ToListAsync(TestContext.Current.CancellationToken);
     }
 
     private static Item CreateItem(long id, string title) => new(

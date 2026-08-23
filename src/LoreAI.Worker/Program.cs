@@ -44,7 +44,6 @@ try
         .AddValidatedOptions<RaindropApiOptions>(builder.Configuration, "Raindrop")
         .AddValidatedOptions<ClassifierOptions>(builder.Configuration, "Classifier")
         .AddValidatedOptions<DiscordOptions>(builder.Configuration, "Discord")
-        .AddValidatedOptions<EmailOptions>(builder.Configuration, "Email")
         .AddValidatedOptions<WorkerOptions>(builder.Configuration, "Worker")
         .AddValidatedOptions<NotificationOptions>(builder.Configuration, "Notification");
 
@@ -72,7 +71,6 @@ try
             notificationOptions.TriggerActions.ToHashSet(),
             notificationOptions.MinimumPriority);
     });
-    builder.Services.AddSingleton<IDigestNotifier, EmailNotifier>();
 
     builder.Services.AddHttpClient<IRaindropClient, RaindropClient>()
         .AddStandardResilienceHandler();
@@ -89,13 +87,12 @@ try
 
     builder.Services.AddScheduler();
     builder.Services.AddTransient<UnsortedClassificationJob>();
-    builder.Services.AddTransient<DigestNotificationJob>();
     builder.Services.AddTransient<LibraryIndexingJob>();
 
     var host = builder.Build();
 
     // Sonde Docker (#35) : un second processus .NET, sans jamais atteindre host.Run() ni la validation des
-    // options non liées (Raindrop/Classifier/Discord/Email peuvent être absentes d'une sonde). Voir HealthCheckMode.
+    // options non liées (Raindrop/Classifier/Discord peuvent être absentes d'une sonde). Voir HealthCheckMode.
     if (args.Contains("--health-check"))
     {
         Environment.ExitCode = await LoreAI.Worker.HealthCheckMode.RunAsync(host.Services, CancellationToken.None) ? 0 : 1;
@@ -109,10 +106,6 @@ try
             .Cron(workerOptions.PollingCronExpression)
             .RunOnceAtStart()
             .PreventOverlapping(nameof(UnsortedClassificationJob));
-
-        scheduler.Schedule<DigestNotificationJob>()
-            .Cron(workerOptions.DigestCronExpression)
-            .PreventOverlapping(nameof(DigestNotificationJob));
 
         var libraryIndexSchedule = scheduler.Schedule<LibraryIndexingJob>()
             .Cron(workerOptions.LibraryIndexCronExpression)

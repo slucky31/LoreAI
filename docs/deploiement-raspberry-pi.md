@@ -68,29 +68,6 @@ S'il n'existe pas encore sous ce nom, créez-le (`sudo docker network create pi-
 | `Raindrop__Token` | Raindrop.io → **Settings → Integrations → App Management Console → For Developers → Create new app** → dans l'app créée, onglet **Test token** (ne pas passer par OAuth, ce token n'expire pas) |
 | `Classifier__ApiKey` | [console.anthropic.com](https://console.anthropic.com) → **API Keys → Create Key** |
 | `Discord__WebhookUrl` | Discord → paramètres du salon voulu → **Intégrations → Webhooks → Nouveau webhook** → copier l'URL |
-| `Email__Smtp*` | Voir la section [Configuration SMTP Gmail](#configuration-smtp-gmail-optionnel) ci-dessous si vous utilisez Gmail, sinon vos identifiants SMTP habituels |
-
-### Configuration SMTP Gmail (optionnel)
-
-Gmail exige un mot de passe d'application (le mot de passe du compte ne fonctionne pas pour SMTP), ce qui nécessite la validation en deux étapes.
-
-1. Activer la 2FA : [myaccount.google.com/security](https://myaccount.google.com/security) → **Validation en deux étapes**.
-2. Créer le mot de passe d'application : [myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords) → nommer (ex. `LoreAI`) → **Créer**. Copier le mot de passe de 16 caractères **sans les espaces** (non réaffiché ensuite).
-3. Renseigner dans `.env` :
-   ```bash
-   Email__SmtpHost=smtp.gmail.com
-   Email__SmtpPort=587
-   Email__SmtpUser=votreadresse@gmail.com
-   Email__SmtpPassword=<mot de passe d'application, 16 caractères>
-   Email__FromAddress=votreadresse@gmail.com
-   Email__ToAddress=votreadresse@gmail.com
-   Email__Security=Auto
-   ```
-   `SmtpUser` et `FromAddress` doivent correspondre à l'adresse Gmail elle-même (Gmail rejette un `From` usurpé). `ToAddress` peut être une autre adresse.
-
-Si le lien du mot de passe d'application ne s'affiche pas : la 2FA n'est probablement pas encore active, ou c'est un compte Google Workspace dont l'admin a désactivé les mots de passe d'application.
-
-Une erreur `535-5.7.8 Username and Password not accepted` dans les logs indique presque toujours un mot de passe d'application mal copié ou la 2FA non activée.
 
 ## 5. Récupérer les fichiers de déploiement
 
@@ -173,5 +150,5 @@ Le dossier `data/` côté hôte n'appartient pas à l'uid 1654. Refaire l'étape
 **Le worker démarre mais rien ne se passe, logs `LogWarning` répétés sur Postgres injoignable**
 Conforme à l'ADR 0009 (panne transitoire, non fatale) : vérifiez que le réseau Docker externe `pi-postgres` existe et que le conteneur du worker y est bien rattaché (`sudo docker network inspect pi-postgres`), et que `Postgres__ConnectionString` dans `.env` pointe vers le bon hôte/rôle/mot de passe (étape 3).
 
-**Aucune notification Discord / email reçue**
-Vérifier `Discord__WebhookUrl` et les `Email__Smtp*` dans `.env`, puis `sudo docker compose logs -f` pour l'erreur d'envoi exacte.
+**Aucune notification Discord reçue**
+Vérifier `Discord__WebhookUrl` dans `.env`, puis `sudo docker compose logs -f` pour l'erreur d'envoi exacte.

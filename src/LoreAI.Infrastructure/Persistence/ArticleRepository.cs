@@ -95,20 +95,6 @@ public sealed class ArticleRepository : IArticleRepository
         }
     }
 
-    public async Task<IReadOnlyList<ClassifiedArticle>> GetUnsentDigestItemsAsync(CancellationToken cancellationToken)
-    {
-        await _schemaGuard.EnsureMigratedAsync(cancellationToken);
-        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
-
-        var entities = await context.Articles
-            .Where(a => a.EmailDigestSentAtUtc == null)
-            .OrderBy(a => a.CapturedAtUtc)
-            .ToListAsync(cancellationToken);
-
-        // Pas de log du nombre ici : DigestNotificationJob le journalise déjà côté appelant.
-        return entities.Select(MapToClassifiedArticle).ToList();
-    }
-
     public async Task MarkDiscordNotifiedAsync(long articleId, DateTimeOffset notifiedAtUtc, CancellationToken cancellationToken)
     {
         await _schemaGuard.EnsureMigratedAsync(cancellationToken);
@@ -117,56 +103,5 @@ public sealed class ArticleRepository : IArticleRepository
         await context.Articles
             .Where(a => a.Id == articleId)
             .ExecuteUpdateAsync(setters => setters.SetProperty(a => a.DiscordNotifiedAtUtc, notifiedAtUtc), cancellationToken);
-    }
-
-    public async Task MarkDigestSentAsync(IReadOnlyCollection<long> articleIds, DateTimeOffset sentAtUtc, CancellationToken cancellationToken)
-    {
-        if (articleIds.Count == 0)
-        {
-            return;
-        }
-
-        await _schemaGuard.EnsureMigratedAsync(cancellationToken);
-        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
-
-        // ExecuteUpdateAsync traduit le IN en une seule requête SQL : contrairement à SQLite, Postgres
-        // n'impose pas de limite de variables qui obligerait à découper articleIds en lots.
-        await context.Articles
-            .Where(a => articleIds.Contains(a.Id))
-            .ExecuteUpdateAsync(setters => setters.SetProperty(a => a.EmailDigestSentAtUtc, sentAtUtc), cancellationToken);
-    }
-
-    private static ClassifiedArticle MapToClassifiedArticle(ArticleEntity entity)
-    {
-        // SourceType.Raindrop en dur : Raindrop est l'unique source ingérée à ce stade (ADR 0012),
-        // l'entité elle-même ne porte pas encore ce champ.
-        var item = new Item(
-            SourceType.Raindrop,
-            entity.Id.ToString(CultureInfo.InvariantCulture),
-            entity.Url,
-            entity.Title,
-            entity.Excerpt,
-            entity.Note,
-            entity.OriginalTags,
-            entity.CapturedAtUtc);
-
-        var classification = new ClassificationResult(
-            entity.SuggestedCollection,
-            entity.SuggestedTags,
-            entity.RecommendedAction,
-            entity.Priority,
-            entity.Reason ?? string.Empty,
-            entity.ClassificationModel ?? string.Empty,
-            entity.ClassificationRawResponse ?? string.Empty);
-
-        return new ClassifiedArticle(
-            item,
-            classification,
-            entity.ClassifiedAtUtc ?? DateTimeOffset.UtcNow,
-            entity.Moved,
-            entity.DiscordNotifiedAtUtc,
-            entity.EmailDigestSentAtUtc,
-            entity.FetchedAtUtc,
-            entity.WriteBackStatus);
     }
 }

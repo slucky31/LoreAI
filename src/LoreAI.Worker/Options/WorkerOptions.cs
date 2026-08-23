@@ -8,10 +8,6 @@ public sealed class WorkerOptions
     [Required(AllowEmptyStrings = false)]
     public string PollingCronExpression { get; init; } = "*/15 * * * *";
 
-    /// <summary>Expression cron d'envoi du digest email (par défaut tous les jours à 7h UTC).</summary>
-    [Required(AllowEmptyStrings = false)]
-    public string DigestCronExpression { get; init; } = "0 7 * * *";
-
     /// <summary>
     /// Actif par défaut : applique automatiquement les tags (fusionnés) et déplace le raindrop
     /// vers la collection suggérée quand elle correspond à une collection existante. Aucune étape

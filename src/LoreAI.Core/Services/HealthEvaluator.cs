@@ -5,7 +5,7 @@ namespace LoreAI.Core.Services;
 
 /// <summary>
 /// Décide si le worker est en vie, à partir des derniers <see cref="CycleRun"/> connus. Pure, testable sans
-/// I/O — même esprit que <c>ClassificationNoteBuilder</c>/<c>DigestMessageBuilder</c>.
+/// I/O — même esprit que <c>ClassificationNoteBuilder</c>.
 /// </summary>
 public static class HealthEvaluator
 {

@@ -6,7 +6,7 @@ namespace LoreAI.Core.Services;
 /// Construit le bloc de note déposé sur le raindrop. La note rédigée par l'utilisateur est préservée,
 /// mais le bloc d'un passage précédent est <b>remplacé</b>, jamais empilé : la note est relue depuis l'API
 /// à chaque cycle, donc un simple append ferait grossir la note à chaque rejeu.
-/// Pure, testable sans appel réseau — même esprit que <c>DigestMessageBuilder</c>.
+/// Pure, testable sans appel réseau — même esprit que <c>HealthEvaluator</c>.
 /// </summary>
 public static class ClassificationNoteBuilder
 {

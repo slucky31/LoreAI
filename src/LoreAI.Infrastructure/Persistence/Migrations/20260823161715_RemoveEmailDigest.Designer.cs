@@ -3,6 +3,7 @@ using System;
 using LoreAI.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace LoreAI.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(LoreAiDbContext))]
-    partial class LoreAiDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260823161715_RemoveEmailDigest")]
+    partial class RemoveEmailDigest
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

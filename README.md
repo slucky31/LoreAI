@@ -1,6 +1,6 @@
 # LoreAI
 
-Outil .NET 10 qui trie automatiquement le backlog de la collection **« Non trié »** de Raindrop.io. Il apprend vos collections et tags réels (via l'API Raindrop), classifie chaque nouvel article avec Claude Haiku en s'appuyant sur cette taxonomie, puis applique directement le résultat : tags fusionnés et déplacement vers la collection identifiée si elle correspond — sans étape de validation manuelle. Une notification Discord signale en plus les articles jugés prioritaires à tester, un compte-rendu Discord clôture chaque cycle ayant traité au moins un article, et un digest email quotidien récapitule tout le reste.
+Outil .NET 10 qui trie automatiquement le backlog de la collection **« Non trié »** de Raindrop.io. Il apprend vos collections et tags réels (via l'API Raindrop), classifie chaque nouvel article avec Claude Haiku en s'appuyant sur cette taxonomie, puis applique directement le résultat : tags fusionnés et déplacement vers la collection identifiée si elle correspond — sans étape de validation manuelle. Une notification Discord signale en plus les articles jugés prioritaires à tester, et un compte-rendu Discord clôture chaque cycle ayant traité au moins un article.
 
 Tout ce qui se trouve **en dehors** de « Non trié » est considéré comme déjà classé par vos soins et n'est jamais retouché.
 
@@ -28,11 +28,10 @@ L'outil classe et range, mais n'exploite pas encore ce qu'il a accumulé. [docs/
 - Un token API Raindrop.io (App Management Console → Test token)
 - Une clé API Anthropic
 - Un webhook Discord
-- Un compte SMTP pour l'envoi du digest
 
 ## Configuration
 
-Copier `.env.example` en `.env` et renseigner les valeurs (voir commentaires dans le fichier). Les clés suivent la convention .NET `Section__Propriete` (ex. `Raindrop__Token`, `Email__SmtpHost`).
+Copier `.env.example` en `.env` et renseigner les valeurs (voir commentaires dans le fichier). Les clés suivent la convention .NET `Section__Propriete` (ex. `Raindrop__Token`, `Discord__WebhookUrl`).
 
 ⚠️ Vérifiez que `Raindrop__CollectionId` vaut bien **`-1`** (« Non trié »). C'est ce réglage qui garantit que l'outil ne touche pas aux raindrops que vous avez déjà rangés : `0` viserait **toute votre bibliothèque**.
 
@@ -46,7 +45,7 @@ dotnet run --project src/LoreAI.Worker
 
 En local, `appsettings.Development.json` pointe vers l'instance PostgreSQL mutualisée du Pi (à joindre via son nom MagicDNS Tailscale, ADR 0010) et des logs dans `logs/`.
 
-Le worker **refuse de démarrer** si la configuration est incomplète (token Raindrop, clé Anthropic, webhook Discord, SMTP) et indique précisément le champ fautif — par exemple `DataAnnotation validation failed for 'RaindropApiOptions' members: 'Token'`. Renseignez les valeurs via `dotnet user-secrets` ou `.env` avant de lancer.
+Le worker **refuse de démarrer** si la configuration est incomplète (token Raindrop, clé Anthropic, webhook Discord) et indique précisément le champ fautif — par exemple `DataAnnotation validation failed for 'RaindropApiOptions' members: 'Token'`. Renseignez les valeurs via `dotnet user-secrets` ou `.env` avant de lancer.
 
 ## Déploiement sur Raspberry Pi
 
@@ -108,12 +107,11 @@ Aucune vraie clé nécessaire : les appels Raindrop/Anthropic/Discord sont simul
 
 À faire avant un déploiement réel, pour observer le comportement sur votre compte Raindrop :
 
-1. Renseigner dans `src/LoreAI.Worker/appsettings.Development.json` (ou via `dotnet user-secrets`, jamais commité) : `Raindrop__Token`, `Classifier__ApiKey`, `Discord__WebhookUrl`, `Email__Smtp*`.
-2. Pour ne pas attendre 15 min / 24h pendant les tests, surcharger temporairement les expressions cron :
+1. Renseigner dans `src/LoreAI.Worker/appsettings.Development.json` (ou via `dotnet user-secrets`, jamais commité) : `Raindrop__Token`, `Classifier__ApiKey`, `Discord__WebhookUrl`.
+2. Pour ne pas attendre 15 min pendant les tests, surcharger temporairement l'expression cron :
    ```json
    "Worker": {
      "PollingCronExpression": "* * * * *",
-     "DigestCronExpression": "*/2 * * * *",
      "WriteBackToRaindrop": false
    }
    ```
@@ -126,6 +124,6 @@ Aucune vraie clé nécessaire : les appels Raindrop/Anthropic/Discord sont simul
 5. Ajouter un raindrop test dans « Non trié » via l'app Raindrop pendant que le worker tourne, attendre le prochain cycle.
 6. Inspecter la table `Articles` sur l'instance PostgreSQL (`psql` ou un client graphique) — vérifier les colonnes `SuggestedCollection`/`SuggestedTags`/`RecommendedAction`/`Priority`/`Reason`.
 7. Repasser `WriteBackToRaindrop` à `true` pour valider l'application réelle (tags + déplacement) sur un raindrop de test, puis vérifier dans l'app Raindrop que le résultat correspond à la ligne en base.
-8. Vérifier la réception Discord : l'alerte immédiate (si le raindrop test matche le seuil ATester/Haute), le compte-rendu de fin de cycle (traités/déplacés/tags), et le digest email (regroupement par collection puis action).
+8. Vérifier la réception Discord : l'alerte immédiate (si le raindrop test matche le seuil ATester/Haute) et le compte-rendu de fin de cycle (traités/déplacés/tags).
 
 ⚠️ Ce test réel consomme de vrais appels à l'API Anthropic (coût minime mais réel) et modifie votre vrai compte Raindrop dès que `WriteBackToRaindrop=true`.
