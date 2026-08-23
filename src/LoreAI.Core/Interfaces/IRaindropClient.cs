@@ -2,14 +2,12 @@ using LoreAI.Core.Models;
 
 namespace LoreAI.Core.Interfaces;
 
-public interface IRaindropClient
+/// <summary>
+/// Première implémentation d'<see cref="ISourceIngester"/> (ADR 0012), enrichie des deux membres qui
+/// restent strictement propres à Raindrop : la taxonomie apprise (collections/tags) et le write-back.
+/// </summary>
+public interface IRaindropClient : ISourceIngester
 {
-    /// <summary>
-    /// Récupère, du plus ancien au plus récent, les raindrops créés après l'état de polling fourni.
-    /// Pagine tant que nécessaire et s'arrête dès qu'un raindrop déjà connu est rencontré.
-    /// </summary>
-    Task<IReadOnlyList<RaindropItem>> GetNewRaindropsAsync(PollingState lastState, CancellationToken cancellationToken);
-
     /// <summary>Apprend les collections et tags réellement en place dans le compte de l'utilisateur.</summary>
     Task<RaindropTaxonomy> GetTaxonomyAsync(CancellationToken cancellationToken);
 

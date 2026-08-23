@@ -39,7 +39,7 @@ public sealed class AnthropicClassifier : IClassifier
         _httpClient.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
     }
 
-    public async Task<ClassificationResult> ClassifyAsync(RaindropItem item, RaindropTaxonomy taxonomy, CancellationToken cancellationToken)
+    public async Task<ClassificationResult> ClassifyAsync(Item item, RaindropTaxonomy taxonomy, CancellationToken cancellationToken)
     {
         var requestBody = BuildRequestBody(item, taxonomy);
         var rawResponseBody = string.Empty;
@@ -61,7 +61,7 @@ public sealed class AnthropicClassifier : IClassifier
         }
         catch (Exception ex) when (IsTransportFailure(ex, cancellationToken))
         {
-            _logger.LogWarning(ex, "Classification échouée pour le raindrop {RaindropId}", item.Id);
+            _logger.LogWarning(ex, "Classification échouée pour l'item {SourceId}", item.SourceId);
             return ClassificationResult.Fallback(_options.Model, $"Classification échouée: {ex.Message}", rawResponseBody);
         }
     }
@@ -81,13 +81,13 @@ public sealed class AnthropicClassifier : IClassifier
         _ => false,
     };
 
-    private ClassificationResult Fallback(RaindropItem item, string reason, string rawResponseBody)
+    private ClassificationResult Fallback(Item item, string reason, string rawResponseBody)
     {
-        _logger.LogWarning("Classification inexploitable pour le raindrop {RaindropId} : {Reason}", item.Id, reason);
+        _logger.LogWarning("Classification inexploitable pour l'item {SourceId} : {Reason}", item.SourceId, reason);
         return ClassificationResult.Fallback(_options.Model, $"Classification échouée: {reason}", rawResponseBody);
     }
 
-    private object BuildRequestBody(RaindropItem item, RaindropTaxonomy taxonomy) => new
+    private object BuildRequestBody(Item item, RaindropTaxonomy taxonomy) => new
     {
         model = _options.Model,
         max_tokens = MaxTokens,

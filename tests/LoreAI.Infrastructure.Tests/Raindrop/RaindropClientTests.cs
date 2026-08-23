@@ -1,6 +1,7 @@
 using System.Globalization;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+using LoreAI.Core.Enums;
 using LoreAI.Core.Models;
 using LoreAI.Infrastructure.Raindrop;
 using WireMock.RequestBuilders;
@@ -12,7 +13,7 @@ namespace LoreAI.Infrastructure.Tests.Raindrop;
 public class RaindropClientTests
 {
     [Fact]
-    public async Task GetNewRaindropsAsync_NoPriorState_ReturnsAllItemsOldestFirst()
+    public async Task GetNewItemsAsync_NoPriorState_ReturnsAllItemsOldestFirst()
     {
         using var server = WireMockServer.Start();
         server
@@ -35,15 +36,15 @@ public class RaindropClientTests
 
         var client = CreateClient(server, pageSize: 50);
 
-        var items = await client.GetNewRaindropsAsync(PollingState.Initial, CancellationToken.None);
+        var items = await client.GetNewItemsAsync(PollingState.Initial(SourceType.Raindrop), CancellationToken.None);
 
         Assert.Equal(2, items.Count);
-        Assert.Equal(101, items[0].Id);
-        Assert.Equal(102, items[1].Id);
+        Assert.Equal("101", items[0].SourceId);
+        Assert.Equal("102", items[1].SourceId);
     }
 
     [Fact]
-    public async Task GetNewRaindropsAsync_StopsAtAlreadyKnownItem()
+    public async Task GetNewItemsAsync_StopsAtAlreadyKnownItem()
     {
         using var server = WireMockServer.Start();
         server
@@ -63,16 +64,16 @@ public class RaindropClientTests
                     """));
 
         var client = CreateClient(server, pageSize: 50);
-        var lastState = new PollingState(101, DateTimeOffset.Parse("2026-01-01T00:00:00Z", CultureInfo.InvariantCulture), DateTimeOffset.UtcNow);
+        var lastState = new PollingState(SourceType.Raindrop, "101", DateTimeOffset.Parse("2026-01-01T00:00:00Z", CultureInfo.InvariantCulture), DateTimeOffset.UtcNow);
 
-        var items = await client.GetNewRaindropsAsync(lastState, CancellationToken.None);
+        var items = await client.GetNewItemsAsync(lastState, CancellationToken.None);
 
         var single = Assert.Single(items);
-        Assert.Equal(102, single.Id);
+        Assert.Equal("102", single.SourceId);
     }
 
     [Fact]
-    public async Task GetNewRaindropsAsync_PaginatesAcrossFullPages()
+    public async Task GetNewItemsAsync_PaginatesAcrossFullPages()
     {
         using var server = WireMockServer.Start();
         server
@@ -109,10 +110,10 @@ public class RaindropClientTests
 
         var client = CreateClient(server, pageSize: 2);
 
-        var items = await client.GetNewRaindropsAsync(PollingState.Initial, CancellationToken.None);
+        var items = await client.GetNewItemsAsync(PollingState.Initial(SourceType.Raindrop), CancellationToken.None);
 
         Assert.Equal(3, items.Count);
-        Assert.Equal([101, 102, 103], items.Select(i => i.Id));
+        Assert.Equal(["101", "102", "103"], items.Select(i => i.SourceId));
     }
 
     /// <summary>
@@ -120,30 +121,30 @@ public class RaindropClientTests
     /// condition s'arrêtait là et perdait silencieusement tout ce qui suivait.
     /// </summary>
     [Fact]
-    public async Task GetNewRaindropsAsync_ShortPageFollowedByMoreItems_DoesNotStopEarly()
+    public async Task GetNewItemsAsync_ShortPageFollowedByMoreItems_DoesNotStopEarly()
     {
         using var server = WireMockServer.Start();
-        GivenPage(server, 0, $"{Item(105, "2026-01-05T00:00:00Z")}, {Item(104, "2026-01-04T00:00:00Z")}");
-        GivenPage(server, 1, $"{Item(103, "2026-01-03T00:00:00Z")}, {Item(102, "2026-01-02T00:00:00Z")}, {Item(101, "2026-01-01T00:00:00Z")}");
+        GivenPage(server, 0, $"{ItemJson(105, "2026-01-05T00:00:00Z")}, {ItemJson(104, "2026-01-04T00:00:00Z")}");
+        GivenPage(server, 1, $"{ItemJson(103, "2026-01-03T00:00:00Z")}, {ItemJson(102, "2026-01-02T00:00:00Z")}, {ItemJson(101, "2026-01-01T00:00:00Z")}");
         GivenPage(server, 2, string.Empty);
 
         // perpage=5 mais la première page n'en rend que 2 : la pagination doit continuer.
         var client = CreateClient(server, pageSize: 5);
 
-        var items = await client.GetNewRaindropsAsync(PollingState.Initial, CancellationToken.None);
+        var items = await client.GetNewItemsAsync(PollingState.Initial(SourceType.Raindrop), CancellationToken.None);
 
-        Assert.Equal([101, 102, 103, 104, 105], items.Select(i => i.Id));
+        Assert.Equal(["101", "102", "103", "104", "105"], items.Select(i => i.SourceId));
     }
 
     [Fact]
-    public async Task GetNewRaindropsAsync_EmptyFirstPage_ReturnsNothing()
+    public async Task GetNewItemsAsync_EmptyFirstPage_ReturnsNothing()
     {
         using var server = WireMockServer.Start();
         GivenPage(server, 0, string.Empty);
 
         var client = CreateClient(server, pageSize: 50);
 
-        Assert.Empty(await client.GetNewRaindropsAsync(PollingState.Initial, CancellationToken.None));
+        Assert.Empty(await client.GetNewItemsAsync(PollingState.Initial(SourceType.Raindrop), CancellationToken.None));
     }
 
     /// <summary>
@@ -151,34 +152,34 @@ public class RaindropClientTests
     /// (« ignorer tout ce qui précède »), sans avoir à retrouver l'id du dernier raindrop.
     /// </summary>
     [Fact]
-    public async Task GetNewRaindropsAsync_StateWithDateButNoId_FiltersOnDate()
+    public async Task GetNewItemsAsync_StateWithDateButNoId_FiltersOnDate()
     {
         using var server = WireMockServer.Start();
-        GivenPage(server, 0, $"{Item(103, "2026-01-03T00:00:00Z")}, {Item(102, "2026-01-02T00:00:00Z")}, {Item(101, "2026-01-01T00:00:00Z")}");
+        GivenPage(server, 0, $"{ItemJson(103, "2026-01-03T00:00:00Z")}, {ItemJson(102, "2026-01-02T00:00:00Z")}, {ItemJson(101, "2026-01-01T00:00:00Z")}");
 
         var client = CreateClient(server, pageSize: 50);
-        var dateOnlyState = new PollingState(null, DateTimeOffset.Parse("2026-01-02T00:00:00Z", CultureInfo.InvariantCulture), DateTimeOffset.UtcNow);
+        var dateOnlyState = new PollingState(SourceType.Raindrop, null, DateTimeOffset.Parse("2026-01-02T00:00:00Z", CultureInfo.InvariantCulture), DateTimeOffset.UtcNow);
 
-        var items = await client.GetNewRaindropsAsync(dateOnlyState, CancellationToken.None);
+        var items = await client.GetNewItemsAsync(dateOnlyState, CancellationToken.None);
 
         // Seul le 103 est postérieur à la date d'amorçage ; avant F-13 les trois remontaient.
         var single = Assert.Single(items);
-        Assert.Equal(103, single.Id);
+        Assert.Equal("103", single.SourceId);
     }
 
     [Fact]
-    public async Task GetNewRaindropsAsync_StateWithIdButNoDate_StopsOnThatId()
+    public async Task GetNewItemsAsync_StateWithIdButNoDate_StopsOnThatId()
     {
         using var server = WireMockServer.Start();
-        GivenPage(server, 0, $"{Item(103, "2026-01-03T00:00:00Z")}, {Item(102, "2026-01-02T00:00:00Z")}, {Item(101, "2026-01-01T00:00:00Z")}");
+        GivenPage(server, 0, $"{ItemJson(103, "2026-01-03T00:00:00Z")}, {ItemJson(102, "2026-01-02T00:00:00Z")}, {ItemJson(101, "2026-01-01T00:00:00Z")}");
 
         var client = CreateClient(server, pageSize: 50);
-        var idOnlyState = new PollingState(102, null, DateTimeOffset.UtcNow);
+        var idOnlyState = new PollingState(SourceType.Raindrop, "102", null, DateTimeOffset.UtcNow);
 
-        var items = await client.GetNewRaindropsAsync(idOnlyState, CancellationToken.None);
+        var items = await client.GetNewItemsAsync(idOnlyState, CancellationToken.None);
 
         var single = Assert.Single(items);
-        Assert.Equal(103, single.Id);
+        Assert.Equal("103", single.SourceId);
     }
 
     [Fact]
@@ -281,6 +282,6 @@ public class RaindropClientTests
                 .WithHeader("Content-Type", "application/json")
                 .WithBody($$"""{ "result": true, "items": [{{itemsJson}}] }"""));
 
-    private static string Item(long id, string createdUtc) =>
+    private static string ItemJson(long id, string createdUtc) =>
         $$"""{ "_id": {{id}}, "title": "Article {{id}}", "link": "https://example.com/{{id}}", "tags": [], "domain": "example.com", "type": "article", "created": "{{createdUtc}}" }""";
 }

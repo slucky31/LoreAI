@@ -1,3 +1,4 @@
+using LoreAI.Core.Enums;
 using LoreAI.Core.Models;
 using LoreAI.Infrastructure.Classification;
 
@@ -12,23 +13,20 @@ public class ClassificationPromptBuilderTests
     [Fact]
     public void BuildUserMessage_IncludesAllRelevantFields()
     {
-        var item = new RaindropItem(
-            Id: 1,
+        var item = new Item(
+            SourceType: SourceType.Raindrop,
+            SourceId: "1",
+            Url: "https://example.com/article",
             Title: "Un article .NET",
-            Link: "https://example.com/article",
             Excerpt: "Un extrait court.",
             Note: "Ma note perso",
             Tags: ["dotnet", "claude"],
-            CollectionId: 42,
-            Domain: "example.com",
-            RaindropType: "article",
-            CreatedUtc: DateTimeOffset.UtcNow,
-            LastUpdateUtc: null);
+            CapturedAtUtc: DateTimeOffset.UtcNow);
 
         var message = ClassificationPromptBuilder.BuildUserMessage(item, SampleTaxonomy);
 
         Assert.Contains(item.Title, message);
-        Assert.Contains(item.Link, message);
+        Assert.Contains(item.Url, message);
         Assert.Contains("example.com", message);
         Assert.Contains("dotnet, claude", message);
         Assert.Contains("Un extrait court.", message);
@@ -41,7 +39,7 @@ public class ClassificationPromptBuilderTests
     public void BuildUserMessage_TruncatesLongExcerpt()
     {
         var longExcerpt = new string('a', 3000);
-        var item = new RaindropItem(1, "Titre", "https://example.com", longExcerpt, null, [], null, null, null, DateTimeOffset.UtcNow, null);
+        var item = new Item(SourceType.Raindrop, "1", "https://example.com", "Titre", longExcerpt, null, [], DateTimeOffset.UtcNow);
 
         var message = ClassificationPromptBuilder.BuildUserMessage(item, SampleTaxonomy);
 
@@ -52,7 +50,9 @@ public class ClassificationPromptBuilderTests
     [Fact]
     public void BuildUserMessage_HandlesMissingOptionalFields()
     {
-        var item = new RaindropItem(1, "Titre", "https://example.com", null, null, [], null, null, null, DateTimeOffset.UtcNow, null);
+        // Url volontairement invalide : c'est le seul cas où le domaine (désormais recalculé, ADR 0012)
+        // ne peut pas être déterminé.
+        var item = new Item(SourceType.Raindrop, "1", "url-invalide", "Titre", null, null, [], DateTimeOffset.UtcNow);
         var emptyTaxonomy = new RaindropTaxonomy([], []);
 
         var message = ClassificationPromptBuilder.BuildUserMessage(item, emptyTaxonomy);
@@ -68,7 +68,7 @@ public class ClassificationPromptBuilderTests
     [Fact]
     public void BuildUserMessage_OrdersTagsByPopularity()
     {
-        var item = new RaindropItem(1, "Titre", "https://example.com", null, null, [], null, null, null, DateTimeOffset.UtcNow, null);
+        var item = new Item(SourceType.Raindrop, "1", "https://example.com", "Titre", null, null, [], DateTimeOffset.UtcNow);
         var taxonomy = new RaindropTaxonomy([], [new RaindropTag("rare", 1), new RaindropTag("populaire", 100)]);
 
         var message = ClassificationPromptBuilder.BuildUserMessage(item, taxonomy);

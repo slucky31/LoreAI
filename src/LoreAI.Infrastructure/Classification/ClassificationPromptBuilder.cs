@@ -77,7 +77,7 @@ public static class ClassificationPromptBuilder
         return JsonSerializer.Serialize(schema);
     }
 
-    public static string BuildUserMessage(RaindropItem item, RaindropTaxonomy taxonomy)
+    public static string BuildUserMessage(Item item, RaindropTaxonomy taxonomy)
     {
         var excerpt = Truncate(item.Excerpt, MaxExcerptLength);
         var existingTags = item.Tags.Count > 0 ? string.Join(", ", item.Tags) : "(aucun)";
@@ -93,8 +93,8 @@ public static class ClassificationPromptBuilder
         return $"""
             <article>
             Titre : {item.Title}
-            Lien : {item.Link}
-            Domaine : {item.Domain ?? "(inconnu)"}
+            Lien : {item.Url}
+            Domaine : {ExtractDomain(item.Url) ?? "(inconnu)"}
             Tags déjà présents sur cet article : {existingTags}
             Extrait : {excerpt ?? "(aucun extrait)"}
             Note personnelle : {item.Note ?? "(aucune)"}
@@ -104,6 +104,10 @@ public static class ClassificationPromptBuilder
             Tags les plus utilisés dans la bibliothèque : {topTags}
             """;
     }
+
+    /// <summary>Recalculé à la volée (ADR 0012) plutôt que stocké : un article n'existe qu'à travers son Url.</summary>
+    private static string? ExtractDomain(string url) =>
+        Uri.TryCreate(url, UriKind.Absolute, out var uri) ? uri.Host : null;
 
     private static string? Truncate(string? value, int maxLength) =>
         value is null || value.Length <= maxLength ? value : value[..maxLength] + "…";

@@ -141,8 +141,8 @@ psql "postgresql://loreai:<mot_de_passe>@<hote-postgres>:5432/loreai"
 ```
 
 ```sql
-INSERT INTO "PollingStates" ("Id", "LastRaindropId", "LastCreatedUtc", "UpdatedAtUtc")
-VALUES (1, <id_du_dernier_raindrop_a_ignorer>, '<date_ISO8601_UTC>', '<date_ISO8601_UTC>');
+INSERT INTO "PollingStates" ("SourceType", "LastSourceItemId", "LastCreatedUtc", "UpdatedAtUtc")
+VALUES ('Raindrop', '<id_du_dernier_raindrop_a_ignorer>', '<date_ISO8601_UTC>', '<date_ISO8601_UTC>');
 ```
 
 Puis relancer :

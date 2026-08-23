@@ -1,7 +1,9 @@
+using System.Globalization;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using LoreAI.Core.Enums;
 using LoreAI.Core.Interfaces;
 using LoreAI.Core.Models;
 using LoreAI.Infrastructure.Raindrop.Dto;
@@ -34,9 +36,11 @@ public sealed class RaindropClient : IRaindropClient
         _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _options.Token);
     }
 
-    public async Task<IReadOnlyList<RaindropItem>> GetNewRaindropsAsync(PollingState lastState, CancellationToken cancellationToken)
+    public SourceType SourceType => SourceType.Raindrop;
+
+    public async Task<IReadOnlyList<Item>> GetNewItemsAsync(PollingState lastState, CancellationToken cancellationToken)
     {
-        var collected = new List<RaindropItem>();
+        var collected = new List<Item>();
         var page = 0;
 
         while (page < MaxPagesPerCycle)
@@ -65,7 +69,7 @@ public sealed class RaindropClient : IRaindropClient
                     break;
                 }
 
-                collected.Add(MapToRaindropItem(dto));
+                collected.Add(MapToItem(dto));
             }
 
             if (reachedKnownItem)
@@ -138,14 +142,15 @@ public sealed class RaindropClient : IRaindropClient
     }
 
     /// <summary>
-    /// Les deux critères sont évalués indépendamment. Auparavant un <c>LastRaindropId</c> nul court-circuitait
+    /// Les deux critères sont évalués indépendamment. Auparavant un <c>LastSourceItemId</c> nul court-circuitait
     /// la fonction avant même le test de date : un état de polling amorcé avec la seule date — le cas naturel
     /// (« ignorer tout ce qui est antérieur à aujourd'hui », sans avoir à retrouver l'id du dernier raindrop) —
     /// était donc totalement ignoré, et l'historique complet remonté.
     /// </summary>
     private static bool IsAlreadyKnown(RaindropDto dto, PollingState lastState)
     {
-        if (lastState.LastRaindropId is not null && dto.Id == lastState.LastRaindropId)
+        if (lastState.LastSourceItemId is not null
+            && dto.Id.ToString(CultureInfo.InvariantCulture) == lastState.LastSourceItemId)
         {
             return true;
         }
@@ -153,16 +158,13 @@ public sealed class RaindropClient : IRaindropClient
         return lastState.LastCreatedUtc is not null && dto.Created <= lastState.LastCreatedUtc;
     }
 
-    private static RaindropItem MapToRaindropItem(RaindropDto dto) => new(
-        dto.Id,
-        dto.Title,
+    private static Item MapToItem(RaindropDto dto) => new(
+        SourceType.Raindrop,
+        dto.Id.ToString(CultureInfo.InvariantCulture),
         dto.Link,
+        dto.Title,
         dto.Excerpt,
         dto.Note,
         dto.Tags,
-        dto.Collection?.Id,
-        dto.Domain,
-        dto.Type,
-        dto.Created,
-        dto.LastUpdate);
+        dto.Created);
 }

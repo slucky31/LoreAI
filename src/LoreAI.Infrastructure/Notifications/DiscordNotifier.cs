@@ -23,7 +23,7 @@ public sealed class DiscordNotifier : IImmediateNotifier
         _logger = logger;
     }
 
-    public async Task NotifyAsync(RaindropItem item, ClassificationResult classification, CancellationToken cancellationToken)
+    public async Task NotifyAsync(Item item, ClassificationResult classification, CancellationToken cancellationToken)
     {
         try
         {
@@ -33,11 +33,11 @@ public sealed class DiscordNotifier : IImmediateNotifier
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            _logger.LogWarning(ex, "Échec de l'envoi de la notification Discord pour le raindrop {RaindropId}", item.Id);
+            _logger.LogWarning(ex, "Échec de l'envoi de la notification Discord pour l'item {SourceId}", item.SourceId);
         }
     }
 
-    private static string FormatMessage(RaindropItem item, ClassificationResult classification)
+    private static string FormatMessage(Item item, ClassificationResult classification)
     {
         var collection = classification.SuggestedCollection ?? "(non déplacé)";
         var tags = classification.Tags.Count > 0 ? string.Join(", ", classification.Tags) : "(aucun)";
@@ -45,6 +45,6 @@ public sealed class DiscordNotifier : IImmediateNotifier
         return $"**[{classification.Action}] {item.Title}**\n" +
                $"Collection : {collection} — Tags : {tags} — Priorité : {classification.Priority}\n" +
                $"{classification.Reason}\n" +
-               $"{item.Link}";
+               $"{item.Url}";
     }
 }

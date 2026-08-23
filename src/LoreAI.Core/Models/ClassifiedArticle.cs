@@ -1,7 +1,7 @@
 namespace LoreAI.Core.Models;
 
 public sealed record ClassifiedArticle(
-    RaindropItem Item,
+    Item Item,
     ClassificationResult Classification,
     DateTimeOffset ClassifiedAtUtc,
     bool Moved,
