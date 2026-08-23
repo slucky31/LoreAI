@@ -16,4 +16,12 @@ public interface IRaindropClient : ISourceIngester
     /// et déplacement optionnel vers une autre collection si <paramref name="collectionId"/> est fourni.
     /// </summary>
     Task UpdateRaindropAsync(long raindropId, IReadOnlyCollection<string> tags, string note, long? collectionId, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Une page de toute la bibliothèque (collection 0, hors corbeille — lot 1, #42), pas les seuls nouveaux
+    /// items depuis un curseur : hors du contrat <see cref="ISourceIngester"/>, propre à ce balayage complet.
+    /// Une liste vide signale la fin — jamais déduite d'une page plus courte que demandée (même piège que
+    /// <see cref="ISourceIngester.GetNewItemsAsync"/>, voir son implémentation Raindrop).
+    /// </summary>
+    Task<IReadOnlyList<LibraryItem>> GetLibraryPageAsync(int page, CancellationToken cancellationToken);
 }

@@ -183,6 +183,95 @@ public class RaindropClientTests
     }
 
     [Fact]
+    public async Task GetLibraryPageAsync_MapsBrokenImportantCoverAndHighlights()
+    {
+        using var server = WireMockServer.Start();
+        GivenPage(server, 0, """
+            { "_id": 201, "title": "Full", "link": "https://full.example", "tags": ["x"], "domain": "full.example",
+              "type": "article", "created": "2026-02-01T00:00:00Z", "collection": { "$id": 5 },
+              "broken": true, "important": true, "cover": "https://full.example/cover.png",
+              "highlights": [{ "_id": "h1", "text": "quote", "color": "yellow" }] }
+            """);
+
+        var client = CreateClient(server, pageSize: 50);
+
+        var items = await client.GetLibraryPageAsync(0, CancellationToken.None);
+
+        var single = Assert.Single(items);
+        Assert.True(single.Broken);
+        Assert.True(single.Important);
+        Assert.Equal("https://full.example/cover.png", single.Cover);
+        Assert.NotNull(single.HighlightsJson);
+        Assert.Contains("quote", single.HighlightsJson);
+        Assert.Equal(5, single.RaindropCollectionId);
+        Assert.Equal(ItemOrigin.Library, single.Origin);
+    }
+
+    [Fact]
+    public async Task GetLibraryPageAsync_NoHighlightsField_HighlightsJsonIsNull()
+    {
+        using var server = WireMockServer.Start();
+        GivenPage(server, 0, ItemJson(101, "2026-01-01T00:00:00Z"));
+
+        var client = CreateClient(server, pageSize: 50);
+
+        var items = await client.GetLibraryPageAsync(0, CancellationToken.None);
+
+        Assert.Null(Assert.Single(items).HighlightsJson);
+    }
+
+    [Fact]
+    public async Task GetLibraryPageAsync_CollectionIdIsMinusOne_OriginIsUnsorted()
+    {
+        using var server = WireMockServer.Start();
+        GivenPage(server, 0, """
+            { "_id": 301, "title": "Non trié", "link": "https://x.example", "tags": [], "domain": "x.example",
+              "type": "article", "created": "2026-01-01T00:00:00Z", "collection": { "$id": -1 } }
+            """);
+
+        var client = CreateClient(server, pageSize: 50);
+
+        var items = await client.GetLibraryPageAsync(0, CancellationToken.None);
+
+        Assert.Equal(ItemOrigin.Unsorted, Assert.Single(items).Origin);
+    }
+
+    [Fact]
+    public async Task GetLibraryPageAsync_EmptyPage_ReturnsEmpty()
+    {
+        using var server = WireMockServer.Start();
+        GivenPage(server, 0, string.Empty);
+
+        var client = CreateClient(server, pageSize: 50);
+
+        Assert.Empty(await client.GetLibraryPageAsync(0, CancellationToken.None));
+    }
+
+    /// <summary>Toute la bibliothèque, indépendamment de la collection configurée pour GetNewItemsAsync (lot 1, #42).</summary>
+    [Fact]
+    public async Task GetLibraryPageAsync_IgnoresConfiguredCollectionId_AlwaysTargetsCollectionZero()
+    {
+        using var server = WireMockServer.Start();
+        GivenPage(server, 0, string.Empty);
+
+        var httpClient = new HttpClient();
+        var options = Options.Create(new RaindropApiOptions
+        {
+            BaseUrl = $"{server.Urls[0]}/rest/v1",
+            Token = "test-token",
+            CollectionId = -1,
+            PageSize = 50,
+        });
+        var client = new RaindropClient(httpClient, options, NullLogger<RaindropClient>.Instance);
+
+        await client.GetLibraryPageAsync(0, CancellationToken.None);
+
+        var logEntry = Assert.Single(server.LogEntries);
+        Assert.NotNull(logEntry.RequestMessage);
+        Assert.Equal("/rest/v1/raindrops/0", logEntry.RequestMessage.Path);
+    }
+
+    [Fact]
     public async Task UpdateRaindropAsync_WithoutCollectionId_DoesNotIncludeCollectionInBody()
     {
         using var server = WireMockServer.Start();

@@ -26,4 +26,11 @@ public sealed class WorkerOptions
     /// </summary>
     [Range(1, int.MaxValue)]
     public int HealthMaxCycleAgeMinutes { get; init; } = 45;
+
+    /// <summary>Expression cron de l'indexation en lecture seule de toute la bibliothèque (lot 1, #42) — déclenchement rare, par défaut chaque dimanche à 3h UTC.</summary>
+    [Required(AllowEmptyStrings = false)]
+    public string LibraryIndexCronExpression { get; init; } = "0 3 * * 0";
+
+    /// <summary>Inactif par défaut : lance une passe d'indexation de la bibliothèque au démarrage du worker (soumise à la garde des 24h de <c>LibraryIndexingJob</c>).</summary>
+    public bool IndexLibraryOnStartup { get; init; }
 }

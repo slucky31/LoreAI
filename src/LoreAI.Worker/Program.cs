@@ -60,6 +60,8 @@ try
     builder.Services.AddSingleton<IArticleRepository, ArticleRepository>();
     builder.Services.AddSingleton<IPollingStateRepository, PollingStateRepository>();
     builder.Services.AddSingleton<ICycleRunRepository, CycleRunRepository>();
+    builder.Services.AddSingleton<ILibraryItemRepository, LibraryItemRepository>();
+    builder.Services.AddSingleton<ILibraryIndexStateRepository, LibraryIndexStateRepository>();
     // DefaultNotificationPolicy expose des seuils en paramètres de constructeur ; ils étaient annoncés
     // « injectables » mais aucun appelant ne les fournissait. On les alimente depuis la configuration ici,
     // plutôt que de faire dépendre Core de Microsoft.Extensions.Options.
@@ -85,6 +87,7 @@ try
     builder.Services.AddScheduler();
     builder.Services.AddTransient<UnsortedClassificationJob>();
     builder.Services.AddTransient<DigestNotificationJob>();
+    builder.Services.AddTransient<LibraryIndexingJob>();
 
     var host = builder.Build();
 
@@ -107,6 +110,14 @@ try
         scheduler.Schedule<DigestNotificationJob>()
             .Cron(workerOptions.DigestCronExpression)
             .PreventOverlapping(nameof(DigestNotificationJob));
+
+        var libraryIndexSchedule = scheduler.Schedule<LibraryIndexingJob>()
+            .Cron(workerOptions.LibraryIndexCronExpression)
+            .PreventOverlapping(nameof(LibraryIndexingJob));
+        if (workerOptions.IndexLibraryOnStartup)
+        {
+            libraryIndexSchedule.RunOnceAtStart();
+        }
     });
 
     host.Run();
