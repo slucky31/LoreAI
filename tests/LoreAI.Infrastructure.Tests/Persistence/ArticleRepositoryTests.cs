@@ -1,3 +1,4 @@
+using System.Globalization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using LoreAI.Core.Enums;
@@ -54,7 +55,7 @@ public class ArticleRepositoryTests : IAsyncLifetime
         var pending = await _repository.GetUnsentDigestItemsAsync(TestContext.Current.CancellationToken);
 
         var single = Assert.Single(pending);
-        Assert.Equal(2, single.Item.Id);
+        Assert.Equal("2", single.Item.SourceId);
     }
 
     /// <summary>
@@ -165,18 +166,15 @@ public class ArticleRepositoryTests : IAsyncLifetime
         Assert.Single(pending);
     }
 
-    private static RaindropItem CreateItem(long id, string title) => new(
-        id,
-        title,
+    private static Item CreateItem(long id, string title) => new(
+        SourceType.Raindrop,
+        id.ToString(CultureInfo.InvariantCulture),
         "https://example.com",
+        title,
         "extrait",
         "note",
         [],
-        null,
-        "example.com",
-        "article",
-        DateTimeOffset.UtcNow,
-        null);
+        DateTimeOffset.UtcNow);
 
     private static ClassificationResult CreateClassification() =>
         // "raw" n'est plus une valeur de test valide pour ClassificationRawResponse : la colonne est

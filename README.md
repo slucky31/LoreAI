@@ -79,8 +79,8 @@ Seuls les logs (`/data/logs/`) sont persistés via le volume `./data` : la base 
 Sans état de polling préexistant, l'outil remonte **tout l'historique** de la collection « Non trié » au premier cycle (aucun webhook natif disponible côté API, cf. [ADR 0003](docs/adr/0003-strategie-polling-raindrop.md)). Si elle contient déjà beaucoup d'articles, cela peut être long et générer un volume d'appels LLM important, **et modifier automatiquement un grand nombre de raindrops d'un coup** (tags + déplacements). Pour éviter un traitement massif au premier lancement, insérez manuellement une ligne dans `PollingStates` avant de démarrer :
 
 ```sql
-INSERT INTO "PollingStates" ("Id", "LastRaindropId", "LastCreatedUtc", "UpdatedAtUtc")
-VALUES (1, <id_du_dernier_raindrop_a_ignorer>, '<date_ISO8601_UTC>', '<date_ISO8601_UTC>');
+INSERT INTO "PollingStates" ("SourceType", "LastSourceItemId", "LastCreatedUtc", "UpdatedAtUtc")
+VALUES ('Raindrop', '<id_du_dernier_raindrop_a_ignorer>', '<date_ISO8601_UTC>', '<date_ISO8601_UTC>');
 ```
 
 ## Comment le tri est appliqué

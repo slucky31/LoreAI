@@ -12,9 +12,9 @@
 
 | | |
 |---|---|
-| **Lot en cours** | Lot 0 ([#41](https://github.com/slucky31/LoreAI/issues/41)), **PR 1 mergée et validée en production** ([#53](https://github.com/slucky31/LoreAI/pull/53), v0.5.0) : socle PostgreSQL + EF Core. Déployée sur `mcm8`, cycle réel observé (schéma migré, articles classifiés et déplacés). |
-| **Prochain geste** | PR 2 du lot 0 : modèle `Item` générique multi-sources (⚠️ ADR à écrire avant de coder, cf. roadmap). |
-| **Dernière décision** | **D7** — persistance PostgreSQL mutualisée ([ADR 0009](adr/0009-postgresql-mutualise-sur-le-pi.md)). Affinée en session par l'**ADR 0011** : EF Core remplace Dapper intégralement (schéma **et** requêtes), pas seulement le moteur de base. |
+| **Lot en cours** | Lot 0 ([#41](https://github.com/slucky31/LoreAI/issues/41)), **PR 1 mergée et validée en production** ([#53](https://github.com/slucky31/LoreAI/pull/53), v0.5.0) : socle PostgreSQL + EF Core. **PR 2 codée** (branche `feat/lot0-pr2-item-generique-multisource`, pas encore poussée/PR ouverte) : modèle `Item` générique multi-sources ([ADR 0012](adr/0012-modele-item-generique-multi-sources.md)), build + suite de tests (109) verts en local. |
+| **Prochain geste** | Pousser la branche, ouvrir la PR 2, la faire relire puis merger. Ensuite : PR 3 du lot 0 (journal de cycle `CycleRuns` + healthcheck Docker, #35). |
+| **Dernière décision** | **ADR 0012** — `Item` générique remplace `RaindropItem` comme modèle central (D1) ; `RaindropItem` supprimé (pas conservé comme DTO d'adaptateur, `RaindropDto` suffit) ; `PollingState` devient une ligne par source. |
 | **Bloqué par** | Rien. Le Pi (`mcm8`) est en ligne, l'instance PostgreSQL mutualisée provisionnée (base `loreai`, rôles `loreai`/`loreai_ro`) et le worker tourne dessus en production. |
 
 ## Ce qui tourne aujourd'hui
@@ -27,7 +27,7 @@ La PR 1 du lot 0 est en production. Le reste de la roadmap (multi-sources, journ
 
 | | Décision | Où c'est écrit |
 |---|---|---|
-| D1 | Hub multi-sources (Raindrop + Gmail + RSS) | [roadmap](roadmap.md), ADR 0010 **à écrire** |
+| D1 | Hub multi-sources (Raindrop + Gmail + RSS) | [roadmap](roadmap.md), [ADR 0012](adr/0012-modele-item-generique-multi-sources.md) ✅ (modèle `Item`/`ISourceIngester` — connecteurs Gmail/RSS encore à écrire, lots 7-8) |
 | D2 | Réseau privé strict — LAN **ou tailnet**, jamais d'exposition publique | [ADR 0010](adr/0010-topologie-reseau-tailscale.md) ✅ |
 | D3 | L'email disparaît complètement | [roadmap](roadmap.md), rouvre l'ADR 0005 |
 | D4 | Le vault Obsidian n'est pas visible du Pi | [roadmap](roadmap.md) |

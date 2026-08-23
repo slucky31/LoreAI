@@ -1,5 +1,7 @@
+using System.Globalization;
 using Coravel.Invocable;
 using Microsoft.Extensions.Options;
+using LoreAI.Core.Enums;
 using LoreAI.Core.Interfaces;
 using LoreAI.Core.Models;
 using LoreAI.Core.Services;
@@ -53,8 +55,8 @@ public sealed class UnsortedClassificationJob : IInvocable, ICancellableInvocabl
 
         try
         {
-            var lastState = await _pollingStateRepository.GetAsync(cancellationToken);
-            var newItems = await _raindropClient.GetNewRaindropsAsync(lastState, cancellationToken);
+            var lastState = await _pollingStateRepository.GetAsync(SourceType.Raindrop, cancellationToken);
+            var newItems = await _raindropClient.GetNewItemsAsync(lastState, cancellationToken);
 
             if (newItems.Count == 0)
             {
@@ -75,7 +77,7 @@ public sealed class UnsortedClassificationJob : IInvocable, ICancellableInvocabl
             var notifiedCount = 0;
             var movedCount = 0;
             var processedCount = 0;
-            RaindropItem? lastProcessed = null;
+            Item? lastProcessed = null;
 
             foreach (var item in newItems)
             {
@@ -83,7 +85,7 @@ public sealed class UnsortedClassificationJob : IInvocable, ICancellableInvocabl
                 {
                     if (_logger.IsEnabled(LogLevel.Information))
                     {
-                        _logger.LogInformation("Traitement du signet {RaindropId} en cours.", item.Id);
+                        _logger.LogInformation("Traitement du signet {SourceId} en cours.", item.SourceId);
                     }
 
                     var classification = await _classifier.ClassifyAsync(item, taxonomy, cancellationToken);
@@ -95,8 +97,8 @@ public sealed class UnsortedClassificationJob : IInvocable, ICancellableInvocabl
                         // dans le raindrop réel. On interrompt le cycle sans dépasser cet article, pour qu'il
                         // soit repris au prochain passage au lieu d'être perdu définitivement par le high-water mark.
                         _logger.LogWarning(
-                            "Classification en repli pour le raindrop {RaindropId} ({Reason}) — rien n'est appliqué, cycle interrompu, reprise au prochain passage.",
-                            item.Id,
+                            "Classification en repli pour l'item {SourceId} ({Reason}) — rien n'est appliqué, cycle interrompu, reprise au prochain passage.",
+                            item.SourceId,
                             classification.Reason);
                         break;
                     }
@@ -115,7 +117,7 @@ public sealed class UnsortedClassificationJob : IInvocable, ICancellableInvocabl
                     if (_notificationPolicy.ShouldNotifyImmediately(classification))
                     {
                         await _immediateNotifier.NotifyAsync(item, classification, cancellationToken);
-                        await _articleRepository.MarkDiscordNotifiedAsync(item.Id, DateTimeOffset.UtcNow, cancellationToken);
+                        await _articleRepository.MarkDiscordNotifiedAsync(ParseRaindropId(item), DateTimeOffset.UtcNow, cancellationToken);
                         notifiedCount++;
                     }
 
@@ -127,8 +129,8 @@ public sealed class UnsortedClassificationJob : IInvocable, ICancellableInvocabl
                     if (_logger.IsEnabled(LogLevel.Information))
                     {
                         _logger.LogInformation(
-                            "Arrêt de l'application demandé — cycle interrompu proprement avant le raindrop {RaindropId}.",
-                            item.Id);
+                            "Arrêt de l'application demandé — cycle interrompu proprement avant l'item {SourceId}.",
+                            item.SourceId);
                     }
                     break;
                 }
@@ -139,8 +141,8 @@ public sealed class UnsortedClassificationJob : IInvocable, ICancellableInvocabl
                     // au cycle suivant. On s'arrête ici en conservant la progression acquise.
                     _logger.LogError(
                         ex,
-                        "Échec du traitement du raindrop {RaindropId} — cycle interrompu, la progression acquise est conservée.",
-                        item.Id);
+                        "Échec du traitement de l'item {SourceId} — cycle interrompu, la progression acquise est conservée.",
+                        item.SourceId);
                     break;
                 }
             }
@@ -151,7 +153,7 @@ public sealed class UnsortedClassificationJob : IInvocable, ICancellableInvocabl
                 // Utiliser le token d'arrêt ferait échouer cette écriture pendant un shutdown et rejouerait
                 // tout le batch au redémarrage. C'est une écriture SQLite locale, elle ne retarde pas l'arrêt.
                 await _pollingStateRepository.UpdateAsync(
-                    new PollingState(lastProcessed.Id, lastProcessed.CreatedUtc, DateTimeOffset.UtcNow),
+                    new PollingState(SourceType.Raindrop, lastProcessed.SourceId, lastProcessed.CapturedAtUtc, DateTimeOffset.UtcNow),
                     CancellationToken.None);
             }
 
@@ -213,11 +215,13 @@ public sealed class UnsortedClassificationJob : IInvocable, ICancellableInvocabl
     /// bloc [LoreAI] d'un passage précédent est remplacé (cf. <see cref="ClassificationNoteBuilder"/>).
     /// </summary>
     private async Task<bool> ApplyClassificationAsync(
-        RaindropItem item,
+        Item item,
         ClassificationResult classification,
         RaindropCollection? matchedCollection,
         CancellationToken cancellationToken)
     {
+        var raindropId = ParseRaindropId(item);
+
         try
         {
             var mergedTags = item.Tags
@@ -227,16 +231,19 @@ public sealed class UnsortedClassificationJob : IInvocable, ICancellableInvocabl
 
             var mergedNote = ClassificationNoteBuilder.Build(item.Note, classification);
 
-            await _raindropClient.UpdateRaindropAsync(item.Id, mergedTags, mergedNote, matchedCollection?.Id, cancellationToken);
-            await _articleRepository.RecordWriteBackAsync(item.Id, success: true, moved: matchedCollection is not null, DateTimeOffset.UtcNow, cancellationToken);
+            await _raindropClient.UpdateRaindropAsync(raindropId, mergedTags, mergedNote, matchedCollection?.Id, cancellationToken);
+            await _articleRepository.RecordWriteBackAsync(raindropId, success: true, moved: matchedCollection is not null, DateTimeOffset.UtcNow, cancellationToken);
 
             return matchedCollection is not null;
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Échec de l'application des tags/déplacement pour l'item {RaindropId}", item.Id);
-            await _articleRepository.RecordWriteBackAsync(item.Id, success: false, moved: false, DateTimeOffset.UtcNow, cancellationToken);
+            _logger.LogWarning(ex, "Échec de l'application des tags/déplacement pour l'item {SourceId}", item.SourceId);
+            await _articleRepository.RecordWriteBackAsync(raindropId, success: false, moved: false, DateTimeOffset.UtcNow, cancellationToken);
             return false;
         }
     }
+
+    /// <summary>Le write-back reste strictement Raindrop (ADR 0012) : on retrouve l'id numérique attendu par l'API.</summary>
+    private static long ParseRaindropId(Item item) => long.Parse(item.SourceId, CultureInfo.InvariantCulture);
 }

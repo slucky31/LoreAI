@@ -108,7 +108,7 @@ public class UnsortedClassificationJobTests
         await fixture.RaindropClient.DidNotReceive().UpdateRaindropAsync(
             Arg.Any<long>(), Arg.Any<IReadOnlyCollection<string>>(), Arg.Any<string>(), Arg.Any<long?>(), Arg.Any<CancellationToken>());
         await fixture.ArticleRepository.Received(1).UpsertAsync(
-            Arg.Any<RaindropItem>(), Arg.Any<ClassificationResult>(), Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>());
+            Arg.Any<Item>(), Arg.Any<ClassificationResult>(), Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>());
     }
 
     /// <summary>Le bloc de note est reconstruit à partir de la note existante — cf. F-04.</summary>
@@ -155,7 +155,7 @@ public class UnsortedClassificationJobTests
         await fixture.Build().Invoke();
 
         await fixture.ArticleRepository.Received(1).UpsertAsync(
-            Arg.Any<RaindropItem>(), Arg.Is<ClassificationResult>(c => c!.IsFallback), Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>());
+            Arg.Any<Item>(), Arg.Is<ClassificationResult>(c => c!.IsFallback), Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -184,7 +184,7 @@ public class UnsortedClassificationJobTests
         await fixture.Build().Invoke();
 
         await fixture.PollingStateRepository.Received(1).UpdateAsync(
-            Arg.Is<PollingState>(s => s!.LastRaindropId == 1), Arg.Any<CancellationToken>());
+            Arg.Is<PollingState>(s => s!.LastSourceItemId == "1"), Arg.Any<CancellationToken>());
         // Le 3e n'est pas traité : reprendre au 2 est la seule façon de ne pas le perdre.
         await fixture.RaindropClient.DidNotReceive().UpdateRaindropAsync(
             3, Arg.Any<IReadOnlyCollection<string>>(), Arg.Any<string>(), Arg.Any<long?>(), Arg.Any<CancellationToken>());
@@ -201,7 +201,7 @@ public class UnsortedClassificationJobTests
         await fixture.Build().Invoke();
 
         await fixture.ImmediateNotifier.DidNotReceive().NotifyAsync(
-            Arg.Any<RaindropItem>(), Arg.Any<ClassificationResult>(), Arg.Any<CancellationToken>());
+            Arg.Any<Item>(), Arg.Any<ClassificationResult>(), Arg.Any<CancellationToken>());
     }
 
     // --- F-03 : isolation d'erreur par article ------------------------------------------------
@@ -214,7 +214,7 @@ public class UnsortedClassificationJobTests
             .WithClassification(CreateClassification(".NET", ["dotnet"]));
 
         fixture.ArticleRepository
-            .UpsertAsync(Arg.Is<RaindropItem>(i => i!.Id == 3), Arg.Any<ClassificationResult>(), Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>())
+            .UpsertAsync(Arg.Is<Item>(i => i!.SourceId == "3"), Arg.Any<ClassificationResult>(), Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>())
             .ThrowsAsync(new InvalidOperationException("database is locked"));
 
         await fixture.Build().Invoke();
@@ -222,7 +222,7 @@ public class UnsortedClassificationJobTests
         // Avant F-03 l'exception remontait au catch du cycle et le high-water mark n'avançait pas du tout,
         // ce qui rejouait les articles 1 et 2 déjà écrits dans Raindrop.
         await fixture.PollingStateRepository.Received(1).UpdateAsync(
-            Arg.Is<PollingState>(s => s!.LastRaindropId == 2), Arg.Any<CancellationToken>());
+            Arg.Is<PollingState>(s => s!.LastSourceItemId == "2"), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -233,7 +233,7 @@ public class UnsortedClassificationJobTests
             .WithClassification(CreateClassification(".NET", ["dotnet"]));
 
         fixture.ArticleRepository
-            .UpsertAsync(Arg.Any<RaindropItem>(), Arg.Any<ClassificationResult>(), Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>())
+            .UpsertAsync(Arg.Any<Item>(), Arg.Any<ClassificationResult>(), Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>())
             .ThrowsAsync(new InvalidOperationException("database is locked"));
 
         await fixture.Build().Invoke();
@@ -257,7 +257,7 @@ public class UnsortedClassificationJobTests
         // L'échec de write-back est déjà rattrapé et enregistré ; il ne doit pas bloquer le batch.
         await fixture.ArticleRepository.Received(1).RecordWriteBackAsync(1, false, false, Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>());
         await fixture.PollingStateRepository.Received(1).UpdateAsync(
-            Arg.Is<PollingState>(s => s!.LastRaindropId == 2), Arg.Any<CancellationToken>());
+            Arg.Is<PollingState>(s => s!.LastSourceItemId == "2"), Arg.Any<CancellationToken>());
     }
 
     // --- Notification immédiate ---------------------------------------------------------------
@@ -273,7 +273,7 @@ public class UnsortedClassificationJobTests
         await fixture.Build().Invoke();
 
         await fixture.ImmediateNotifier.Received(1).NotifyAsync(
-            Arg.Is<RaindropItem>(i => i!.Id == 1), Arg.Any<ClassificationResult>(), Arg.Any<CancellationToken>());
+            Arg.Is<Item>(i => i!.SourceId == "1"), Arg.Any<ClassificationResult>(), Arg.Any<CancellationToken>());
         await fixture.ArticleRepository.Received(1).MarkDiscordNotifiedAsync(1, Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>());
     }
 
@@ -289,7 +289,7 @@ public class UnsortedClassificationJobTests
         await fixture.RaindropClient.DidNotReceive().GetTaxonomyAsync(Arg.Any<CancellationToken>());
         await fixture.PollingStateRepository.DidNotReceive().UpdateAsync(Arg.Any<PollingState>(), Arg.Any<CancellationToken>());
         await fixture.Classifier.DidNotReceive().ClassifyAsync(
-            Arg.Any<RaindropItem>(), Arg.Any<RaindropTaxonomy>(), Arg.Any<CancellationToken>());
+            Arg.Any<Item>(), Arg.Any<RaindropTaxonomy>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -297,7 +297,7 @@ public class UnsortedClassificationJobTests
     {
         var fixture = new JobFixture();
         fixture.RaindropClient
-            .GetNewRaindropsAsync(Arg.Any<PollingState>(), Arg.Any<CancellationToken>())
+            .GetNewItemsAsync(Arg.Any<PollingState>(), Arg.Any<CancellationToken>())
             .ThrowsAsync(new HttpRequestException("401 Unauthorized"));
 
         // Un cycle en échec ne doit jamais faire tomber le worker : Coravel ne le replanifierait pas.
@@ -317,7 +317,7 @@ public class UnsortedClassificationJobTests
             .WithClassification(CreateClassification(".NET", ["dotnet"]));
 
         fixture.Classifier
-            .ClassifyAsync(Arg.Is<RaindropItem>(i => i!.Id == 2), Arg.Any<RaindropTaxonomy>(), Arg.Any<CancellationToken>())
+            .ClassifyAsync(Arg.Is<Item>(i => i!.SourceId == "2"), Arg.Any<RaindropTaxonomy>(), Arg.Any<CancellationToken>())
             .Returns<ClassificationResult>(_ =>
             {
                 cts.Cancel();
@@ -332,23 +332,20 @@ public class UnsortedClassificationJobTests
         // L'écriture du high-water mark ne passe pas par le token d'arrêt, sinon le batch entier
         // serait rejoué au redémarrage.
         await fixture.PollingStateRepository.Received(1).UpdateAsync(
-            Arg.Is<PollingState>(s => s!.LastRaindropId == 1), Arg.Any<CancellationToken>());
+            Arg.Is<PollingState>(s => s!.LastSourceItemId == "1"), Arg.Any<CancellationToken>());
     }
 
     // --- Fixture ------------------------------------------------------------------------------
 
-    private static RaindropItem CreateItem(long id, IReadOnlyList<string>? tags = null) => new(
-        id,
-        $"Article {id}",
+    private static Item CreateItem(long id, IReadOnlyList<string>? tags = null) => new(
+        SourceType.Raindrop,
+        id.ToString(System.Globalization.CultureInfo.InvariantCulture),
         $"https://example.com/{id}",
+        $"Article {id}",
         "extrait",
         null,
         tags ?? [],
-        null,
-        "example.com",
-        "article",
-        DateTimeOffset.UnixEpoch.AddDays(id),
-        null);
+        DateTimeOffset.UnixEpoch.AddDays(id));
 
     private static ClassificationResult CreateClassification(
         string? suggestedCollection,
@@ -369,9 +366,9 @@ public class UnsortedClassificationJobTests
 
         public JobFixture()
         {
-            PollingStateRepository.GetAsync(Arg.Any<CancellationToken>()).Returns(PollingState.Initial);
-            RaindropClient.GetNewRaindropsAsync(Arg.Any<PollingState>(), Arg.Any<CancellationToken>())
-                .Returns(Array.Empty<RaindropItem>());
+            PollingStateRepository.GetAsync(Arg.Any<SourceType>(), Arg.Any<CancellationToken>()).Returns(PollingState.Initial(SourceType.Raindrop));
+            RaindropClient.GetNewItemsAsync(Arg.Any<PollingState>(), Arg.Any<CancellationToken>())
+                .Returns(Array.Empty<Item>());
             RaindropClient.GetTaxonomyAsync(Arg.Any<CancellationToken>()).Returns(Taxonomy);
             NotificationPolicy.ShouldNotifyImmediately(Arg.Any<ClassificationResult>()).Returns(false);
         }
@@ -388,22 +385,22 @@ public class UnsortedClassificationJobTests
             return this;
         }
 
-        public JobFixture WithNewItems(params RaindropItem[] items)
+        public JobFixture WithNewItems(params Item[] items)
         {
-            RaindropClient.GetNewRaindropsAsync(Arg.Any<PollingState>(), Arg.Any<CancellationToken>()).Returns(items);
+            RaindropClient.GetNewItemsAsync(Arg.Any<PollingState>(), Arg.Any<CancellationToken>()).Returns(items);
             return this;
         }
 
         public JobFixture WithClassification(ClassificationResult result)
         {
-            Classifier.ClassifyAsync(Arg.Any<RaindropItem>(), Arg.Any<RaindropTaxonomy>(), Arg.Any<CancellationToken>())
+            Classifier.ClassifyAsync(Arg.Any<Item>(), Arg.Any<RaindropTaxonomy>(), Arg.Any<CancellationToken>())
                 .Returns(result);
             return this;
         }
 
         public JobFixture WithClassificationSequence(params ClassificationResult[] results)
         {
-            Classifier.ClassifyAsync(Arg.Any<RaindropItem>(), Arg.Any<RaindropTaxonomy>(), Arg.Any<CancellationToken>())
+            Classifier.ClassifyAsync(Arg.Any<Item>(), Arg.Any<RaindropTaxonomy>(), Arg.Any<CancellationToken>())
                 .Returns(results[0], results[1..]);
             return this;
         }

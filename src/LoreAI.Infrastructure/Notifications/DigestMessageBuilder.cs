@@ -36,7 +36,7 @@ public static class DigestMessageBuilder
 
                     builder.AppendLine(
                         CultureInfo.InvariantCulture,
-                        $"<li>{BuildTitleHtml(article.Item.Title, article.Item.Link)} " +
+                        $"<li>{BuildTitleHtml(article.Item.Title, article.Item.Url)} " +
                         $"— {article.Classification.Priority} — tags : {WebUtility.HtmlEncode(tags)} — {WebUtility.HtmlEncode(article.Classification.Reason)}</li>");
                 }
 

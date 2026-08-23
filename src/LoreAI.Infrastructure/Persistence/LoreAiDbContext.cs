@@ -17,14 +17,13 @@ public sealed class LoreAiDbContext(DbContextOptions<LoreAiDbContext> options) :
             article.Property(a => a.RecommendedAction).HasConversion<string>();
             article.Property(a => a.Priority).HasConversion<string>();
             article.HasIndex(a => a.EmailDigestSentAtUtc);
-            article.HasIndex(a => a.RaindropCreatedUtc);
+            article.HasIndex(a => a.CapturedAtUtc);
         });
 
         modelBuilder.Entity<PollingStateEntity>(pollingState =>
         {
-            // Ligne unique par construction (PollingStateRepository force toujours Id = 1).
-            pollingState.Property(p => p.Id).ValueGeneratedNever();
-            pollingState.ToTable(t => t.HasCheckConstraint("CK_PollingState_SingleRow", "\"Id\" = 1"));
+            // Une ligne par source (ADR 0012) : la clé naturelle SourceType remplace la ligne unique Id = 1.
+            pollingState.HasKey(p => p.SourceType);
         });
     }
 }

@@ -172,16 +172,13 @@ public class AnthropicClassifierTests
         return new AnthropicClassifier(httpClient, options, NullLogger<AnthropicClassifier>.Instance);
     }
 
-    private static RaindropItem CreateItem() => new(
-        1,
-        "Un nouvel outil Claude",
+    private static Item CreateItem() => new(
+        SourceType.Raindrop,
+        "1",
         "https://example.com/claude-tool",
+        "Un nouvel outil Claude",
         "Extrait",
         null,
         ["claude"],
-        null,
-        "example.com",
-        "article",
-        DateTimeOffset.UtcNow,
-        null);
+        DateTimeOffset.UtcNow);
 }

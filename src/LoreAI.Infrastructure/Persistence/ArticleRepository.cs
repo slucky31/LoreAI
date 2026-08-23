@@ -1,6 +1,8 @@
+using System.Globalization;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using LoreAI.Core.Enums;
 using LoreAI.Core.Interfaces;
 using LoreAI.Core.Models;
 
@@ -19,28 +21,25 @@ public sealed class ArticleRepository : IArticleRepository
         _logger = logger;
     }
 
-    public async Task UpsertAsync(RaindropItem item, ClassificationResult classification, DateTimeOffset classifiedAtUtc, CancellationToken cancellationToken)
+    public async Task UpsertAsync(Item item, ClassificationResult classification, DateTimeOffset classifiedAtUtc, CancellationToken cancellationToken)
     {
         await _schemaGuard.EnsureMigratedAsync(cancellationToken);
         await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
 
-        var entity = await context.Articles.FindAsync([item.Id], cancellationToken);
+        var id = long.Parse(item.SourceId, CultureInfo.InvariantCulture);
+        var entity = await context.Articles.FindAsync([id], cancellationToken);
         if (entity is null)
         {
-            entity = new ArticleEntity { Id = item.Id, Title = item.Title, Link = item.Link };
+            entity = new ArticleEntity { Id = id, Title = item.Title, Url = item.Url };
             context.Articles.Add(entity);
         }
 
         entity.Title = item.Title;
-        entity.Link = item.Link;
+        entity.Url = item.Url;
         entity.Excerpt = item.Excerpt;
         entity.Note = item.Note;
         entity.OriginalTags = [.. item.Tags];
-        entity.CollectionId = item.CollectionId;
-        entity.Domain = item.Domain;
-        entity.RaindropType = item.RaindropType;
-        entity.RaindropCreatedUtc = item.CreatedUtc;
-        entity.RaindropLastUpdateUtc = item.LastUpdateUtc;
+        entity.CapturedAtUtc = item.CapturedAtUtc;
         entity.FetchedAtUtc = DateTimeOffset.UtcNow;
         entity.SuggestedCollection = classification.SuggestedCollection;
         entity.SuggestedTags = [.. classification.Tags];
@@ -103,7 +102,7 @@ public sealed class ArticleRepository : IArticleRepository
 
         var entities = await context.Articles
             .Where(a => a.EmailDigestSentAtUtc == null)
-            .OrderBy(a => a.RaindropCreatedUtc)
+            .OrderBy(a => a.CapturedAtUtc)
             .ToListAsync(cancellationToken);
 
         // Pas de log du nombre ici : DigestNotificationJob le journalise déjà côté appelant.
@@ -139,18 +138,17 @@ public sealed class ArticleRepository : IArticleRepository
 
     private static ClassifiedArticle MapToClassifiedArticle(ArticleEntity entity)
     {
-        var item = new RaindropItem(
-            entity.Id,
+        // SourceType.Raindrop en dur : Raindrop est l'unique source ingérée à ce stade (ADR 0012),
+        // l'entité elle-même ne porte pas encore ce champ.
+        var item = new Item(
+            SourceType.Raindrop,
+            entity.Id.ToString(CultureInfo.InvariantCulture),
+            entity.Url,
             entity.Title,
-            entity.Link,
             entity.Excerpt,
             entity.Note,
             entity.OriginalTags,
-            entity.CollectionId,
-            entity.Domain,
-            entity.RaindropType,
-            entity.RaindropCreatedUtc,
-            entity.RaindropLastUpdateUtc);
+            entity.CapturedAtUtc);
 
         var classification = new ClassificationResult(
             entity.SuggestedCollection,

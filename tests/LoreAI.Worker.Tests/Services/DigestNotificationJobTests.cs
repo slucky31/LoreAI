@@ -60,9 +60,10 @@ public class DigestNotificationJobTests
 
     private static ClassifiedArticle CreateArticle(long id)
     {
-        var item = new RaindropItem(
-            id, $"Article {id}", $"https://example.com/{id}", null, null, [], null, "example.com", "article",
-            DateTimeOffset.UnixEpoch.AddDays(id), null);
+        var item = new Item(
+            SourceType.Raindrop, id.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            $"https://example.com/{id}", $"Article {id}", null, null, [],
+            DateTimeOffset.UnixEpoch.AddDays(id));
 
         var classification = new ClassificationResult(
             ".NET", ["dotnet"], RecommendedAction.ALire, Priority.Moyenne, "raison", "model", "{}");

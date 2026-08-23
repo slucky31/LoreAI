@@ -116,16 +116,13 @@ public class DigestMessageBuilderTests
         return new ClassifiedArticle(item, classification, DateTimeOffset.UtcNow, Moved: suggestedCollection is not null, null, null);
     }
 
-    private static RaindropItem CreateItem(string title, string link) => new(
-        Id: Random.Shared.NextInt64(),
+    private static Item CreateItem(string title, string link) => new(
+        SourceType: SourceType.Raindrop,
+        SourceId: Random.Shared.NextInt64().ToString(System.Globalization.CultureInfo.InvariantCulture),
+        Url: link,
         Title: title,
-        Link: link,
         Excerpt: null,
         Note: null,
         Tags: [],
-        CollectionId: null,
-        Domain: "example.com",
-        RaindropType: "article",
-        CreatedUtc: DateTimeOffset.UtcNow,
-        LastUpdateUtc: null);
+        CapturedAtUtc: DateTimeOffset.UtcNow);
 }

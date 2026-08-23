@@ -1,3 +1,4 @@
+using System.Globalization;
 using Coravel.Invocable;
 using LoreAI.Core.Interfaces;
 
@@ -38,7 +39,7 @@ public sealed class DigestNotificationJob : IInvocable, ICancellableInvocable
             // Volontairement non annulable : l'email est parti, ne pas enregistrer ce fait le ferait
             // renvoyer au prochain digest. Une seule écriture SQLite locale, elle ne retarde pas l'arrêt.
             await _articleRepository.MarkDigestSentAsync(
-                pendingArticles.Select(a => a.Item.Id).ToList(),
+                pendingArticles.Select(a => long.Parse(a.Item.SourceId, CultureInfo.InvariantCulture)).ToList(),
                 DateTimeOffset.UtcNow,
                 CancellationToken.None);
 
