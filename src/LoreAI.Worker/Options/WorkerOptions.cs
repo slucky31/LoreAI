@@ -29,4 +29,12 @@ public sealed class WorkerOptions
 
     /// <summary>Inactif par défaut : lance une passe d'indexation de la bibliothèque au démarrage du worker (soumise à la garde des 24h de <c>LibraryIndexingJob</c>).</summary>
     public bool IndexLibraryOnStartup { get; init; }
+
+    /// <summary>
+    /// Expression cron du rapport hebdomadaire d'insights (lot 2, #43) — par défaut chaque dimanche à 4h
+    /// UTC, une heure après <see cref="LibraryIndexCronExpression"/> pour lire une bibliothèque fraîchement
+    /// réindexée.
+    /// </summary>
+    [Required(AllowEmptyStrings = false)]
+    public string WeeklyInsightsCronExpression { get; init; } = "0 4 * * 0";
 }

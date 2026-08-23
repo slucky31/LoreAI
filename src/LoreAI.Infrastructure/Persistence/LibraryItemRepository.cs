@@ -63,4 +63,14 @@ public sealed class LibraryItemRepository : ILibraryItemRepository
 
         await context.SaveChangesAsync(cancellationToken);
     }
+
+    public async Task<IReadOnlyList<LibraryItemSummary>> GetAllForInsightsAsync(CancellationToken cancellationToken)
+    {
+        await _schemaGuard.EnsureMigratedAsync(cancellationToken);
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+
+        return await context.LibraryItems
+            .Select(e => new LibraryItemSummary(e.Id, e.Title, e.Url, e.Tags, e.RaindropCollectionId, e.CapturedAtUtc))
+            .ToListAsync(cancellationToken);
+    }
 }

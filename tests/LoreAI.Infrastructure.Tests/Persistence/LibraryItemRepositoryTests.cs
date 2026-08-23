@@ -115,6 +115,25 @@ public class LibraryItemRepositoryTests : IAsyncLifetime
         Assert.Empty(await context.LibraryItems.ToListAsync(TestContext.Current.CancellationToken));
     }
 
+    [Fact]
+    public async Task GetAllForInsightsAsync_ReturnsLightweightProjectionOfEveryItem()
+    {
+        var item = CreateLibraryItem(1, "A") with
+        {
+            Item = CreateLibraryItem(1, "A").Item with { Tags = ["dotnet", "veille"] },
+            RaindropCollectionId = 10,
+        };
+        await _repository.UpsertPageAsync([item], DateTimeOffset.UtcNow, TestContext.Current.CancellationToken);
+
+        var summaries = await _repository.GetAllForInsightsAsync(TestContext.Current.CancellationToken);
+
+        var single = Assert.Single(summaries);
+        Assert.Equal(1, single.Id);
+        Assert.Equal("A", single.Title);
+        Assert.Equal(["dotnet", "veille"], single.Tags);
+        Assert.Equal(10, single.RaindropCollectionId);
+    }
+
     private static LibraryItem CreateLibraryItem(long id, string title) => new(
         new Item(SourceType.Raindrop, id.ToString(CultureInfo.InvariantCulture), "https://example.com", title, "extrait", "note", [], DateTimeOffset.UtcNow),
         ItemOrigin.Library,
