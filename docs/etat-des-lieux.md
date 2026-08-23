@@ -4,7 +4,7 @@
 > L'historique est dans `git log` et les Releases. La cible est dans [`roadmap.md`](roadmap.md). Les décisions sont dans [`adr/`](adr/).
 > Le suivi des lots est dans les [issues #41 à #51](https://github.com/slucky31/LoreAI/issues?q=is%3Aissue+milestone%3A*).
 
-**Dernière mise à jour :** 2026-08-23 · **Version publiée :** 0.7.0
+**Dernière mise à jour :** 2026-08-23 · **Version publiée :** 0.8.0
 
 ---
 
@@ -12,16 +12,16 @@
 
 | | |
 |---|---|
-| **Lot en cours** | **Lot 0 ([#41](https://github.com/slucky31/LoreAI/issues/41)) clos.** Ses 3 PR mergées et déployées sur `mcm8` (v0.7.0) : PR 1 socle PostgreSQL/EF Core ([#53](https://github.com/slucky31/LoreAI/pull/53)), PR 2 modèle `Item` générique multi-sources ([#55](https://github.com/slucky31/LoreAI/pull/55), [ADR 0012](adr/0012-modele-item-generique-multi-sources.md)), PR 3 journal de cycle `CycleRuns` + healthcheck Docker ([#56](https://github.com/slucky31/LoreAI/pull/56), #35). Cycle réel et `HEALTHCHECK` vérifiés en production. |
-| **Prochain geste** | Lot 1 — indexation en lecture seule de toute la bibliothèque Raindrop déjà triée (`LibraryIndexingJob`, `GET /raindrops/0`, sans classification ni write-back). C'est le vrai prérequis fonctionnel de tout le reste de la roadmap (synthèse, doublons, statistiques n'ont de valeur qu'à l'échelle du corpus complet — voir « Le corpus est presque vide » dans `roadmap.md`). |
-| **Dernière décision** | Élargir `IArticleRepository` (`GetByIdAsync`/`GetByFilterAsync`/`SearchAsync`/`CountByAsync`, 4e point de la checklist PR 3 de #41) est **reporté** : aucun consommateur concret avant le MCP du lot 3, signatures non spécifiées — décision explicite pour éviter d'inventer une forme spéculative. |
-| **Bloqué par** | Rien. Le Pi (`mcm8`) est en ligne, l'instance PostgreSQL mutualisée provisionnée (base `loreai`, rôles `loreai`/`loreai_ro`) et le worker v0.7.0 tourne dessus en production. |
+| **Lot en cours** | **Lot 1 ([#42](https://github.com/slucky31/LoreAI/issues/42)) clos.** `LibraryIndexingJob` mergé ([#58](https://github.com/slucky31/LoreAI/pull/58)) et déployé sur `mcm8` (v0.8.0) : indexation en lecture seule de toute la bibliothèque Raindrop (`GET /raindrops/0`) dans deux tables neuves (`LibraryItems`, `LibraryIndexStates`), sans toucher `Articles`/`PollingStates`/`CycleRuns`. Passe complète vérifiée en production (27 pages), cycle de classification enchaîné normalement ensuite. |
+| **Prochain geste** | Lot 2 ([#43](https://github.com/slucky31/LoreAI/issues/43)) — hygiène, signaux, et retrait de l'email : compte-rendu de cycle Discord alimenté par `CycleRuns` (**O1**, [#31](https://github.com/slucky31/LoreAI/issues/31), à livrer **avant** de retirer le digest email, pas après), puis suppression de `DigestNotificationJob`/`IDigestNotifier`/MailKit, et un `WeeklyInsightsJob` (doublons, tags redondants, collections déséquilibrées, tendances, coût LLM). |
+| **Dernière décision** | Le lot 1 introduit deux tables **purement additives** (`LibraryItems`, `LibraryIndexStates`) plutôt que d'étendre `Articles`/`PollingStates` : l'[ADR 0012](adr/0012-modele-item-generique-multi-sources.md) gardait explicitement `Articles` mono-source tant qu'une deuxième source n'existe pas réellement, et le lot 1 reste Raindrop — rouvrir `Articles` aurait contredit cette décision déjà actée. |
+| **Bloqué par** | Rien. Le Pi (`mcm8`) est en ligne et le worker v0.8.0 tourne dessus en production. |
 
 ## Ce qui tourne aujourd'hui
 
-Le worker classe la collection « Non trié » toutes les 15 min (Claude Haiku, tool-use forcé), applique tags et déplacements dans Raindrop, alerte sur Discord les articles `ATester` / `Haute`, et envoie un digest email quotidien. Persistance PostgreSQL (instance mutualisée sur `mcm8`, EF Core), modèle `Item` générique multi-sources, journal `CycleRuns` (une ligne par cycle) et healthcheck Docker — le lot 0 en entier. Déploiement par image `ghcr.io` multi-arch, le Pi ne fait que `pull`.
+Le worker classe la collection « Non trié » toutes les 15 min (Claude Haiku, tool-use forcé), applique tags et déplacements dans Raindrop, alerte sur Discord les articles `ATester` / `Haute`, et envoie un digest email quotidien. Persistance PostgreSQL (instance mutualisée sur `mcm8`, EF Core), modèle `Item` générique multi-sources, journal `CycleRuns` et healthcheck Docker (lot 0). En parallèle, `LibraryIndexingJob` (hebdomadaire, `Worker__LibraryIndexCronExpression`) indexe en lecture seule toute la bibliothèque Raindrop déjà triée par l'utilisateur (lot 1) — jamais de classification ni d'écriture sur ce chemin. Déploiement par image `ghcr.io` multi-arch, le Pi ne fait que `pull`.
 
-Le reste de la roadmap (indexation de la bibliothèque, hygiène/signaux, MCP, contenu réel, sources Gmail/RSS...) n'est pas encore implémenté.
+Le reste de la roadmap (hygiène/signaux, MCP, contenu réel, sources Gmail/RSS...) n'est pas encore implémenté.
 
 ## Décisions actées, non encore appliquées
 
