@@ -4,7 +4,7 @@
 > L'historique est dans `git log` et les Releases. La cible est dans [`roadmap.md`](roadmap.md). Les décisions sont dans [`adr/`](adr/).
 > Le suivi des lots est dans les [issues #41 à #51](https://github.com/slucky31/LoreAI/issues?q=is%3Aissue+milestone%3A*).
 
-**Dernière mise à jour :** 2026-08-23 · **Version publiée :** 0.8.0
+**Dernière mise à jour :** 2026-08-23 · **Version publiée :** 0.11.0
 
 ---
 
@@ -12,14 +12,16 @@
 
 | | |
 |---|---|
-| **Lot en cours** | **Lot 1 ([#42](https://github.com/slucky31/LoreAI/issues/42)) clos.** `LibraryIndexingJob` mergé ([#58](https://github.com/slucky31/LoreAI/pull/58)) et déployé sur `mcm8` (v0.8.0) : indexation en lecture seule de toute la bibliothèque Raindrop (`GET /raindrops/0`) dans deux tables neuves (`LibraryItems`, `LibraryIndexStates`), sans toucher `Articles`/`PollingStates`/`CycleRuns`. Passe complète vérifiée en production (27 pages), cycle de classification enchaîné normalement ensuite. |
-| **Prochain geste** | Lot 2 ([#43](https://github.com/slucky31/LoreAI/issues/43)) — hygiène, signaux, et retrait de l'email : compte-rendu de cycle Discord alimenté par `CycleRuns` (**O1**, [#31](https://github.com/slucky31/LoreAI/issues/31), à livrer **avant** de retirer le digest email, pas après), puis suppression de `DigestNotificationJob`/`IDigestNotifier`/MailKit, et un `WeeklyInsightsJob` (doublons, tags redondants, collections déséquilibrées, tendances, coût LLM). |
-| **Dernière décision** | Le lot 1 introduit deux tables **purement additives** (`LibraryItems`, `LibraryIndexStates`) plutôt que d'étendre `Articles`/`PollingStates` : l'[ADR 0012](adr/0012-modele-item-generique-multi-sources.md) gardait explicitement `Articles` mono-source tant qu'une deuxième source n'existe pas réellement, et le lot 1 reste Raindrop — rouvrir `Articles` aurait contredit cette décision déjà actée. |
-| **Bloqué par** | Rien. Le Pi (`mcm8`) est en ligne et le worker v0.8.0 tourne dessus en production. |
+| **Lot en cours** | **Lot 2 ([#43](https://github.com/slucky31/LoreAI/issues/43)) mergé sur `main`, pas encore déployé.** Trois PR dans l'ordre imposé par l'issue : compte-rendu de cycle Discord ([O1, #31](https://github.com/slucky31/LoreAI/issues/31), [#60](https://github.com/slucky31/LoreAI/pull/60), v0.9.0), retrait complet du canal email ([#61](https://github.com/slucky31/LoreAI/pull/61), v0.10.0, [ADR 0013](adr/0013-retrait-canal-email.md)), puis `WeeklyInsightsJob` — doublons, tags redondants, collections déséquilibrées, tendances, coût LLM ([#62](https://github.com/slucky31/LoreAI/pull/62), v0.11.0). `mcm8` tourne encore en v0.8.0 : rien de tout ça n'est vérifié en production. |
+| **Prochain geste** | Déployer v0.11.0 sur `mcm8` (`docker compose pull && up -d`) et vérifier en production : compte-rendu Discord de fin de cycle, absence du digest email, premier rapport hebdomadaire (attendre le prochain dimanche 4h UTC, ou déclencher manuellement). Puis lot 3 ([#44](https://github.com/slucky31/LoreAI/issues/44)) — serveur MCP en lecture seule : **spike OpenClaw d'une demi-journée d'abord** (voir plus bas), et un nouvel ADR réseau à écrire avant de coder (l'issue #44 cite « ADR 0011 », déjà pris par EF Core depuis — le prochain numéro libre est 0014). |
+| **Dernière décision** | L'email disparaît sans canal de remplacement direct (D3, [ADR 0013](adr/0013-retrait-canal-email.md)) : le filet « rien ne se perd » qu'assurait le digest exhaustif est repris par O1 (déjà livré) côté opérationnel, et par L1 (roadmap, pas encore lotie) côté valeur de lecture — assumé comme un trou temporaire, pas oublié. |
+| **Bloqué par** | Rien. Le Pi (`mcm8`) est en ligne, mais tourne encore v0.8.0 — voir « Prochain geste ». |
 
 ## Ce qui tourne aujourd'hui
 
-Le worker classe la collection « Non trié » toutes les 15 min (Claude Haiku, tool-use forcé), applique tags et déplacements dans Raindrop, alerte sur Discord les articles `ATester` / `Haute`, et envoie un digest email quotidien. Persistance PostgreSQL (instance mutualisée sur `mcm8`, EF Core), modèle `Item` générique multi-sources, journal `CycleRuns` et healthcheck Docker (lot 0). En parallèle, `LibraryIndexingJob` (hebdomadaire, `Worker__LibraryIndexCronExpression`) indexe en lecture seule toute la bibliothèque Raindrop déjà triée par l'utilisateur (lot 1) — jamais de classification ni d'écriture sur ce chemin. Déploiement par image `ghcr.io` multi-arch, le Pi ne fait que `pull`.
+**Sur `main`, pas encore sur `mcm8` (voir tableau ci-dessus) :** le worker classe la collection « Non trié » toutes les 15 min (Claude Haiku, tool-use forcé), applique tags et déplacements dans Raindrop, alerte sur Discord les articles `ATester` / `Haute`, et envoie un compte-rendu Discord à la fin de chaque cycle ayant traité au moins un article. Plus d'email : le canal a été retiré (D3, ADR 0013). Persistance PostgreSQL (instance mutualisée sur `mcm8`, EF Core), modèle `Item` générique multi-sources, journal `CycleRuns` et healthcheck Docker (lot 0). `LibraryIndexingJob` (hebdomadaire) indexe en lecture seule toute la bibliothèque Raindrop déjà triée par l'utilisateur (lot 1) ; `WeeklyInsightsJob` (hebdomadaire, juste après) lit cet index pour envoyer un rapport Markdown en pièce jointe Discord (doublons, tags à nettoyer, collections déséquilibrées, tendances, coût LLM) — zéro appel LLM, zéro écriture (lot 2). Déploiement par image `ghcr.io` multi-arch, le Pi ne fait que `pull`.
+
+**Réellement en production sur `mcm8` (v0.8.0) :** tout ce qui précède moins le compte-rendu de cycle, moins `WeeklyInsightsJob`, et avec le digest email encore actif à la place du retrait D3.
 
 Le reste de la roadmap (hygiène/signaux, MCP, contenu réel, sources Gmail/RSS...) n'est pas encore implémenté.
 
@@ -29,7 +31,6 @@ Le reste de la roadmap (hygiène/signaux, MCP, contenu réel, sources Gmail/RSS.
 |---|---|---|
 | D1 | Hub multi-sources (Raindrop + Gmail + RSS) | [roadmap](roadmap.md), [ADR 0012](adr/0012-modele-item-generique-multi-sources.md) ✅ (modèle `Item`/`ISourceIngester` — connecteurs Gmail/RSS encore à écrire, lots 7-8) |
 | D2 | Réseau privé strict — LAN **ou tailnet**, jamais d'exposition publique | [ADR 0010](adr/0010-topologie-reseau-tailscale.md) ✅ |
-| D3 | L'email disparaît complètement | [roadmap](roadmap.md), rouvre l'ADR 0005 |
 | D4 | Le vault Obsidian n'est pas visible du Pi | [roadmap](roadmap.md) |
 | D5 | On récupère le contenu réel des articles | [roadmap](roadmap.md) |
 | D6 | Modèle de synthèse non tranché | [roadmap](roadmap.md) |
