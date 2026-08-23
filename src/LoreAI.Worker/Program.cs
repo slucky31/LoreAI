@@ -84,6 +84,9 @@ try
     builder.Services.AddHttpClient<IImmediateNotifier, DiscordNotifier>()
         .AddStandardResilienceHandler();
 
+    builder.Services.AddHttpClient<ICycleReportNotifier, DiscordCycleReportNotifier>()
+        .AddStandardResilienceHandler();
+
     builder.Services.AddScheduler();
     builder.Services.AddTransient<UnsortedClassificationJob>();
     builder.Services.AddTransient<DigestNotificationJob>();

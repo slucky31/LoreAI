@@ -21,6 +21,7 @@ public sealed class UnsortedClassificationJob : IInvocable, ICancellableInvocabl
     private readonly IPollingStateRepository _pollingStateRepository;
     private readonly IArticleRepository _articleRepository;
     private readonly ICycleRunRepository _cycleRunRepository;
+    private readonly ICycleReportNotifier _cycleReportNotifier;
     private readonly IClassifier _classifier;
     private readonly IImmediateNotifier _immediateNotifier;
     private readonly INotificationPolicy _notificationPolicy;
@@ -32,6 +33,7 @@ public sealed class UnsortedClassificationJob : IInvocable, ICancellableInvocabl
         IPollingStateRepository pollingStateRepository,
         IArticleRepository articleRepository,
         ICycleRunRepository cycleRunRepository,
+        ICycleReportNotifier cycleReportNotifier,
         IClassifier classifier,
         IImmediateNotifier immediateNotifier,
         INotificationPolicy notificationPolicy,
@@ -42,6 +44,7 @@ public sealed class UnsortedClassificationJob : IInvocable, ICancellableInvocabl
         _pollingStateRepository = pollingStateRepository;
         _articleRepository = articleRepository;
         _cycleRunRepository = cycleRunRepository;
+        _cycleReportNotifier = cycleReportNotifier;
         _classifier = classifier;
         _immediateNotifier = immediateNotifier;
         _notificationPolicy = notificationPolicy;
@@ -220,6 +223,20 @@ public sealed class UnsortedClassificationJob : IInvocable, ICancellableInvocabl
             catch (Exception ex)
             {
                 _logger.LogWarning(ex, "Échec de l'enregistrement du journal de cycle.");
+            }
+
+            // Pas d'import, pas de notification (#31) : un cycle vide, ou un échec avant même de savoir
+            // s'il y avait quelque chose à traiter (itemsSeen == 0 dans les deux cas), reste silencieux.
+            if (run.ItemsSeen > 0)
+            {
+                try
+                {
+                    await _cycleReportNotifier.NotifyCycleCompletedAsync(run, CancellationToken.None);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Échec de l'envoi du compte-rendu de cycle.");
+                }
             }
         }
     }
