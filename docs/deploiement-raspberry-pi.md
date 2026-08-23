@@ -28,20 +28,28 @@ Le script officiel installe Docker Engine + le plugin Compose (`docker compose`,
 
 L'instance PostgreSQL mutualisée ([ADR 0009](adr/0009-postgresql-mutualise-sur-le-pi.md)) est un composant d'infrastructure de la machine, déployé par sa propre stack Compose — hors de ce guide, qui suppose qu'elle tourne déjà. LoreAI a besoin d'y créer sa propre base et ses propres rôles, une seule fois.
 
-Connectez-vous en tant que superutilisateur de l'instance (`psql`, depuis le Pi ou un poste qui l'atteint) et exécutez :
+Connectez-vous en tant que superutilisateur de l'instance (`psql`, depuis le Pi ou un poste qui l'atteint) et exécutez, **dans cet ordre, en deux temps** :
+
+**1. Base et rôles** — dans n'importe quelle base (les rôles sont globaux au cluster, pas à une base) :
 
 ```sql
 CREATE DATABASE loreai;
-\c loreai
 CREATE ROLE loreai LOGIN PASSWORD '<mot_de_passe_a_choisir>';
-GRANT ALL ON SCHEMA public TO loreai;
 CREATE ROLE loreai_ro LOGIN PASSWORD '<mot_de_passe_a_choisir>';
 GRANT CONNECT ON DATABASE loreai TO loreai_ro;
+```
+
+**2. Droits sur le schéma** — `public` est propre à chaque base : il faut être **connecté à `loreai`** pour que ces commandes visent la bonne base.
+
+```sql
+GRANT ALL ON SCHEMA public TO loreai;
 GRANT USAGE ON SCHEMA public TO loreai_ro;
 -- Les migrations EF Core (lancees par le worker, role "loreai") creent les tables apres coup :
 -- ALTER DEFAULT PRIVILEGES garantit que loreai_ro les voit sans regrant manuel a chaque migration.
 ALTER DEFAULT PRIVILEGES FOR ROLE loreai IN SCHEMA public GRANT SELECT ON TABLES TO loreai_ro;
 ```
+
+Sous `psql`, changez de base entre les deux blocs avec `\c loreai`. ⚠️ `\c` est une commande **`psql`**, pas du SQL standard : un client graphique (DBeaver, pgAdmin, DataGrip...) ne la comprend pas et interrompt généralement le script à cette ligne — d'où l'utilité de garder ce bloc séparé, à exécuter après avoir changé de base **depuis l'interface du client** plutôt que via `\c`.
 
 `loreai_ro` (lecture seule) n'est pas utilisé avant le lot 3 (serveur MCP) mais créé maintenant pour ne pas rejouer cette étape plus tard. Le mot de passe du rôle `loreai` va dans `Postgres__ConnectionString`, à l'étape 5.
 
