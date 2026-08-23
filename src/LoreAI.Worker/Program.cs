@@ -85,9 +85,13 @@ try
     builder.Services.AddHttpClient<ICycleReportNotifier, DiscordCycleReportNotifier>()
         .AddStandardResilienceHandler();
 
+    builder.Services.AddHttpClient<IReportNotifier, DiscordReportNotifier>()
+        .AddStandardResilienceHandler();
+
     builder.Services.AddScheduler();
     builder.Services.AddTransient<UnsortedClassificationJob>();
     builder.Services.AddTransient<LibraryIndexingJob>();
+    builder.Services.AddTransient<WeeklyInsightsJob>();
 
     var host = builder.Build();
 
@@ -114,6 +118,10 @@ try
         {
             libraryIndexSchedule.RunOnceAtStart();
         }
+
+        scheduler.Schedule<WeeklyInsightsJob>()
+            .Cron(workerOptions.WeeklyInsightsCronExpression)
+            .PreventOverlapping(nameof(WeeklyInsightsJob));
     });
 
     host.Run();

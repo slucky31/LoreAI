@@ -123,6 +123,21 @@ public class ArticleRepositoryTests : IAsyncLifetime
         Assert.Single(await GetAllAsync());
     }
 
+    [Fact]
+    public async Task GetClassificationRawResponsesSinceAsync_ExcludesArticlesClassifiedBeforeCutoff()
+    {
+        var cutoff = new DateTimeOffset(2026, 8, 1, 0, 0, 0, TimeSpan.Zero);
+        await _repository.UpsertAsync(
+            CreateItem(1, "Avant"), CreateClassification() with { RawResponse = "{\"usage\":{}}" }, cutoff.AddDays(-1), TestContext.Current.CancellationToken);
+        await _repository.UpsertAsync(
+            CreateItem(2, "Après"), CreateClassification() with { RawResponse = "{\"usage\":{\"input_tokens\":10}}" }, cutoff.AddDays(1), TestContext.Current.CancellationToken);
+
+        var responses = await _repository.GetClassificationRawResponsesSinceAsync(cutoff, TestContext.Current.CancellationToken);
+
+        var single = Assert.Single(responses);
+        Assert.Contains("10", single);
+    }
+
     private async Task<ArticleEntity> GetAsync(long id)
     {
         await using var context = _fixture.CreateContext();

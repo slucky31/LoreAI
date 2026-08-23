@@ -104,4 +104,19 @@ public sealed class ArticleRepository : IArticleRepository
             .Where(a => a.Id == articleId)
             .ExecuteUpdateAsync(setters => setters.SetProperty(a => a.DiscordNotifiedAtUtc, notifiedAtUtc), cancellationToken);
     }
+
+    public async Task<IReadOnlyList<string>> GetClassificationRawResponsesSinceAsync(DateTimeOffset sinceUtc, CancellationToken cancellationToken)
+    {
+        await _schemaGuard.EnsureMigratedAsync(cancellationToken);
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+
+        // Le "?? string.Empty" est fait après matérialisation, pas traduit en SQL : un COALESCE(jsonb, '')
+        // échouerait côté Postgres, la chaîne vide n'étant pas un JSON valide vers lequel caster.
+        var rawResponses = await context.Articles
+            .Where(a => a.ClassifiedAtUtc != null && a.ClassifiedAtUtc >= sinceUtc)
+            .Select(a => a.ClassificationRawResponse)
+            .ToListAsync(cancellationToken);
+
+        return rawResponses.Select(r => r ?? string.Empty).ToList();
+    }
 }

@@ -11,4 +11,11 @@ public interface IArticleRepository
     Task RecordWriteBackAsync(long articleId, bool success, bool moved, DateTimeOffset atUtc, CancellationToken cancellationToken);
 
     Task MarkDiscordNotifiedAsync(long articleId, DateTimeOffset notifiedAtUtc, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Réponses Anthropic brutes des classifications réalisées depuis <paramref name="sinceUtc"/> — alimente
+    /// S6 (coût LLM, #43). <c>ClassificationRawResponse</c> seul, pas de mapping vers <see cref="Item"/> :
+    /// c'est tout ce dont <c>LlmUsageAnalyzer</c> a besoin.
+    /// </summary>
+    Task<IReadOnlyList<string>> GetClassificationRawResponsesSinceAsync(DateTimeOffset sinceUtc, CancellationToken cancellationToken);
 }
