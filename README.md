@@ -92,6 +92,10 @@ VALUES ('Raindrop', '<id_du_dernier_raindrop_a_ignorer>', '<date_ISO8601_UTC>', 
 
 `Worker__WriteBackToRaindrop=false` désactive cette application automatique (mode classification + rapport seulement, rien n'est modifié dans Raindrop) — utile pour observer le comportement avant de laisser l'outil toucher à vos données. Actif (`true`) par défaut.
 
+## Indexation de la bibliothèque (lot 1)
+
+En parallèle, `LibraryIndexingJob` (`Worker__LibraryIndexCronExpression`, chaque dimanche 3h UTC par défaut) parcourt en **lecture seule** toute la bibliothèque Raindrop (`GET /raindrops/0`, hors corbeille) et la persiste dans `LibraryItems` — sans jamais classifier ni écrire quoi que ce soit dans Raindrop. `Worker__IndexLibraryOnStartup=true` déclenche en plus une passe au démarrage du worker, soumise à une garde : si la dernière passe complète date de moins de 24h, elle est ignorée (évite de solliciter l'API à chaque redémarrage rapproché).
+
 ## Tests automatisés
 
 ```bash

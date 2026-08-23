@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace LoreAI.Infrastructure.Raindrop.Dto;
@@ -24,6 +25,13 @@ internal sealed class RaindropDto
     public string? Type { get; set; }
     public DateTimeOffset Created { get; set; }
     public DateTimeOffset? LastUpdate { get; set; }
+
+    // Ignorés jusqu'ici (n'entraient pas dans le pipeline de classification) ; utilisés par le
+    // balayage en lecture seule de toute la bibliothèque (lot 1, #42), voir MapToLibraryItem.
+    public bool Broken { get; set; }
+    public bool Important { get; set; }
+    public string? Cover { get; set; }
+    public JsonElement? Highlights { get; set; }
 }
 
 internal sealed class RaindropCollectionRefDto

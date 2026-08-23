@@ -94,6 +94,20 @@ public sealed class RaindropClient : IRaindropClient
         return collected;
     }
 
+    public async Task<IReadOnlyList<LibraryItem>> GetLibraryPageAsync(int page, CancellationToken cancellationToken)
+    {
+        // Collection 0 = toute la bibliothèque hors corbeille (lot 1, #42) : toujours cette valeur,
+        // indépendamment de _options.CollectionId qui reste réservé à GetNewItemsAsync (-1, Non trié).
+        var url = $"raindrops/0?perpage={_options.PageSize}&page={page}";
+        var response = await _httpClient.GetAsync(url, cancellationToken);
+        response.EnsureSuccessStatusCode();
+
+        var payload = await response.Content.ReadFromJsonAsync<RaindropsPageDto>(cancellationToken: cancellationToken)
+            ?? throw new InvalidOperationException("Réponse Raindrop vide ou invalide.");
+
+        return payload.Items.Select(MapToLibraryItem).ToList();
+    }
+
     public async Task<RaindropTaxonomy> GetTaxonomyAsync(CancellationToken cancellationToken)
     {
         var rootCollections = await GetCollectionsAsync("collections", cancellationToken);
@@ -167,4 +181,13 @@ public sealed class RaindropClient : IRaindropClient
         dto.Note,
         dto.Tags,
         dto.Created);
+
+    private static LibraryItem MapToLibraryItem(RaindropDto dto) => new(
+        MapToItem(dto),
+        dto.Collection?.Id == -1 ? ItemOrigin.Unsorted : ItemOrigin.Library,
+        dto.Collection?.Id,
+        dto.Broken,
+        dto.Important,
+        dto.Cover,
+        dto.Highlights?.GetRawText());
 }
