@@ -4,7 +4,7 @@
 > L'historique est dans `git log` et les Releases. La cible est dans [`roadmap.md`](roadmap.md). Les décisions sont dans [`adr/`](adr/).
 > Le suivi des lots est dans les [issues #41 à #51](https://github.com/slucky31/LoreAI/issues?q=is%3Aissue+milestone%3A*).
 
-**Dernière mise à jour :** 2026-08-23 · **Version publiée :** 0.4.1
+**Dernière mise à jour :** 2026-08-23 · **Version publiée :** 0.5.0
 
 ---
 
@@ -12,16 +12,16 @@
 
 | | |
 |---|---|
-| **Lot en cours** | Lot 0 ([#41](https://github.com/slucky31/LoreAI/issues/41)), **PR 1** : socle PostgreSQL + EF Core. Code écrit et testé (108 tests verts, Testcontainers inclus), [PR #53](https://github.com/slucky31/LoreAI/pull/53) ouverte. |
-| **Prochain geste** | Provisionner `loreai` + rôles sur l'instance Postgres du Pi (script dans `docs/deploiement-raspberry-pi.md`, section 3 — manuel, hors dépôt), puis merger la PR 1. Ensuite : PR 2 du lot 0 (modèle `Item` générique multi-sources). |
-| **Dernière décision** | **D7** — persistance PostgreSQL mutualisée ([ADR 0009](adr/0009-postgresql-mutualise-sur-le-pi.md)). Affinée en session par l'**ADR 0011** : EF Core remplace Dapper intégralement (schéma **et** requêtes), pas seulement le moteur de base — la PR 1 est donc allée au-delà de son périmètre d'origine (« schéma fonctionnellement constant »), décision explicite prise avec l'utilisateur. |
-| **Bloqué par** | Rien d'actif. Le Pi (`mcm8`) est **en ligne** sur le tailnet (clé de nœud ré-authentifiée depuis l'épisode du 2026-08-04, désactiver son expiration reste à faire — voir ci-dessous), l'instance PostgreSQL mutualisée **tourne déjà** dessus (reste à y créer la base `loreai`, manuel — voir « Prochain geste »), et `afl-it-ndu` (poste Docker-capable, cf. ci-dessous) est opérationnel. |
+| **Lot en cours** | Lot 0 ([#41](https://github.com/slucky31/LoreAI/issues/41)), **PR 1 mergée et validée en production** ([#53](https://github.com/slucky31/LoreAI/pull/53), v0.5.0) : socle PostgreSQL + EF Core. Déployée sur `mcm8`, cycle réel observé (schéma migré, articles classifiés et déplacés). |
+| **Prochain geste** | PR 2 du lot 0 : modèle `Item` générique multi-sources (⚠️ ADR à écrire avant de coder, cf. roadmap). |
+| **Dernière décision** | **D7** — persistance PostgreSQL mutualisée ([ADR 0009](adr/0009-postgresql-mutualise-sur-le-pi.md)). Affinée en session par l'**ADR 0011** : EF Core remplace Dapper intégralement (schéma **et** requêtes), pas seulement le moteur de base. |
+| **Bloqué par** | Rien. Le Pi (`mcm8`) est en ligne, l'instance PostgreSQL mutualisée provisionnée (base `loreai`, rôles `loreai`/`loreai_ro`) et le worker tourne dessus en production. |
 
 ## Ce qui tourne aujourd'hui
 
-Le worker classe la collection « Non trié » toutes les 15 min (Claude Haiku, tool-use forcé), applique tags et déplacements dans Raindrop, alerte sur Discord les articles `ATester` / `Haute`, et envoie un digest email quotidien. Persistance SQLite sur le Pi. Déploiement par image `ghcr.io` multi-arch, le Pi ne fait que `pull`.
+Le worker classe la collection « Non trié » toutes les 15 min (Claude Haiku, tool-use forcé), applique tags et déplacements dans Raindrop, alerte sur Discord les articles `ATester` / `Haute`, et envoie un digest email quotidien. **Persistance PostgreSQL (instance mutualisée sur `mcm8`, EF Core) depuis la PR 1.** Déploiement par image `ghcr.io` multi-arch, le Pi ne fait que `pull`.
 
-**Rien de la roadmap n'est encore implémenté.** La base reste en écriture seule.
+La PR 1 du lot 0 est en production. Le reste de la roadmap (multi-sources, journal de cycle, indexation, MCP...) n'est pas encore implémenté.
 
 ## Décisions actées, non encore appliquées
 
@@ -53,6 +53,7 @@ Le worker classe la collection « Non trié » toutes les 15 min (Claude Haiku, 
   4. Outillage EF Core : manifeste d'outils local (`.config/dotnet-tools.json`, `dotnet-ef` épinglé) — `dotnet tool restore` avant `dotnet ef migrations add ...`.
 - **Tailscale** relie les postes et le Pi. Tailnet `piranha-pollux.ts.net`, le Pi est le nœud **`mcm8`** — donc `mcm8.piranha-pollux.ts.net`. C'est cette adresse que vise le MCP du lot 3, jamais `raspberrypi.local`. Un second nœud Linux, `proxy`, existe (rôle non documenté ici). Le CLI `tailscale` n'est pas installé dans `Ubuntu-perso` ; utiliser le binaire Windows via l'interop WSL : `"/mnt/c/Program Files/Tailscale/tailscale.exe" status`.
 - ⚠️ **Piège vécu, à ne pas repayer** : Tailscale fait expirer les clés de nœud au bout de quelques mois. Le nœud quitte alors le tailnet **sans panne et sans message** — c'est ce qui avait rendu `mcm8` et `proxy` invisibles le 2026-08-04. **`mcm8` est de nouveau en ligne** (vérifié en session), mais désactiver l'expiration de clé sur tout nœud serveur, dans la console d'admin Tailscale, reste à faire pour ne pas revivre l'épisode.
+- ⚠️ **Piège vécu au provisionnement Postgres (PR 1)** : un client SQL graphique (DBeaver...) garde un script lié à la base active au moment de son ouverture — un `GRANT ... ON SCHEMA public` lancé dans un onglet resté sur `postgres` s'applique silencieusement au mauvais `public` (0 erreur, mais aucun effet sur `loreai`). Vérifier `SELECT current_database();` avant tout GRANT. Cause du même effet observé deux fois : PostgreSQL 15+ retire `CREATE` à `PUBLIC` sur le schéma `public` par défaut — sans le `GRANT` explicite (déjà dans `docs/deploiement-raspberry-pi.md` §3), EF Core échoue avec `permission denied for schema public` à la première migration.
 
 ## Comment tenir ce fichier
 
