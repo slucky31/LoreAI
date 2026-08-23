@@ -59,6 +59,7 @@ try
     builder.Services.AddHostedService<PostgresSchemaInitializer>();
     builder.Services.AddSingleton<IArticleRepository, ArticleRepository>();
     builder.Services.AddSingleton<IPollingStateRepository, PollingStateRepository>();
+    builder.Services.AddSingleton<ICycleRunRepository, CycleRunRepository>();
     // DefaultNotificationPolicy expose des seuils en paramètres de constructeur ; ils étaient annoncés
     // « injectables » mais aucun appelant ne les fournissait. On les alimente depuis la configuration ici,
     // plutôt que de faire dépendre Core de Microsoft.Extensions.Options.
@@ -86,6 +87,14 @@ try
     builder.Services.AddTransient<DigestNotificationJob>();
 
     var host = builder.Build();
+
+    // Sonde Docker (#35) : un second processus .NET, sans jamais atteindre host.Run() ni la validation des
+    // options non liées (Raindrop/Classifier/Discord/Email peuvent être absentes d'une sonde). Voir HealthCheckMode.
+    if (args.Contains("--health-check"))
+    {
+        Environment.ExitCode = await LoreAI.Worker.HealthCheckMode.RunAsync(host.Services, CancellationToken.None) ? 0 : 1;
+        return;
+    }
 
     var workerOptions = host.Services.GetRequiredService<IOptions<WorkerOptions>>().Value;
     host.Services.UseScheduler(scheduler =>

@@ -113,7 +113,7 @@ public class DigestMessageBuilderTests
         var item = CreateItem(title, "https://example.com");
         var classification = new ClassificationResult(suggestedCollection, tags, action, priority, "raison", "model", "raw");
 
-        return new ClassifiedArticle(item, classification, DateTimeOffset.UtcNow, Moved: suggestedCollection is not null, null, null);
+        return new ClassifiedArticle(item, classification, DateTimeOffset.UtcNow, Moved: suggestedCollection is not null, null, null, DateTimeOffset.UtcNow, null);
     }
 
     private static Item CreateItem(string title, string link) => new(

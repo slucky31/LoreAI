@@ -68,6 +68,6 @@ public class DigestNotificationJobTests
         var classification = new ClassificationResult(
             ".NET", ["dotnet"], RecommendedAction.ALire, Priority.Moyenne, "raison", "model", "{}");
 
-        return new ClassifiedArticle(item, classification, DateTimeOffset.UtcNow, Moved: true, null, null);
+        return new ClassifiedArticle(item, classification, DateTimeOffset.UtcNow, Moved: true, null, null, DateTimeOffset.UtcNow, null);
     }
 }

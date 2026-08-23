@@ -40,3 +40,8 @@ VOLUME ["/data"]
 # de base non chiselée ferait silencieusement retomber le worker en root.
 USER $APP_UID
 ENTRYPOINT ["dotnet", "LoreAI.Worker.dll"]
+
+# Image chiselée : ni shell ni curl, donc pas de `CMD curl ...` possible — la sonde est le worker
+# lui-même, en forme exec (#35). Intervalle à 5 min : chaque sonde démarre un second processus .NET.
+HEALTHCHECK --interval=5m --timeout=10s --start-period=30s \
+    CMD ["dotnet", "LoreAI.Worker.dll", "--health-check"]

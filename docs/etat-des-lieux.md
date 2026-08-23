@@ -4,7 +4,7 @@
 > L'historique est dans `git log` et les Releases. La cible est dans [`roadmap.md`](roadmap.md). Les décisions sont dans [`adr/`](adr/).
 > Le suivi des lots est dans les [issues #41 à #51](https://github.com/slucky31/LoreAI/issues?q=is%3Aissue+milestone%3A*).
 
-**Dernière mise à jour :** 2026-08-23 · **Version publiée :** 0.5.0
+**Dernière mise à jour :** 2026-08-23 · **Version publiée :** 0.6.0
 
 ---
 
@@ -12,10 +12,10 @@
 
 | | |
 |---|---|
-| **Lot en cours** | Lot 0 ([#41](https://github.com/slucky31/LoreAI/issues/41)), **PR 1 mergée et validée en production** ([#53](https://github.com/slucky31/LoreAI/pull/53), v0.5.0) : socle PostgreSQL + EF Core. **PR 2 codée** (branche `feat/lot0-pr2-item-generique-multisource`, pas encore poussée/PR ouverte) : modèle `Item` générique multi-sources ([ADR 0012](adr/0012-modele-item-generique-multi-sources.md)), build + suite de tests (109) verts en local. |
-| **Prochain geste** | Pousser la branche, ouvrir la PR 2, la faire relire puis merger. Ensuite : PR 3 du lot 0 (journal de cycle `CycleRuns` + healthcheck Docker, #35). |
-| **Dernière décision** | **ADR 0012** — `Item` générique remplace `RaindropItem` comme modèle central (D1) ; `RaindropItem` supprimé (pas conservé comme DTO d'adaptateur, `RaindropDto` suffit) ; `PollingState` devient une ligne par source. |
-| **Bloqué par** | Rien. Le Pi (`mcm8`) est en ligne, l'instance PostgreSQL mutualisée provisionnée (base `loreai`, rôles `loreai`/`loreai_ro`) et le worker tourne dessus en production. |
+| **Lot en cours** | Lot 0 ([#41](https://github.com/slucky31/LoreAI/issues/41)), sa **dernière PR**. **PR 1 en production** ([#53](https://github.com/slucky31/LoreAI/pull/53), v0.5.0) : socle PostgreSQL + EF Core. **PR 2 mergée** ([#55](https://github.com/slucky31/LoreAI/pull/55), v0.6.0) : modèle `Item` générique multi-sources ([ADR 0012](adr/0012-modele-item-generique-multi-sources.md)). **PR 3 codée** (branche `feat/lot0-pr3-journal-cycle-healthcheck`, pas encore poussée/PR ouverte) : table `CycleRuns` + healthcheck Docker (#35), build + 132 tests verts en local. Ni la v0.6.0 ni la PR 3 ne sont encore déployées/observées sur `mcm8`. |
+| **Prochain geste** | Pousser la branche PR 3, ouvrir la PR, merger. Puis déployer sur `mcm8` (`sudo docker compose pull && up -d`) — v0.6.0 et PR 3 d'un coup si aucun cycle réel n'a eu lieu entre-temps — et observer un cycle réel + le nouveau `HEALTHCHECK` (visible dans `docker ps`/Portainer). Le lot 0 sera alors complet. |
+| **Dernière décision** | Élargir `IArticleRepository` (`GetByIdAsync`/`GetByFilterAsync`/`SearchAsync`/`CountByAsync`, 4e point de la checklist PR 3 de #41) est **reporté** : aucun consommateur concret avant le MCP du lot 3, signatures non spécifiées — décision explicite pour éviter d'inventer une forme spéculative. |
+| **Bloqué par** | Rien. Le Pi (`mcm8`) est en ligne, l'instance PostgreSQL mutualisée provisionnée (base `loreai`, rôles `loreai`/`loreai_ro`) et le worker tourne dessus en production (sur la version PR 1, pas encore mise à jour). |
 
 ## Ce qui tourne aujourd'hui
 

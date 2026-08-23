@@ -19,4 +19,11 @@ public sealed class WorkerOptions
     /// seulement, sans toucher à Raindrop).
     /// </summary>
     public bool WriteBackToRaindrop { get; init; } = true;
+
+    /// <summary>
+    /// Âge maximal (en minutes) d'un cycle terminé avant que le healthcheck Docker (#35) ne considère le
+    /// worker en panne. Défaut : 3× le cron par défaut (15 min), pour absorber un cycle occasionnellement lent.
+    /// </summary>
+    [Range(1, int.MaxValue)]
+    public int HealthMaxCycleAgeMinutes { get; init; } = 45;
 }
