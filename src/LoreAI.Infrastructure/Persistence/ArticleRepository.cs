@@ -1,8 +1,6 @@
-using System.Globalization;
 using System.Text.Json;
-using Dapper;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
-using LoreAI.Core.Enums;
 using LoreAI.Core.Interfaces;
 using LoreAI.Core.Models;
 
@@ -10,97 +8,88 @@ namespace LoreAI.Infrastructure.Persistence;
 
 public sealed class ArticleRepository : IArticleRepository
 {
-    /// <summary>Taille des lots pour les clauses <c>IN</c>, bien en deçà de la limite de variables de SQLite.</summary>
-    private const int BatchSize = 500;
-
-    private readonly SqliteConnectionFactory _connectionFactory;
+    private readonly IDbContextFactory<LoreAiDbContext> _contextFactory;
+    private readonly PostgresSchemaGuard _schemaGuard;
     private readonly ILogger<ArticleRepository> _logger;
 
-    public ArticleRepository(SqliteConnectionFactory connectionFactory, ILogger<ArticleRepository> logger)
+    public ArticleRepository(IDbContextFactory<LoreAiDbContext> contextFactory, PostgresSchemaGuard schemaGuard, ILogger<ArticleRepository> logger)
     {
-        _connectionFactory = connectionFactory;
+        _contextFactory = contextFactory;
+        _schemaGuard = schemaGuard;
         _logger = logger;
     }
 
     public async Task UpsertAsync(RaindropItem item, ClassificationResult classification, DateTimeOffset classifiedAtUtc, CancellationToken cancellationToken)
     {
-        await using var connection = await _connectionFactory.OpenConnectionAsync(cancellationToken);
-        const string sql = """
-            INSERT INTO Articles (
-                Id, Title, Link, Excerpt, Note, OriginalTags, CollectionId, Domain, RaindropType,
-                RaindropCreatedUtc, RaindropLastUpdateUtc, FetchedAtUtc,
-                SuggestedCollection, SuggestedTags, RecommendedAction, Priority, Reason,
-                ClassificationModel, ClassificationRawResponse, ClassifiedAtUtc
-            ) VALUES (
-                @Id, @Title, @Link, @Excerpt, @Note, @OriginalTags, @CollectionId, @Domain, @RaindropType,
-                @RaindropCreatedUtc, @RaindropLastUpdateUtc, @FetchedAtUtc,
-                @SuggestedCollection, @SuggestedTags, @RecommendedAction, @Priority, @Reason,
-                @ClassificationModel, @ClassificationRawResponse, @ClassifiedAtUtc
-            )
-            ON CONFLICT(Id) DO UPDATE SET
-                Title = excluded.Title,
-                Link = excluded.Link,
-                Excerpt = excluded.Excerpt,
-                Note = excluded.Note,
-                OriginalTags = excluded.OriginalTags,
-                CollectionId = excluded.CollectionId,
-                Domain = excluded.Domain,
-                RaindropType = excluded.RaindropType,
-                RaindropCreatedUtc = excluded.RaindropCreatedUtc,
-                RaindropLastUpdateUtc = excluded.RaindropLastUpdateUtc,
-                FetchedAtUtc = excluded.FetchedAtUtc,
-                SuggestedCollection = excluded.SuggestedCollection,
-                SuggestedTags = excluded.SuggestedTags,
-                RecommendedAction = excluded.RecommendedAction,
-                Priority = excluded.Priority,
-                Reason = excluded.Reason,
-                ClassificationModel = excluded.ClassificationModel,
-                ClassificationRawResponse = excluded.ClassificationRawResponse,
-                ClassifiedAtUtc = excluded.ClassifiedAtUtc;
-            """;
+        await _schemaGuard.EnsureMigratedAsync(cancellationToken);
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
 
-        await connection.ExecuteAsync(new CommandDefinition(sql, new
+        var entity = await context.Articles.FindAsync([item.Id], cancellationToken);
+        if (entity is null)
         {
-            item.Id,
-            item.Title,
-            item.Link,
-            item.Excerpt,
-            item.Note,
-            OriginalTags = JsonSerializer.Serialize(item.Tags),
-            item.CollectionId,
-            item.Domain,
-            item.RaindropType,
-            RaindropCreatedUtc = item.CreatedUtc.UtcDateTime.ToString("O", CultureInfo.InvariantCulture),
-            RaindropLastUpdateUtc = item.LastUpdateUtc?.UtcDateTime.ToString("O", CultureInfo.InvariantCulture),
-            FetchedAtUtc = DateTimeOffset.UtcNow.ToString("O", CultureInfo.InvariantCulture),
-            classification.SuggestedCollection,
-            SuggestedTags = JsonSerializer.Serialize(classification.Tags),
-            RecommendedAction = classification.Action.ToString(),
-            Priority = classification.Priority.ToString(),
-            classification.Reason,
-            ClassificationModel = classification.Model,
-            ClassificationRawResponse = classification.RawResponse,
-            ClassifiedAtUtc = classifiedAtUtc.UtcDateTime.ToString("O", CultureInfo.InvariantCulture),
-        }, cancellationToken: cancellationToken));
+            entity = new ArticleEntity { Id = item.Id, Title = item.Title, Link = item.Link };
+            context.Articles.Add(entity);
+        }
+
+        entity.Title = item.Title;
+        entity.Link = item.Link;
+        entity.Excerpt = item.Excerpt;
+        entity.Note = item.Note;
+        entity.OriginalTags = [.. item.Tags];
+        entity.CollectionId = item.CollectionId;
+        entity.Domain = item.Domain;
+        entity.RaindropType = item.RaindropType;
+        entity.RaindropCreatedUtc = item.CreatedUtc;
+        entity.RaindropLastUpdateUtc = item.LastUpdateUtc;
+        entity.FetchedAtUtc = DateTimeOffset.UtcNow;
+        entity.SuggestedCollection = classification.SuggestedCollection;
+        entity.SuggestedTags = [.. classification.Tags];
+        entity.RecommendedAction = classification.Action;
+        entity.Priority = classification.Priority;
+        entity.Reason = classification.Reason;
+        entity.ClassificationModel = classification.Model;
+        entity.ClassificationRawResponse = NormalizeToJson(classification.RawResponse);
+        entity.ClassifiedAtUtc = classifiedAtUtc;
+
+        await context.SaveChangesAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// La colonne est un vrai jsonb (ADR 0011), et un repli de classification peut porter un corps de
+    /// réponse vide ou non-JSON (ex. panne de transport avant toute réponse HTTP, cf.
+    /// <c>AnthropicClassifier</c>) — l'insertion échouerait sinon avec « invalid input syntax for type
+    /// json », exactement le genre de perte silencieuse que <c>ClassificationResult.Fallback</c> existe
+    /// pour éviter. Un corps déjà JSON valide (le cas normal) traverse inchangé.
+    /// </summary>
+    private static string NormalizeToJson(string rawResponse)
+    {
+        try
+        {
+            using var _ = JsonDocument.Parse(rawResponse);
+            return rawResponse;
+        }
+        catch (JsonException)
+        {
+            return JsonSerializer.Serialize(rawResponse);
+        }
     }
 
     public async Task RecordWriteBackAsync(long articleId, bool success, bool moved, DateTimeOffset atUtc, CancellationToken cancellationToken)
     {
-        await using var connection = await _connectionFactory.OpenConnectionAsync(cancellationToken);
-        const string sql = "UPDATE Articles SET WriteBackStatus = @Status, Moved = @Moved, WriteBackAtUtc = @AtUtc WHERE Id = @Id";
-        var affected = await connection.ExecuteAsync(new CommandDefinition(
-            sql,
-            new
-            {
-                Id = articleId,
-                Status = success ? "Done" : "Failed",
-                Moved = moved ? 1 : 0,
-                AtUtc = atUtc.UtcDateTime.ToString("O", CultureInfo.InvariantCulture),
-            },
-            cancellationToken: cancellationToken));
+        await _schemaGuard.EnsureMigratedAsync(cancellationToken);
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
 
         // Zéro ligne touchée signalerait un article jamais persisté : l'UPDATE serait sinon parfaitement
         // silencieux, et l'audit du write-back perdrait sa trace sans que rien ne l'indique.
+        var affected = await context.Articles
+            .Where(a => a.Id == articleId)
+            .ExecuteUpdateAsync(
+                setters => setters
+                    .SetProperty(a => a.WriteBackStatus, success ? "Done" : "Failed")
+                    .SetProperty(a => a.Moved, moved)
+                    .SetProperty(a => a.WriteBackAtUtc, atUtc),
+                cancellationToken);
+
         if (affected == 0)
         {
             _logger.LogWarning("Write-back non enregistré : aucun article {ArticleId} en base.", articleId);
@@ -109,34 +98,26 @@ public sealed class ArticleRepository : IArticleRepository
 
     public async Task<IReadOnlyList<ClassifiedArticle>> GetUnsentDigestItemsAsync(CancellationToken cancellationToken)
     {
-        await using var connection = await _connectionFactory.OpenConnectionAsync(cancellationToken);
-        // Colonnes listées explicitement : un `SELECT *` obligerait ArticleRow à suivre le schéma à la
-        // trace, et masquerait l'oubli d'un champ derrière une valeur par défaut silencieuse.
-        const string sql = """
-            SELECT
-                Id, Title, Link, Excerpt, Note, OriginalTags, CollectionId, Domain, RaindropType,
-                RaindropCreatedUtc, RaindropLastUpdateUtc, FetchedAtUtc,
-                SuggestedCollection, SuggestedTags, RecommendedAction, Priority, Reason,
-                ClassificationModel, ClassificationRawResponse, ClassifiedAtUtc,
-                Moved, WriteBackStatus, DiscordNotifiedAtUtc, EmailDigestSentAtUtc
-            FROM Articles
-            WHERE EmailDigestSentAtUtc IS NULL
-            ORDER BY RaindropCreatedUtc
-            """;
-        var rows = await connection.QueryAsync<ArticleRow>(new CommandDefinition(sql, cancellationToken: cancellationToken));
+        await _schemaGuard.EnsureMigratedAsync(cancellationToken);
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+
+        var entities = await context.Articles
+            .Where(a => a.EmailDigestSentAtUtc == null)
+            .OrderBy(a => a.RaindropCreatedUtc)
+            .ToListAsync(cancellationToken);
 
         // Pas de log du nombre ici : DigestNotificationJob le journalise déjà côté appelant.
-        return rows.Select(MapToClassifiedArticle).ToList();
+        return entities.Select(MapToClassifiedArticle).ToList();
     }
 
     public async Task MarkDiscordNotifiedAsync(long articleId, DateTimeOffset notifiedAtUtc, CancellationToken cancellationToken)
     {
-        await using var connection = await _connectionFactory.OpenConnectionAsync(cancellationToken);
-        const string sql = "UPDATE Articles SET DiscordNotifiedAtUtc = @NotifiedAtUtc WHERE Id = @Id";
-        await connection.ExecuteAsync(new CommandDefinition(
-            sql,
-            new { Id = articleId, NotifiedAtUtc = notifiedAtUtc.UtcDateTime.ToString("O", CultureInfo.InvariantCulture) },
-            cancellationToken: cancellationToken));
+        await _schemaGuard.EnsureMigratedAsync(cancellationToken);
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+
+        await context.Articles
+            .Where(a => a.Id == articleId)
+            .ExecuteUpdateAsync(setters => setters.SetProperty(a => a.DiscordNotifiedAtUtc, notifiedAtUtc), cancellationToken);
     }
 
     public async Task MarkDigestSentAsync(IReadOnlyCollection<long> articleIds, DateTimeOffset sentAtUtc, CancellationToken cancellationToken)
@@ -146,78 +127,46 @@ public sealed class ArticleRepository : IArticleRepository
             return;
         }
 
-        await using var connection = await _connectionFactory.OpenConnectionAsync(cancellationToken);
-        const string sql = "UPDATE Articles SET EmailDigestSentAtUtc = @SentAtUtc WHERE Id IN @Ids";
+        await _schemaGuard.EnsureMigratedAsync(cancellationToken);
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
 
-        // Dapper développe la clause IN en un paramètre par identifiant : sur un digest volumineux
-        // (premier backfill), on dépasserait la limite de variables de SQLite. D'où le découpage.
-        foreach (var batch in articleIds.Chunk(BatchSize))
-        {
-            await connection.ExecuteAsync(new CommandDefinition(
-                sql,
-                new { Ids = batch, SentAtUtc = sentAtUtc.UtcDateTime.ToString("O", CultureInfo.InvariantCulture) },
-                cancellationToken: cancellationToken));
-        }
+        // ExecuteUpdateAsync traduit le IN en une seule requête SQL : contrairement à SQLite, Postgres
+        // n'impose pas de limite de variables qui obligerait à découper articleIds en lots.
+        await context.Articles
+            .Where(a => articleIds.Contains(a.Id))
+            .ExecuteUpdateAsync(setters => setters.SetProperty(a => a.EmailDigestSentAtUtc, sentAtUtc), cancellationToken);
     }
 
-    private static ClassifiedArticle MapToClassifiedArticle(ArticleRow row)
+    private static ClassifiedArticle MapToClassifiedArticle(ArticleEntity entity)
     {
         var item = new RaindropItem(
-            row.Id,
-            row.Title,
-            row.Link,
-            row.Excerpt,
-            row.Note,
-            string.IsNullOrEmpty(row.OriginalTags) ? [] : JsonSerializer.Deserialize<string[]>(row.OriginalTags) ?? [],
-            row.CollectionId,
-            row.Domain,
-            row.RaindropType,
-            DateTimeOffset.Parse(row.RaindropCreatedUtc, CultureInfo.InvariantCulture),
-            row.RaindropLastUpdateUtc is null ? null : DateTimeOffset.Parse(row.RaindropLastUpdateUtc, CultureInfo.InvariantCulture));
+            entity.Id,
+            entity.Title,
+            entity.Link,
+            entity.Excerpt,
+            entity.Note,
+            entity.OriginalTags,
+            entity.CollectionId,
+            entity.Domain,
+            entity.RaindropType,
+            entity.RaindropCreatedUtc,
+            entity.RaindropLastUpdateUtc);
 
         var classification = new ClassificationResult(
-            row.SuggestedCollection,
-            string.IsNullOrEmpty(row.SuggestedTags) ? [] : JsonSerializer.Deserialize<string[]>(row.SuggestedTags) ?? [],
-            Enum.Parse<RecommendedAction>(row.RecommendedAction),
-            Enum.Parse<Priority>(row.Priority),
-            row.Reason ?? string.Empty,
-            row.ClassificationModel ?? string.Empty,
-            row.ClassificationRawResponse ?? string.Empty);
+            entity.SuggestedCollection,
+            entity.SuggestedTags,
+            entity.RecommendedAction,
+            entity.Priority,
+            entity.Reason ?? string.Empty,
+            entity.ClassificationModel ?? string.Empty,
+            entity.ClassificationRawResponse ?? string.Empty);
 
         return new ClassifiedArticle(
             item,
             classification,
-            row.ClassifiedAtUtc is null ? DateTimeOffset.UtcNow : DateTimeOffset.Parse(row.ClassifiedAtUtc, CultureInfo.InvariantCulture),
-            row.Moved != 0,
-            row.DiscordNotifiedAtUtc is null ? null : DateTimeOffset.Parse(row.DiscordNotifiedAtUtc, CultureInfo.InvariantCulture),
-            row.EmailDigestSentAtUtc is null ? null : DateTimeOffset.Parse(row.EmailDigestSentAtUtc, CultureInfo.InvariantCulture));
-    }
-
-    private sealed class ArticleRow
-    {
-        public long Id { get; init; }
-        public required string Title { get; init; }
-        public required string Link { get; init; }
-        public string? Excerpt { get; init; }
-        public string? Note { get; init; }
-        public string? OriginalTags { get; init; }
-        public long? CollectionId { get; init; }
-        public string? Domain { get; init; }
-        public string? RaindropType { get; init; }
-        public required string RaindropCreatedUtc { get; init; }
-        public string? RaindropLastUpdateUtc { get; init; }
-        public required string FetchedAtUtc { get; init; }
-        public string? SuggestedCollection { get; init; }
-        public string? SuggestedTags { get; init; }
-        public required string RecommendedAction { get; init; }
-        public required string Priority { get; init; }
-        public string? Reason { get; init; }
-        public string? ClassificationModel { get; init; }
-        public string? ClassificationRawResponse { get; init; }
-        public string? ClassifiedAtUtc { get; init; }
-        public int Moved { get; init; }
-        public string? DiscordNotifiedAtUtc { get; init; }
-        public string? EmailDigestSentAtUtc { get; init; }
-        public string? WriteBackStatus { get; init; }
+            entity.ClassifiedAtUtc ?? DateTimeOffset.UtcNow,
+            entity.Moved,
+            entity.DiscordNotifiedAtUtc,
+            entity.EmailDigestSentAtUtc);
     }
 }

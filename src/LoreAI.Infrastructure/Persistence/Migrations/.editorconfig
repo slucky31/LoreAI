@@ -1,0 +1,5 @@
+[*.cs]
+# Fichiers générés par `dotnet ef migrations add` : le gabarit d'EF Core utilise des namespaces à accolades
+# et ne suit pas les préférences de style du dépôt. Les régénérer à chaque migration effacerait toute
+# correction manuelle, donc on relâche la règle ici plutôt que de la contourner par fichier.
+csharp_style_namespace_declarations = block_scoped:none

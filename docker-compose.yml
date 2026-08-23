@@ -10,7 +10,17 @@ services:
     environment:
       DOTNET_ENVIRONMENT: Production
     volumes:
-      # Le conteneur tourne en non-root (uid 1654). Sur un bind mount c'est la propriété côté hôte
-      # qui prime : ./data doit lui appartenir, sinon SQLite échoue en « Permission denied ».
+      # /data ne porte plus que les logs depuis la bascule PostgreSQL (ADR 0009) : la persistance est
+      # sur l'instance mutualisee du Pi, plus dans ce volume. Le conteneur tourne en non-root (uid 1654) ;
+      # sur un bind mount c'est la propriete cote hote qui prime.
       #   mkdir -p data && sudo chown -R 1654:1654 data
       - ./data:/data
+
+# Reseau Docker externe de l'instance PostgreSQL mutualisee (ADR 0009) : LoreAI la rejoint, il ne la
+# possede pas - stack Compose distincte, proprietaire de son propre reseau. Pas de depends_on vers un
+# service qu'il ne possede pas non plus : le worker demarre et reessaie si Postgres n'est pas encore
+# joignable (PostgresSchemaGuard).
+networks:
+  default:
+    name: pi-postgres
+    external: true

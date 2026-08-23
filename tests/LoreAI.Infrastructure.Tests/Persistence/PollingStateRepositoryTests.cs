@@ -1,27 +1,34 @@
 using System.Globalization;
-using Microsoft.Data.Sqlite;
-using Microsoft.Extensions.Options;
+using Microsoft.EntityFrameworkCore;
 using LoreAI.Core.Models;
 using LoreAI.Infrastructure.Persistence;
 
 namespace LoreAI.Infrastructure.Tests.Persistence;
 
-public class PollingStateRepositoryTests : IDisposable
+[Collection("Postgres")]
+public class PollingStateRepositoryTests : IAsyncLifetime
 {
-    private readonly string _dbPath;
+    private readonly PostgresFixture _fixture;
     private readonly PollingStateRepository _repository;
 
-    public PollingStateRepositoryTests()
+    public PollingStateRepositoryTests(PostgresFixture fixture)
     {
-        _dbPath = Path.Combine(Path.GetTempPath(), $"loreai-test-{Guid.NewGuid():N}.db");
-        var factory = new SqliteConnectionFactory(Options.Create(new SqliteOptions { ConnectionString = $"Data Source={_dbPath}" }));
-        _repository = new PollingStateRepository(factory);
+        _fixture = fixture;
+        _repository = new PollingStateRepository(fixture.ContextFactory, new PostgresSchemaGuard(fixture.ContextFactory));
     }
+
+    public async ValueTask InitializeAsync()
+    {
+        await using var context = _fixture.CreateContext();
+        await context.Database.ExecuteSqlRawAsync("TRUNCATE TABLE \"PollingStates\" RESTART IDENTITY CASCADE");
+    }
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 
     [Fact]
     public async Task GetAsync_WithoutPriorState_ReturnsInitial()
     {
-        var state = await _repository.GetAsync(CancellationToken.None);
+        var state = await _repository.GetAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(PollingState.Initial, state);
     }
@@ -31,8 +38,8 @@ public class PollingStateRepositoryTests : IDisposable
     {
         var expected = new PollingState(123, DateTimeOffset.Parse("2026-01-01T00:00:00Z", CultureInfo.InvariantCulture), DateTimeOffset.Parse("2026-01-02T00:00:00Z", CultureInfo.InvariantCulture));
 
-        await _repository.UpdateAsync(expected, CancellationToken.None);
-        var actual = await _repository.GetAsync(CancellationToken.None);
+        await _repository.UpdateAsync(expected, TestContext.Current.CancellationToken);
+        var actual = await _repository.GetAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(expected.LastRaindropId, actual.LastRaindropId);
         Assert.Equal(expected.LastCreatedUtc, actual.LastCreatedUtc);
@@ -42,21 +49,12 @@ public class PollingStateRepositoryTests : IDisposable
     [Fact]
     public async Task UpdateAsync_CalledTwice_OverwritesSingletonRow()
     {
-        await _repository.UpdateAsync(new PollingState(1, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow), CancellationToken.None);
+        await _repository.UpdateAsync(new PollingState(1, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow), TestContext.Current.CancellationToken);
         var second = new PollingState(2, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
-        await _repository.UpdateAsync(second, CancellationToken.None);
+        await _repository.UpdateAsync(second, TestContext.Current.CancellationToken);
 
-        var actual = await _repository.GetAsync(CancellationToken.None);
+        var actual = await _repository.GetAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(2, actual.LastRaindropId);
-    }
-
-    public void Dispose()
-    {
-        SqliteConnection.ClearAllPools();
-        if (File.Exists(_dbPath))
-        {
-            File.Delete(_dbPath);
-        }
     }
 }

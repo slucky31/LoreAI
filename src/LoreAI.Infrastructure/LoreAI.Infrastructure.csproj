@@ -5,13 +5,9 @@
   </ItemGroup>
 
   <ItemGroup>
-    <EmbeddedResource Include="Persistence\Migrations\0001_InitialSchema.sql" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <PackageReference Include="Dapper" />
     <PackageReference Include="MailKit" />
-    <PackageReference Include="Microsoft.Data.Sqlite" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
     <PackageReference Include="Microsoft.Extensions.Options" />
   </ItemGroup>
