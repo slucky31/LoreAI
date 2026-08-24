@@ -1,3 +1,4 @@
+using LoreAI.Core.Enums;
 using LoreAI.Core.Models;
 using LoreAI.Infrastructure.Notifications;
 
@@ -76,6 +77,23 @@ public class MarkdownReportBuilderTests
         Assert.Contains("100000 / 10000", markdown);
         Assert.Contains("500 / 200", markdown);
         Assert.Contains("0.15 $", markdown);
+    }
+
+    [Fact]
+    public void BuildMonthlyReview_IncludesThemeNarrativeAndArticleLinks()
+    {
+        var article = new MonthlyReviewArticle(1, "Titre A", "https://a.example", "Veille .NET", [], null, null, Priority.Moyenne);
+        var report = new MonthlyReviewReport(
+            new DateTimeOffset(2026, 8, 1, 0, 0, 0, TimeSpan.Zero),
+            new DateTimeOffset(2026, 9, 1, 0, 0, 0, TimeSpan.Zero),
+            [new ThemeReview("Veille .NET", "Un mois riche en actualités .NET.", [article])],
+            DateTimeOffset.UnixEpoch);
+
+        var markdown = MarkdownReportBuilder.BuildMonthlyReview(report);
+
+        Assert.Contains("## Veille .NET", markdown);
+        Assert.Contains("Un mois riche en actualités .NET.", markdown);
+        Assert.Contains("[Titre A](https://a.example)", markdown);
     }
 
     private static WeeklyInsightsReport CreateReport(

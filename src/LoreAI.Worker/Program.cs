@@ -81,6 +81,11 @@ try
     builder.Services.AddHttpClient<IClassifier, AnthropicClassifier>()
         .AddStandardResilienceHandler(ClassifierResilience.Configure);
 
+    // Même cible API et même résilience que le classifieur (S4, lot 5) : appel Anthropic texte libre, pas
+    // de tool-use.
+    builder.Services.AddHttpClient<IThemeNarrativeGenerator, AnthropicThemeNarrativeGenerator>()
+        .AddStandardResilienceHandler(ClassifierResilience.Configure);
+
     // Politesse envers des sites tiers inconnus (S1, lot 4) : timeout court, pas de retry agressif.
     builder.Services.AddHttpClient<IContentFetcher, HttpContentFetcher>()
         .AddStandardResilienceHandler(ContentFetchResilience.Configure);
@@ -98,6 +103,7 @@ try
     builder.Services.AddTransient<UnsortedClassificationJob>();
     builder.Services.AddTransient<LibraryIndexingJob>();
     builder.Services.AddTransient<WeeklyInsightsJob>();
+    builder.Services.AddTransient<MonthlyReviewJob>();
 
     var host = builder.Build();
 
@@ -134,6 +140,10 @@ try
         scheduler.Schedule<WeeklyInsightsJob>()
             .Cron(workerOptions.WeeklyInsightsCronExpression)
             .PreventOverlapping(nameof(WeeklyInsightsJob));
+
+        scheduler.Schedule<MonthlyReviewJob>()
+            .Cron(workerOptions.MonthlyReviewCronExpression)
+            .PreventOverlapping(nameof(MonthlyReviewJob));
     });
 
     host.Run();

@@ -107,6 +107,31 @@ public static class MarkdownReportBuilder
         builder.AppendLine();
     }
 
+    /// <summary>Revue mensuelle narrative (S4, lot 5) — un thème par section, narration puis articles source.</summary>
+    public static string BuildMonthlyReview(MonthlyReviewReport report)
+    {
+        var builder = new StringBuilder();
+        builder.AppendLine(CultureInfo.InvariantCulture, $"# Revue mensuelle LoreAI — {report.PeriodStartUtc:yyyy-MM}");
+        builder.AppendLine();
+
+        foreach (var theme in report.Themes)
+        {
+            builder.AppendLine(CultureInfo.InvariantCulture, $"## {theme.Theme}");
+            builder.AppendLine();
+            builder.AppendLine(theme.Narrative);
+            builder.AppendLine();
+
+            foreach (var article in theme.Articles)
+            {
+                builder.AppendLine(CultureInfo.InvariantCulture, $"- [{article.Title}]({article.Url})");
+            }
+
+            builder.AppendLine();
+        }
+
+        return builder.ToString();
+    }
+
     private static void AppendLlmUsage(StringBuilder builder, LlmUsageSummary usage)
     {
         builder.AppendLine("## Coût LLM (S6)");

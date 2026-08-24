@@ -47,6 +47,7 @@ public sealed class ArticleRepository : IArticleRepository
         entity.Priority = classification.Priority;
         entity.Reason = classification.Reason;
         entity.Summary = classification.Summary;
+        entity.IsFallback = classification.IsFallback;
         entity.ClassificationModel = classification.Model;
         entity.ClassificationRawResponse = NormalizeToJson(classification.RawResponse);
         entity.ClassifiedAtUtc = classifiedAtUtc;
@@ -124,5 +125,16 @@ public sealed class ArticleRepository : IArticleRepository
             .ToListAsync(cancellationToken);
 
         return rawResponses.Select(r => r ?? string.Empty).ToList();
+    }
+
+    public async Task<IReadOnlyList<MonthlyReviewArticle>> GetClassifiedBetweenAsync(DateTimeOffset startUtc, DateTimeOffset endUtc, CancellationToken cancellationToken)
+    {
+        await _schemaGuard.EnsureMigratedAsync(cancellationToken);
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+
+        return await context.Articles
+            .Where(a => !a.IsFallback && a.ClassifiedAtUtc != null && a.ClassifiedAtUtc >= startUtc && a.ClassifiedAtUtc < endUtc)
+            .Select(a => new MonthlyReviewArticle(a.Id, a.Title, a.Url, a.SuggestedCollection, a.SuggestedTags, a.Summary, a.Reason, a.Priority))
+            .ToListAsync(cancellationToken);
     }
 }
