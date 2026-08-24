@@ -16,6 +16,27 @@ services:
       #   mkdir -p data && sudo chown -R 1654:1654 data
       - ./data:/data
 
+  loreai-mcp:
+    # Lot 3 (#44, ADR 0014) : serveur MCP en lecture seule. Conteneur et image distincts de "loreai" -
+    # cycle de vie independant, et surtout un role Postgres different (voir Postgres__ConnectionString
+    # ci-dessous). Pas de build ici non plus une fois l'image publiee par la CD.
+    image: ghcr.io/slucky31/loreai-mcp:${LOREAI_TAG:-latest}
+    restart: unless-stopped
+    environment:
+      DOTNET_ENVIRONMENT: Production
+      # Role loreai_ro (GRANT SELECT), deja provisionne (docs/deploiement-raspberry-pi.md, section 3) -
+      # jamais le role proprietaire "loreai" utilise par le worker ci-dessus. Valeurs dans .env, pas
+      # partagees via env_file : ce conteneur n'a besoin d'aucun des autres secrets de "loreai".
+      Postgres__ConnectionString: ${MCP_POSTGRES_CONNECTION_STRING}
+      Mcp__BearerToken: ${MCP_BEARER_TOKEN}
+    ports:
+      # Bind sur l'adresse Tailscale du Pi (D2/ADR 0010) : JAMAIS "5099:8080" seul, qui publierait sur
+      # 0.0.0.0, donc potentiellement sur le LAN/la box. MCP_TAILSCALE_BIND_IP = `tailscale ip -4` sur
+      # mcm8, voir .env.example.
+      - "${MCP_TAILSCALE_BIND_IP}:5099:8080"
+    volumes:
+      - ./data:/data
+
 # Reseau Docker externe de l'instance PostgreSQL mutualisee (ADR 0009) : LoreAI la rejoint, il ne la
 # possede pas - stack Compose distincte, proprietaire de son propre reseau. Pas de depends_on vers un
 # service qu'il ne possede pas non plus : le worker demarre et reessaie si Postgres n'est pas encore
