@@ -96,6 +96,38 @@ public class MarkdownReportBuilderTests
         Assert.Contains("[Titre A](https://a.example)", markdown);
     }
 
+    [Fact]
+    public void BuildToolCard_IncludesFrontmatterAndRelatedArticles()
+    {
+        var card = new ToolCard(
+            1,
+            "Ollama",
+            "CLI",
+            "À évaluer",
+            null,
+            new DateTimeOffset(2026, 8, 1, 0, 0, 0, TimeSpan.Zero),
+            new DateTimeOffset(2026, 8, 24, 0, 0, 0, TimeSpan.Zero),
+            [new ToolRelatedArticle(1, "Découverte d'Ollama", "https://a.example", "Un outil pour faire tourner des LLM en local.")]);
+
+        var markdown = MarkdownReportBuilder.BuildToolCard(card);
+
+        Assert.Contains("name: Ollama", markdown);
+        Assert.Contains("category: CLI", markdown);
+        Assert.Contains("status: À évaluer", markdown);
+        Assert.Contains("verdict: (à déterminer)", markdown);
+        Assert.Contains("[Découverte d'Ollama](https://a.example)", markdown);
+    }
+
+    [Fact]
+    public void BuildToolCard_NoRelatedArticles_StillProducesValidMarkdown()
+    {
+        var card = new ToolCard(1, "Ollama", null, "À évaluer", null, DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch, []);
+
+        var markdown = MarkdownReportBuilder.BuildToolCard(card);
+
+        Assert.Contains("Aucun.", markdown);
+    }
+
     private static WeeklyInsightsReport CreateReport(
         IReadOnlyList<DuplicateUrlGroup> duplicates,
         TagHygieneResult hygiene,

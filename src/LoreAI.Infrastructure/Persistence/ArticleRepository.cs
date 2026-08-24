@@ -48,6 +48,8 @@ public sealed class ArticleRepository : IArticleRepository
         entity.Reason = classification.Reason;
         entity.Summary = classification.Summary;
         entity.IsFallback = classification.IsFallback;
+        entity.ToolName = classification.ToolName;
+        entity.ToolCategory = classification.ToolCategory;
         entity.ClassificationModel = classification.Model;
         entity.ClassificationRawResponse = NormalizeToJson(classification.RawResponse);
         entity.ClassifiedAtUtc = classifiedAtUtc;

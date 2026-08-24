@@ -6,7 +6,7 @@ namespace LoreAI.Infrastructure.Tests.Classification;
 public class ClassificationResponseParserTests
 {
     private const string ValidJson = """
-        { "suggestedCollection": ".NET", "tags": ["dotnet", "outil"], "action": "ATester", "priority": "Haute", "reason": "Nouvel outil .NET intéressant.", "summary": "Un outil qui simplifie le déploiement .NET sur ARM." }
+        { "suggestedCollection": ".NET", "tags": ["dotnet", "outil"], "action": "ATester", "priority": "Haute", "reason": "Nouvel outil .NET intéressant.", "summary": "Un outil qui simplifie le déploiement .NET sur ARM.", "toolName": "Ollama", "toolCategory": "CLI" }
         """;
 
     [Fact]
@@ -20,6 +20,8 @@ public class ClassificationResponseParserTests
         Assert.Equal(Priority.Haute, result.Priority);
         Assert.Equal("Nouvel outil .NET intéressant.", result.Reason);
         Assert.Equal("Un outil qui simplifie le déploiement .NET sur ARM.", result.Summary);
+        Assert.Equal("Ollama", result.ToolName);
+        Assert.Equal("CLI", result.ToolCategory);
         Assert.Equal("claude-haiku-4-5", result.Model);
         Assert.Equal("raw", result.RawResponse);
     }
@@ -36,6 +38,29 @@ public class ClassificationResponseParserTests
         var result = ClassificationResponseParser.Parse(json, "model", "raw");
 
         Assert.Equal(string.Empty, result.Summary);
+    }
+
+    /// <summary>Comme `summary` : un fixture pré-lot-5 (sans `toolName`/`toolCategory`) doit continuer de parser.</summary>
+    [Fact]
+    public void Parse_MissingToolFields_DefaultToNull()
+    {
+        const string json = """{ "suggestedCollection": null, "tags": [], "action": "ATester", "priority": "Haute", "reason": "x" }""";
+
+        var result = ClassificationResponseParser.Parse(json, "model", "raw");
+
+        Assert.Null(result.ToolName);
+        Assert.Null(result.ToolCategory);
+    }
+
+    [Fact]
+    public void Parse_NullToolFields_ReturnNull()
+    {
+        const string json = """{ "suggestedCollection": null, "tags": [], "action": "ALire", "priority": "Basse", "reason": "x", "toolName": null, "toolCategory": null }""";
+
+        var result = ClassificationResponseParser.Parse(json, "model", "raw");
+
+        Assert.Null(result.ToolName);
+        Assert.Null(result.ToolCategory);
     }
 
     [Fact]

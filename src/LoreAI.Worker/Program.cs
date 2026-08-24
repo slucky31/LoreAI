@@ -63,6 +63,7 @@ try
     builder.Services.AddSingleton<ICycleRunRepository, CycleRunRepository>();
     builder.Services.AddSingleton<ILibraryItemRepository, LibraryItemRepository>();
     builder.Services.AddSingleton<ILibraryIndexStateRepository, LibraryIndexStateRepository>();
+    builder.Services.AddSingleton<IToolRepository, ToolRepository>();
     // DefaultNotificationPolicy expose des seuils en paramètres de constructeur ; ils étaient annoncés
     // « injectables » mais aucun appelant ne les fournissait. On les alimente depuis la configuration ici,
     // plutôt que de faire dépendre Core de Microsoft.Extensions.Options.

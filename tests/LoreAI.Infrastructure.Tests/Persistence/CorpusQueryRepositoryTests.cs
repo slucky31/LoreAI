@@ -18,7 +18,7 @@ public class CorpusQueryRepositoryTests : IAsyncLifetime
     public async ValueTask InitializeAsync()
     {
         await using var context = _fixture.CreateContext();
-        await context.Database.ExecuteSqlRawAsync("TRUNCATE TABLE \"LibraryItems\" RESTART IDENTITY CASCADE");
+        await context.Database.ExecuteSqlRawAsync("TRUNCATE TABLE \"LibraryItems\", \"Articles\", \"Tools\" RESTART IDENTITY CASCADE");
     }
 
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
@@ -149,6 +149,50 @@ public class CorpusQueryRepositoryTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task GetToolsAsync_ReturnsToolsOrderedByLastSeenDescending()
+    {
+        await using (var context = _fixture.CreateContext())
+        {
+            context.Tools.AddRange(
+                CreateTool("Ollama", lastSeenAtUtc: DateTimeOffset.UtcNow.AddDays(-1), relatedArticleIds: [1]),
+                CreateTool("Docker", lastSeenAtUtc: DateTimeOffset.UtcNow, relatedArticleIds: [1, 2]));
+            await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+        }
+
+        var tools = await _repository.GetToolsAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(["Docker", "Ollama"], tools.Select(t => t.Name));
+        Assert.Equal(2, tools.Single(t => t.Name == "Docker").RelatedArticleCount);
+    }
+
+    [Fact]
+    public async Task GetToolByNameAsync_UnknownName_ReturnsNull()
+    {
+        var card = await _repository.GetToolByNameAsync("Inconnu", TestContext.Current.CancellationToken);
+
+        Assert.Null(card);
+    }
+
+    [Fact]
+    public async Task GetToolByNameAsync_CaseInsensitiveMatch_ReturnsCardWithRelatedArticles()
+    {
+        await using (var context = _fixture.CreateContext())
+        {
+            context.Articles.Add(CreateArticle(1, "Découverte d'Ollama", "https://a.example", "Un LLM en local."));
+            context.Tools.Add(CreateTool("Ollama", relatedArticleIds: [1]));
+            await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+        }
+
+        var card = await _repository.GetToolByNameAsync("ollama", TestContext.Current.CancellationToken);
+
+        Assert.NotNull(card);
+        Assert.Equal("Ollama", card.Name);
+        var article = Assert.Single(card.RelatedArticles);
+        Assert.Equal("Découverte d'Ollama", article.Title);
+        Assert.Equal("Un LLM en local.", article.Summary);
+    }
+
+    [Fact]
     public async Task GetStatsAsync_CountsTotalImportantAndBroken()
     {
         await SeedAsync(
@@ -218,5 +262,29 @@ public class CorpusQueryRepositoryTests : IAsyncLifetime
             Important = important,
             Broken = broken,
             IndexedAtUtc = indexedAtUtc ?? DateTimeOffset.UtcNow,
+        };
+
+    private static ArticleEntity CreateArticle(long id, string title, string url, string? summary = null) => new()
+    {
+        Id = id,
+        Title = title,
+        Url = url,
+        Summary = summary,
+        CapturedAtUtc = DateTimeOffset.UtcNow,
+        FetchedAtUtc = DateTimeOffset.UtcNow,
+    };
+
+    private static ToolEntity CreateTool(
+        string name,
+        string? category = null,
+        long[]? relatedArticleIds = null,
+        DateTimeOffset? firstSeenAtUtc = null,
+        DateTimeOffset? lastSeenAtUtc = null) => new()
+        {
+            Name = name,
+            Category = category,
+            RelatedArticleIds = relatedArticleIds ?? [],
+            FirstSeenAtUtc = firstSeenAtUtc ?? DateTimeOffset.UtcNow,
+            LastSeenAtUtc = lastSeenAtUtc ?? DateTimeOffset.UtcNow,
         };
 }

@@ -46,4 +46,8 @@ public sealed class ArticleEntity
     public ContentFetchStatus? ContentStatus { get; set; }
     public int? WordCount { get; set; }
     public string? Summary { get; set; }
+
+    // S7 (lot 5) : uniquement renseignés quand RecommendedAction == ATester, cf. ClassificationResult.
+    public string? ToolName { get; set; }
+    public string? ToolCategory { get; set; }
 }

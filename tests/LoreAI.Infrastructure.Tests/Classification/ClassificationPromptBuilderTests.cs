@@ -93,7 +93,17 @@ public class ClassificationPromptBuilderTests
         var schema = ClassificationPromptBuilder.BuildToolInputSchemaJson(SampleTaxonomy);
 
         Assert.Contains("\"summary\"", schema);
-        Assert.Contains("\"required\":[\"suggestedCollection\",\"tags\",\"action\",\"priority\",\"reason\",\"summary\"]", schema);
+        Assert.Contains("\"required\":[\"suggestedCollection\",\"tags\",\"action\",\"priority\",\"reason\",\"summary\",\"toolName\",\"toolCategory\"]", schema);
+    }
+
+    /// <summary>S7 (lot 5) : les deux champs sont nullable, remplis par le modèle uniquement quand action=ATester.</summary>
+    [Fact]
+    public void BuildToolInputSchemaJson_IncludesNullableToolFields()
+    {
+        var schema = ClassificationPromptBuilder.BuildToolInputSchemaJson(SampleTaxonomy);
+
+        Assert.Contains("\"toolName\"", schema);
+        Assert.Contains("\"toolCategory\"", schema);
     }
 
     /// <summary>S1 (lot 4) : le contenu réel remplace l'excerpt dans le prompt quand il est disponible.</summary>

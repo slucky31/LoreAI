@@ -76,6 +76,36 @@ public class CorpusToolsTests
     }
 
     [Fact]
+    public async Task CatalogTools_ReturnsRepositoryResult()
+    {
+        var tools = new[] { new ToolSummary(1, "Ollama", "CLI", "À évaluer", null, 2, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow) };
+        _repository.GetToolsAsync(Arg.Any<CancellationToken>()).Returns(tools);
+
+        var result = await _tools.CatalogTools(TestContext.Current.CancellationToken);
+
+        Assert.Equal(tools, result);
+    }
+
+    [Fact]
+    public async Task ToolCard_ExistingName_ReturnsMarkdownWithToolName()
+    {
+        var card = new ToolCard(1, "Ollama", "CLI", "À évaluer", null, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, []);
+        _repository.GetToolByNameAsync("Ollama", Arg.Any<CancellationToken>()).Returns(card);
+
+        var markdown = await _tools.ToolCard("Ollama", TestContext.Current.CancellationToken);
+
+        Assert.Contains("Ollama", markdown);
+    }
+
+    [Fact]
+    public async Task ToolCard_UnknownName_ThrowsMcpException()
+    {
+        _repository.GetToolByNameAsync("Inconnu", Arg.Any<CancellationToken>()).Returns((ToolCard?)null);
+
+        await Assert.ThrowsAsync<McpException>(() => _tools.ToolCard("Inconnu", TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
     public async Task Stats_ReturnsRepositoryResult()
     {
         var stats = new CorpusStats(10, 2, 1, DateTimeOffset.UtcNow);
@@ -87,13 +117,12 @@ public class CorpusToolsTests
     }
 
     [Fact]
-    public void ListTools_ListsAllSevenPlannedToolsFromIssue44()
+    public void ListTools_ListsAllPlannedToolsFromIssue44AndLot5()
     {
         var tools = _tools.ListTools();
 
-        Assert.Equal(7, tools.Count);
         Assert.Equal(
-            ["get_item", "list_recent", "search_items", "stats", "list_tools", "find_similar", "reading_queue"],
+            ["get_item", "list_recent", "search_items", "stats", "list_tools", "find_similar", "catalog_tools", "tool_card", "reading_queue"],
             tools.Select(t => t.Name));
     }
 

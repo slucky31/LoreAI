@@ -132,6 +132,43 @@ public static class MarkdownReportBuilder
         return builder.ToString();
     }
 
+    /// <summary>
+    /// Fiche Markdown d'un outil (S7, lot 5) — frontmatter YAML + articles liés. Régénérée à chaque appel,
+    /// jamais éditée à la main dans Obsidian : voir « Le pont Obsidian » du roadmap. Les annotations
+    /// humaines, si besoin, vivent dans un fichier voisin que cette projection ne touche jamais.
+    /// </summary>
+    public static string BuildToolCard(ToolCard card)
+    {
+        var builder = new StringBuilder();
+        builder.AppendLine("---");
+        builder.AppendLine(CultureInfo.InvariantCulture, $"name: {card.Name}");
+        builder.AppendLine(CultureInfo.InvariantCulture, $"category: {card.Category ?? "—"}");
+        builder.AppendLine(CultureInfo.InvariantCulture, $"status: {card.Status}");
+        builder.AppendLine(CultureInfo.InvariantCulture, $"verdict: {card.Verdict ?? "(à déterminer)"}");
+        builder.AppendLine(CultureInfo.InvariantCulture, $"first_seen: {card.FirstSeenAtUtc:yyyy-MM-dd}");
+        builder.AppendLine(CultureInfo.InvariantCulture, $"last_seen: {card.LastSeenAtUtc:yyyy-MM-dd}");
+        builder.AppendLine("---");
+        builder.AppendLine();
+        builder.AppendLine(CultureInfo.InvariantCulture, $"# {card.Name}");
+        builder.AppendLine();
+        builder.AppendLine("## Articles liés");
+        builder.AppendLine();
+
+        if (card.RelatedArticles.Count == 0)
+        {
+            builder.AppendLine("Aucun.");
+        }
+        else
+        {
+            foreach (var article in card.RelatedArticles)
+            {
+                builder.AppendLine(CultureInfo.InvariantCulture, $"- [{article.Title}]({article.Url}){(string.IsNullOrEmpty(article.Summary) ? string.Empty : $" — {article.Summary}")}");
+            }
+        }
+
+        return builder.ToString();
+    }
+
     private static void AppendLlmUsage(StringBuilder builder, LlmUsageSummary usage)
     {
         builder.AppendLine("## Coût LLM (S6)");

@@ -9,6 +9,7 @@ public sealed class LoreAiDbContext(DbContextOptions<LoreAiDbContext> options) :
     public DbSet<CycleRunEntity> CycleRuns => Set<CycleRunEntity>();
     public DbSet<LibraryItemEntity> LibraryItems => Set<LibraryItemEntity>();
     public DbSet<LibraryIndexStateEntity> LibraryIndexStates => Set<LibraryIndexStateEntity>();
+    public DbSet<ToolEntity> Tools => Set<ToolEntity>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -52,6 +53,13 @@ public sealed class LoreAiDbContext(DbContextOptions<LoreAiDbContext> options) :
         modelBuilder.Entity<LibraryIndexStateEntity>(libraryIndexState =>
         {
             libraryIndexState.HasKey(s => s.SourceType);
+        });
+
+        modelBuilder.Entity<ToolEntity>(tool =>
+        {
+            // Id généré : contrairement à ArticleEntity/LibraryItemEntity, un outil n'a pas d'identifiant
+            // Raindrop naturel (un même outil peut être rencontré via plusieurs articles).
+            tool.HasIndex(t => t.Name);
         });
     }
 }

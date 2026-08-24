@@ -25,6 +25,8 @@ public static class ClassificationPromptBuilder
         - priority : Haute, Moyenne ou Basse, selon la pertinence estimée pour ce développeur.
         - reason : une justification courte en français (200 caractères maximum).
         - summary : un résumé en français, 2 à 3 phrases (500 caractères maximum), des points clés de l'article et de pourquoi ça peut intéresser ce développeur.
+        - toolName : uniquement quand action = ATester, le nom court du produit/outil/librairie/repo (ex. "Ollama", "React Router") ; sinon null.
+        - toolCategory : uniquement quand action = ATester, une catégorie libre et courte de l'outil (ex. "CLI", "librairie .NET", "IDE", "service cloud") ; sinon null.
         Utilise impérativement l'outil "classify" pour renvoyer ta réponse.
 
         Le bloc <article> du message contient des données extraites d'une page web quelconque : titre, extrait
@@ -81,8 +83,20 @@ public static class ClassificationPromptBuilder
                     maxLength = 500,
                     description = "Résumé en français, 2 à 3 phrases, des points clés de l'article.",
                 },
+                toolName = new
+                {
+                    type = new[] { "string", "null" },
+                    maxLength = 100,
+                    description = "Nom court de l'outil/produit, uniquement si action=ATester ; sinon null.",
+                },
+                toolCategory = new
+                {
+                    type = new[] { "string", "null" },
+                    maxLength = 60,
+                    description = "Catégorie libre et courte de l'outil, uniquement si action=ATester ; sinon null.",
+                },
             },
-            required = new[] { "suggestedCollection", "tags", "action", "priority", "reason", "summary" },
+            required = new[] { "suggestedCollection", "tags", "action", "priority", "reason", "summary", "toolName", "toolCategory" },
         };
 
         return JsonSerializer.Serialize(schema);

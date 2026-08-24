@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using LoreAI.Core.Interfaces;
 using LoreAI.Core.Models;
+using LoreAI.Infrastructure.Notifications;
 using ModelContextProtocol;
 using ModelContextProtocol.Server;
 
@@ -71,6 +72,22 @@ public sealed class CorpusTools
         return await _repository.GetStatsAsync(cancellationToken);
     }
 
+    [McpServerTool(Name = "catalog_tools", ReadOnly = true), Description("Catalogue de la base d'outils (S7, lot 5) : produits/librairies rencontrés via des articles classés « à tester ».")]
+    public async Task<IReadOnlyList<ToolSummary>> CatalogTools(CancellationToken cancellationToken)
+    {
+        return await _repository.GetToolsAsync(cancellationToken);
+    }
+
+    [McpServerTool(Name = "tool_card", ReadOnly = true), Description("Fiche Markdown régénérée d'un outil du catalogue (S7, lot 5), avec ses articles liés — à écrire dans le vault Obsidian côté client.")]
+    public async Task<string> ToolCard(
+        [Description("Nom de l'outil (recherche insensible à la casse).")] string name,
+        CancellationToken cancellationToken)
+    {
+        var card = await _repository.GetToolByNameAsync(name, cancellationToken)
+            ?? throw new McpException($"Aucun outil « {name} » dans le catalogue.");
+        return MarkdownReportBuilder.BuildToolCard(card);
+    }
+
     [McpServerTool(Name = "list_tools", ReadOnly = true), Description("Liste les outils MCP prévus pour ce serveur (issue #44) et leur statut d'implémentation.")]
     public IReadOnlyList<McpToolStatus> ListTools()
     {
@@ -82,6 +99,8 @@ public sealed class CorpusTools
             new McpToolStatus("stats", "implémenté"),
             new McpToolStatus("list_tools", "implémenté"),
             new McpToolStatus("find_similar", "implémenté (S5, lot 5)"),
+            new McpToolStatus("catalog_tools", "implémenté (S7, lot 5)"),
+            new McpToolStatus("tool_card", "implémenté (S7, lot 5)"),
             new McpToolStatus("reading_queue", "non implémenté — dépend du scoring du lot 6 (L1)"),
         ];
     }

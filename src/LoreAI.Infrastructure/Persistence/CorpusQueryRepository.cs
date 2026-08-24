@@ -103,6 +103,35 @@ public sealed class CorpusQueryRepository : ICorpusQueryRepository
         return new CorpusStats(totalItems, importantItems, brokenItems, lastIndexedAtUtc);
     }
 
+    public async Task<IReadOnlyList<ToolSummary>> GetToolsAsync(CancellationToken cancellationToken)
+    {
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+
+        return await context.Tools
+            .OrderByDescending(t => t.LastSeenAtUtc)
+            .Select(t => new ToolSummary(t.Id, t.Name, t.Category, t.Status, t.Verdict, t.RelatedArticleIds.Length, t.FirstSeenAtUtc, t.LastSeenAtUtc))
+            .ToListAsync(cancellationToken);
+    }
+
+    /// <summary>Jointure sur <c>Articles</c> via <c>RelatedArticleIds</c> (EF Core/Npgsql traduit <c>Contains</c> sur un tableau en <c>= ANY(...)</c>).</summary>
+    public async Task<ToolCard?> GetToolByNameAsync(string name, CancellationToken cancellationToken)
+    {
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+
+        var tool = await context.Tools.SingleOrDefaultAsync(t => EF.Functions.ILike(t.Name, name), cancellationToken);
+        if (tool is null)
+        {
+            return null;
+        }
+
+        var relatedArticles = await context.Articles
+            .Where(a => tool.RelatedArticleIds.Contains(a.Id))
+            .Select(a => new ToolRelatedArticle(a.Id, a.Title, a.Url, a.Summary))
+            .ToListAsync(cancellationToken);
+
+        return new ToolCard(tool.Id, tool.Name, tool.Category, tool.Status, tool.Verdict, tool.FirstSeenAtUtc, tool.LastSeenAtUtc, relatedArticles);
+    }
+
     private static readonly System.Linq.Expressions.Expression<Func<LibraryItemEntity, LibraryItemSummary>> ToSummary =
         i => new LibraryItemSummary(i.Id, i.Title, i.Url, i.Tags, i.RaindropCollectionId, i.CapturedAtUtc);
 }

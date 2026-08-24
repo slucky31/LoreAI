@@ -50,6 +50,38 @@ public class AnthropicClassifierTests
         Assert.False(result.IsFallback);
     }
 
+    /// <summary>S7 (lot 5) : toolName/toolCategory traversent le round-trip HTTP complet, pas seulement le parser.</summary>
+    [Fact]
+    public async Task ClassifyAsync_ToolFieldsPresent_AreMappedToResult()
+    {
+        using var server = WireMockServer.Start();
+        server
+            .Given(Request.Create().WithPath("/v1/messages").UsingPost())
+            .RespondWith(Response.Create()
+                .WithStatusCode(200)
+                .WithHeader("Content-Type", "application/json")
+                .WithBody("""
+                    {
+                      "id": "msg_1",
+                      "type": "message",
+                      "content": [
+                        {
+                          "type": "tool_use",
+                          "id": "toolu_1",
+                          "name": "classify",
+                          "input": { "suggestedCollection": null, "tags": [], "action": "ATester", "priority": "Haute", "reason": "x", "summary": "y", "toolName": "Ollama", "toolCategory": "CLI" }
+                        }
+                      ]
+                    }
+                    """));
+
+        var classifier = CreateClassifier(server);
+        var result = await classifier.ClassifyAsync(CreateItem(), SampleTaxonomy, null, TestContext.Current.CancellationToken);
+
+        Assert.Equal("Ollama", result.ToolName);
+        Assert.Equal("CLI", result.ToolCategory);
+    }
+
     [Fact]
     public async Task ClassifyAsync_TruncatedResponse_ReturnsFallback()
     {
