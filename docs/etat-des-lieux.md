@@ -4,7 +4,7 @@
 > L'historique est dans `git log` et les Releases. La cible est dans [`roadmap.md`](roadmap.md). Les décisions sont dans [`adr/`](adr/).
 > Le suivi des lots est dans les [issues #41 à #51](https://github.com/slucky31/LoreAI/issues?q=is%3Aissue+milestone%3A*).
 
-**Dernière mise à jour :** 2026-08-24 · **Version publiée :** 0.13.0
+**Dernière mise à jour :** 2026-08-24 · **Version publiée :** 0.14.0
 
 ---
 
@@ -12,8 +12,8 @@
 
 | | |
 |---|---|
-| **Lot en cours** | **Lot 5 ([#46](https://github.com/slucky31/LoreAI/issues/46)) codé sur la branche `feat/lot5-synthese-projections`, pas encore en PR.** 4 commits : Q2 (`tsvector`/GIN sur `LibraryItems`, remplace l'ILIKE de `search_items`) + S5 (`find_similar`) ; S4 `MonthlyReviewJob` (revue mensuelle narrative par thème, un appel Anthropic texte libre par thème via le nouvel `IThemeNarrativeGenerator`, consomme enfin `Classifier__SummaryModel` — D6) ; S7 base d'outils (`toolName`/`toolCategory` ajoutés au tool `classify`, uniquement quand `action=ATester`, table `Tools`, outils MCP `catalog_tools`/`tool_card`) ; S8 export à la demande (`export_item`, MCP, pas de nouveau job — pont Obsidian). 287/287 tests passent. Lot 4 ([#45](https://github.com/slucky31/LoreAI/issues/45)) reste mergé, déployé et vérifié en production sur `mcm8` (PR [#66](https://github.com/slucky31/LoreAI/pull/66) → v0.13.0). |
-| **Prochain geste** | Ouvrir la PR du lot 5, la faire relire et merger. Indépendamment : lot 2 ([#43](https://github.com/slucky31/LoreAI/issues/43)) vérifié aux 2/3 — seul `WeeklyInsightsJob` (N1/N2/N5/S3/S6) reste à vérifier en prod, pas de `RunOnceAtStart()` sur ce job, cron par défaut dimanche 3h/4h UTC : **on attend le prochain passage naturel, dimanche 2026-08-30**. Chercher dans Discord un fichier attaché `loreai-insights-2026-08-30.md`. |
+| **Lot en cours** | **Lot 5 ([#46](https://github.com/slucky31/LoreAI/issues/46)) mergé, déployé et vérifié en production sur `mcm8` aux 4/5** (PR [#69](https://github.com/slucky31/LoreAI/pull/69) → release v0.14.0). Vérifié le 2026-08-24 via le MCP en conditions réelles (1333 items indexés) : `search_items` (Q2, plein texte réel, résultats pertinents), `find_similar` (S5, exclut bien la source), `export_item` (S8, frontmatter correct, gère bien le cas « jamais classifié »). **`catalog_tools`/`tool_card` (S7) confirmés** : un cycle réel a classé l'article « browser-use » en `ATester`, la table `Tools` s'est peuplée automatiquement, `tool_card` rend une fiche Markdown correcte (frontmatter + article lié + résumé). **Seul reste à vérifier** : `MonthlyReviewJob` (S4) — cron 1er du mois 5h UTC, pas de `RunOnceAtStart()` : premier passage réel le **2026-09-01**, chercher `loreai-revue-mensuelle-2026-08.md` sur Discord. |
+| **Prochain geste** | Repasser vérifier `MonthlyReviewJob` le 2026-09-01 — dernier morceau du lot 5. Indépendamment : lot 2 ([#43](https://github.com/slucky31/LoreAI/issues/43)) vérifié aux 2/3 — seul `WeeklyInsightsJob` (N1/N2/N5/S3/S6) reste à vérifier en prod, cron dimanche 3h/4h UTC : **on attend le prochain passage naturel, dimanche 2026-08-30**. Chercher dans Discord un fichier attaché `loreai-insights-2026-08-30.md`. |
 | **Dernière décision** | **#34 (cache de prompt) tranché par une mesure réelle, 2026-08-24 : sans effet, comme prévu.** 5 échantillons post-déploiement du lot 4 (`cache_control` posé sur le tool `classify`) : `cache_creation_input_tokens`/`cache_read_input_tokens` à 0 partout — le préfixe cacheable (system + tools, ~900 tokens estimés) reste bien sous le seuil de 4096 tokens de Claude Haiku 4.5. Sujet clos jusqu'à un vrai backfill (seul scénario où le cache change la facture, cf. roadmap) ; le marqueur reste en place, sans effet ni coût tant que le seuil n'est pas atteint. |
 | **Bloqué par** | Rien. Le Pi (`mcm8`) est en ligne, le lot 4 est vérifié en production. |
 
