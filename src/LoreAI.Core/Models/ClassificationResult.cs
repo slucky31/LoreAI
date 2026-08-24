@@ -8,6 +8,7 @@ public sealed record ClassificationResult(
     RecommendedAction Action,
     Priority Priority,
     string Reason,
+    string Summary,
     string Model,
     string RawResponse)
 {
@@ -19,5 +20,5 @@ public sealed record ClassificationResult(
     public bool IsFallback { get; init; }
 
     public static ClassificationResult Fallback(string model, string reason, string rawResponse) =>
-        new(null, [], RecommendedAction.Reference, Priority.Basse, reason, model, rawResponse) { IsFallback = true };
+        new(null, [], RecommendedAction.Reference, Priority.Basse, reason, string.Empty, model, rawResponse) { IsFallback = true };
 }

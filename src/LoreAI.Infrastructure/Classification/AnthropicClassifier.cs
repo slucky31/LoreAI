@@ -15,7 +15,8 @@ namespace LoreAI.Infrastructure.Classification;
 /// </summary>
 public sealed class AnthropicClassifier : IClassifier
 {
-    private const int MaxTokens = 300;
+    /// <summary>Relevé de 300 (lot 4) : le schéma porte désormais aussi <c>summary</c>, plus long que les autres champs.</summary>
+    private const int MaxTokens = 800;
 
     private readonly HttpClient _httpClient;
     private readonly ClassifierOptions _options;
@@ -39,9 +40,9 @@ public sealed class AnthropicClassifier : IClassifier
         _httpClient.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
     }
 
-    public async Task<ClassificationResult> ClassifyAsync(Item item, RaindropTaxonomy taxonomy, CancellationToken cancellationToken)
+    public async Task<ClassificationResult> ClassifyAsync(Item item, RaindropTaxonomy taxonomy, string? contentText, CancellationToken cancellationToken)
     {
-        var requestBody = BuildRequestBody(item, taxonomy);
+        var requestBody = BuildRequestBody(item, taxonomy, contentText);
         var rawResponseBody = string.Empty;
 
         try
@@ -87,14 +88,14 @@ public sealed class AnthropicClassifier : IClassifier
         return ClassificationResult.Fallback(_options.Model, $"Classification échouée: {reason}", rawResponseBody);
     }
 
-    private object BuildRequestBody(Item item, RaindropTaxonomy taxonomy) => new
+    private object BuildRequestBody(Item item, RaindropTaxonomy taxonomy, string? contentText) => new
     {
         model = _options.Model,
         max_tokens = MaxTokens,
         system = ClassificationPromptBuilder.SystemPrompt,
         messages = new[]
         {
-            new { role = "user", content = ClassificationPromptBuilder.BuildUserMessage(item, taxonomy) }
+            new { role = "user", content = ClassificationPromptBuilder.BuildUserMessage(item, taxonomy, contentText) }
         },
         tools = new[]
         {
@@ -102,7 +103,12 @@ public sealed class AnthropicClassifier : IClassifier
             {
                 name = ClassificationPromptBuilder.ToolName,
                 description = "Classe un article Raindrop \"Non trié\" : collection existante correspondante (ou aucune), tags, action recommandée, priorité.",
-                input_schema = JsonSerializer.Deserialize<JsonElement>(ClassificationPromptBuilder.BuildToolInputSchemaJson(taxonomy))
+                input_schema = JsonSerializer.Deserialize<JsonElement>(ClassificationPromptBuilder.BuildToolInputSchemaJson(taxonomy)),
+                // Marqueur de mesure pour la décision #34 (cache de prompt) : sans effet tant que le préfixe
+                // (system + tools) reste sous le seuil minimal de 4096 tokens de Claude Haiku 4.5 — les
+                // compteurs cache_creation_input_tokens/cache_read_input_tokens de la réponse resteront à 0
+                // jusqu'à mesure réelle. Aucune restructuration du prompt tant que ce n'est pas mesuré concluant.
+                cache_control = new { type = "ephemeral" }
             }
         },
         tool_choice = new { type = "tool", name = ClassificationPromptBuilder.ToolName }

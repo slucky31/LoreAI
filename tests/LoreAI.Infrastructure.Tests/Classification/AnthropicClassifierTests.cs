@@ -40,7 +40,7 @@ public class AnthropicClassifierTests
                     """));
 
         var classifier = CreateClassifier(server);
-        var result = await classifier.ClassifyAsync(CreateItem(), SampleTaxonomy, CancellationToken.None);
+        var result = await classifier.ClassifyAsync(CreateItem(), SampleTaxonomy, null, CancellationToken.None);
 
         Assert.Equal("Claude", result.SuggestedCollection);
         Assert.Equal(["claude"], result.Tags);
@@ -76,7 +76,7 @@ public class AnthropicClassifierTests
                     """));
 
         var classifier = CreateClassifier(server);
-        var result = await classifier.ClassifyAsync(CreateItem(), SampleTaxonomy, CancellationToken.None);
+        var result = await classifier.ClassifyAsync(CreateItem(), SampleTaxonomy, null, CancellationToken.None);
 
         // Le bloc tool_use est présent mais incomplet : on ne doit surtout pas conclure dessus.
         Assert.True(result.IsFallback);
@@ -95,7 +95,7 @@ public class AnthropicClassifierTests
                 .WithBody("""{ "error": "boom" }"""));
 
         var classifier = CreateClassifier(server);
-        var result = await classifier.ClassifyAsync(CreateItem(), SampleTaxonomy, CancellationToken.None);
+        var result = await classifier.ClassifyAsync(CreateItem(), SampleTaxonomy, null, CancellationToken.None);
 
         Assert.Null(result.SuggestedCollection);
         Assert.Empty(result.Tags);
@@ -116,7 +116,7 @@ public class AnthropicClassifierTests
                 .WithBody("""{ "id": "msg_1", "type": "message", "content": [] }"""));
 
         var classifier = CreateClassifier(server);
-        var result = await classifier.ClassifyAsync(CreateItem(), SampleTaxonomy, CancellationToken.None);
+        var result = await classifier.ClassifyAsync(CreateItem(), SampleTaxonomy, null, CancellationToken.None);
 
         Assert.Null(result.SuggestedCollection);
         Assert.True(result.IsFallback);
@@ -134,7 +134,7 @@ public class AnthropicClassifierTests
                 .WithBody("<html>502 Bad Gateway</html>"));
 
         var classifier = CreateClassifier(server);
-        var result = await classifier.ClassifyAsync(CreateItem(), SampleTaxonomy, TestContext.Current.CancellationToken);
+        var result = await classifier.ClassifyAsync(CreateItem(), SampleTaxonomy, null, TestContext.Current.CancellationToken);
 
         // Un intermédiaire qui renvoie du HTML en 200 reste une panne de transport : repli, pas de crash.
         Assert.True(result.IsFallback);
@@ -152,10 +152,60 @@ public class AnthropicClassifierTests
                 .WithBody("""{ "id": "msg_1", "type": "message" }"""));
 
         var classifier = CreateClassifier(server);
-        var result = await classifier.ClassifyAsync(CreateItem(), SampleTaxonomy, TestContext.Current.CancellationToken);
+        var result = await classifier.ClassifyAsync(CreateItem(), SampleTaxonomy, null, TestContext.Current.CancellationToken);
 
         Assert.True(result.IsFallback);
         Assert.Contains("content", result.Reason, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Marqueur de mesure pour la décision #34 (cache de prompt) : sans effet tant que le préfixe est sous
+    /// le seuil minimal, mais nécessaire pour pouvoir un jour le mesurer.
+    /// </summary>
+    [Fact]
+    public async Task ClassifyAsync_RequestBody_IncludesCacheControlOnTool()
+    {
+        using var server = WireMockServer.Start();
+        server
+            .Given(Request.Create().WithPath("/v1/messages").UsingPost())
+            .RespondWith(Response.Create()
+                .WithStatusCode(200)
+                .WithHeader("Content-Type", "application/json")
+                .WithBody("""
+                    { "id": "msg_1", "type": "message", "content": [
+                      { "type": "tool_use", "id": "toolu_1", "name": "classify",
+                        "input": { "suggestedCollection": null, "tags": [], "action": "ATester", "priority": "Haute", "reason": "x", "summary": "y" } }
+                    ] }
+                    """));
+
+        var classifier = CreateClassifier(server);
+        await classifier.ClassifyAsync(CreateItem(), SampleTaxonomy, null, TestContext.Current.CancellationToken);
+
+        var body = Assert.Single(server.LogEntries).RequestMessage!.Body!;
+        Assert.Contains("\"cache_control\":{\"type\":\"ephemeral\"}", body);
+    }
+
+    [Fact]
+    public async Task ClassifyAsync_ContentTextProvided_IsSentInsteadOfExcerpt()
+    {
+        using var server = WireMockServer.Start();
+        server
+            .Given(Request.Create().WithPath("/v1/messages").UsingPost())
+            .RespondWith(Response.Create()
+                .WithStatusCode(200)
+                .WithHeader("Content-Type", "application/json")
+                .WithBody("""
+                    { "id": "msg_1", "type": "message", "content": [
+                      { "type": "tool_use", "id": "toolu_1", "name": "classify",
+                        "input": { "suggestedCollection": null, "tags": [], "action": "ATester", "priority": "Haute", "reason": "x", "summary": "y" } }
+                    ] }
+                    """));
+
+        var classifier = CreateClassifier(server);
+        await classifier.ClassifyAsync(CreateItem(), SampleTaxonomy, "Contenu recupere par IContentFetcher", TestContext.Current.CancellationToken);
+
+        var body = Assert.Single(server.LogEntries).RequestMessage!.Body!;
+        Assert.Contains("Contenu recupere par IContentFetcher", body);
     }
 
     private static AnthropicClassifier CreateClassifier(WireMockServer server)

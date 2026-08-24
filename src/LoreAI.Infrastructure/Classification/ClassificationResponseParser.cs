@@ -62,8 +62,11 @@ public static class ClassificationResponseParser
             var reason = root.TryGetProperty("reason", out var reasonElement)
                 ? reasonElement.GetString() ?? string.Empty
                 : string.Empty;
+            var summary = root.TryGetProperty("summary", out var summaryElement)
+                ? summaryElement.GetString() ?? string.Empty
+                : string.Empty;
 
-            return new ClassificationResult(suggestedCollection, tags, action, priority, reason, model, rawResponse);
+            return new ClassificationResult(suggestedCollection, tags, action, priority, reason, summary, model, rawResponse);
         }
         catch (Exception ex) when (ex is not ClassificationParseException)
         {

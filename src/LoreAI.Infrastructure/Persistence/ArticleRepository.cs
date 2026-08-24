@@ -21,7 +21,7 @@ public sealed class ArticleRepository : IArticleRepository
         _logger = logger;
     }
 
-    public async Task UpsertAsync(Item item, ClassificationResult classification, DateTimeOffset classifiedAtUtc, CancellationToken cancellationToken)
+    public async Task UpsertAsync(Item item, ClassificationResult classification, ContentFetchResult content, DateTimeOffset classifiedAtUtc, CancellationToken cancellationToken)
     {
         await _schemaGuard.EnsureMigratedAsync(cancellationToken);
         await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
@@ -46,9 +46,15 @@ public sealed class ArticleRepository : IArticleRepository
         entity.RecommendedAction = classification.Action;
         entity.Priority = classification.Priority;
         entity.Reason = classification.Reason;
+        entity.Summary = classification.Summary;
         entity.ClassificationModel = classification.Model;
         entity.ClassificationRawResponse = NormalizeToJson(classification.RawResponse);
         entity.ClassifiedAtUtc = classifiedAtUtc;
+
+        entity.ContentText = content.Text;
+        entity.ContentStatus = content.Status;
+        entity.WordCount = content.WordCount;
+        entity.ContentFetchedAtUtc = content.Status == ContentFetchStatus.Skipped ? null : DateTimeOffset.UtcNow;
 
         await context.SaveChangesAsync(cancellationToken);
     }

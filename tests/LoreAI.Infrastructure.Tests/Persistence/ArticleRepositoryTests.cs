@@ -35,8 +35,8 @@ public class ArticleRepositoryTests : IAsyncLifetime
         var item = CreateItem(1, "Titre initial");
         var classification = CreateClassification();
 
-        await _repository.UpsertAsync(item, classification, DateTimeOffset.UtcNow, TestContext.Current.CancellationToken);
-        await _repository.UpsertAsync(item with { Title = "Titre mis à jour" }, classification, DateTimeOffset.UtcNow, TestContext.Current.CancellationToken);
+        await _repository.UpsertAsync(item, classification, ContentFetchResult.Skipped, DateTimeOffset.UtcNow, TestContext.Current.CancellationToken);
+        await _repository.UpsertAsync(item with { Title = "Titre mis à jour" }, classification, ContentFetchResult.Skipped, DateTimeOffset.UtcNow, TestContext.Current.CancellationToken);
 
         var all = await GetAllAsync();
 
@@ -47,7 +47,7 @@ public class ArticleRepositoryTests : IAsyncLifetime
     [Fact]
     public async Task MarkDiscordNotifiedAsync_SetsTimestamp()
     {
-        await _repository.UpsertAsync(CreateItem(1, "A"), CreateClassification(), DateTimeOffset.UtcNow, TestContext.Current.CancellationToken);
+        await _repository.UpsertAsync(CreateItem(1, "A"), CreateClassification(), ContentFetchResult.Skipped, DateTimeOffset.UtcNow, TestContext.Current.CancellationToken);
 
         await _repository.MarkDiscordNotifiedAsync(1, DateTimeOffset.UtcNow, TestContext.Current.CancellationToken);
 
@@ -58,7 +58,7 @@ public class ArticleRepositoryTests : IAsyncLifetime
     [Fact]
     public async Task RecordWriteBackAsync_Moved_SetsMovedFlag()
     {
-        await _repository.UpsertAsync(CreateItem(1, "A"), CreateClassification(), DateTimeOffset.UtcNow, TestContext.Current.CancellationToken);
+        await _repository.UpsertAsync(CreateItem(1, "A"), CreateClassification(), ContentFetchResult.Skipped, DateTimeOffset.UtcNow, TestContext.Current.CancellationToken);
 
         await _repository.RecordWriteBackAsync(1, success: true, moved: true, DateTimeOffset.UtcNow, TestContext.Current.CancellationToken);
 
@@ -69,7 +69,7 @@ public class ArticleRepositoryTests : IAsyncLifetime
     [Fact]
     public async Task RecordWriteBackAsync_TagsOnly_LeavesMovedFalse()
     {
-        await _repository.UpsertAsync(CreateItem(1, "A"), CreateClassification(), DateTimeOffset.UtcNow, TestContext.Current.CancellationToken);
+        await _repository.UpsertAsync(CreateItem(1, "A"), CreateClassification(), ContentFetchResult.Skipped, DateTimeOffset.UtcNow, TestContext.Current.CancellationToken);
 
         await _repository.RecordWriteBackAsync(1, success: true, moved: false, DateTimeOffset.UtcNow, TestContext.Current.CancellationToken);
 
@@ -81,9 +81,9 @@ public class ArticleRepositoryTests : IAsyncLifetime
     public async Task UpsertAsync_RoundTripsTagsAndSuggestedCollection()
     {
         var item = CreateItem(1, "A") with { Tags = ["dotnet", "claude"] };
-        var classification = new ClassificationResult("Claude", ["claude", "ia"], RecommendedAction.ATester, Priority.Haute, "raison", "claude-haiku-4-5", "{}");
+        var classification = new ClassificationResult("Claude", ["claude", "ia"], RecommendedAction.ATester, Priority.Haute, "raison", "résumé", "claude-haiku-4-5", "{}");
 
-        await _repository.UpsertAsync(item, classification, DateTimeOffset.UtcNow, TestContext.Current.CancellationToken);
+        await _repository.UpsertAsync(item, classification, ContentFetchResult.Skipped, DateTimeOffset.UtcNow, TestContext.Current.CancellationToken);
 
         var entity = await GetAsync(1);
 
@@ -92,6 +92,34 @@ public class ArticleRepositoryTests : IAsyncLifetime
         Assert.Equal(["claude", "ia"], entity.SuggestedTags);
         Assert.Equal(RecommendedAction.ATester, entity.RecommendedAction);
         Assert.Equal(Priority.Haute, entity.Priority);
+        Assert.Equal("résumé", entity.Summary);
+    }
+
+    [Fact]
+    public async Task UpsertAsync_RoundTripsContentFetchResult()
+    {
+        var content = new ContentFetchResult(ContentFetchStatus.Success, "texte complet de l'article", 42);
+
+        await _repository.UpsertAsync(CreateItem(1, "A"), CreateClassification(), content, DateTimeOffset.UtcNow, TestContext.Current.CancellationToken);
+
+        var entity = await GetAsync(1);
+
+        Assert.Equal("texte complet de l'article", entity.ContentText);
+        Assert.Equal(ContentFetchStatus.Success, entity.ContentStatus);
+        Assert.Equal(42, entity.WordCount);
+        Assert.NotNull(entity.ContentFetchedAtUtc);
+    }
+
+    [Fact]
+    public async Task UpsertAsync_SkippedContent_LeavesContentFetchedAtUtcNull()
+    {
+        await _repository.UpsertAsync(CreateItem(1, "A"), CreateClassification(), ContentFetchResult.Skipped, DateTimeOffset.UtcNow, TestContext.Current.CancellationToken);
+
+        var entity = await GetAsync(1);
+
+        Assert.Null(entity.ContentText);
+        Assert.Equal(ContentFetchStatus.Skipped, entity.ContentStatus);
+        Assert.Null(entity.ContentFetchedAtUtc);
     }
 
     [Fact]
@@ -100,7 +128,7 @@ public class ArticleRepositoryTests : IAsyncLifetime
         var item = CreateItem(1, "A");
         var classification = CreateClassification();
 
-        await _repository.UpsertAsync(item, classification, DateTimeOffset.UtcNow, TestContext.Current.CancellationToken);
+        await _repository.UpsertAsync(item, classification, ContentFetchResult.Skipped, DateTimeOffset.UtcNow, TestContext.Current.CancellationToken);
 
         var entity = await GetAsync(1);
 
@@ -118,7 +146,7 @@ public class ArticleRepositoryTests : IAsyncLifetime
     {
         var classification = CreateClassification() with { RawResponse = string.Empty };
 
-        await _repository.UpsertAsync(CreateItem(1, "A"), classification, DateTimeOffset.UtcNow, TestContext.Current.CancellationToken);
+        await _repository.UpsertAsync(CreateItem(1, "A"), classification, ContentFetchResult.Skipped, DateTimeOffset.UtcNow, TestContext.Current.CancellationToken);
 
         Assert.Single(await GetAllAsync());
     }
@@ -128,9 +156,9 @@ public class ArticleRepositoryTests : IAsyncLifetime
     {
         var cutoff = new DateTimeOffset(2026, 8, 1, 0, 0, 0, TimeSpan.Zero);
         await _repository.UpsertAsync(
-            CreateItem(1, "Avant"), CreateClassification() with { RawResponse = "{\"usage\":{}}" }, cutoff.AddDays(-1), TestContext.Current.CancellationToken);
+            CreateItem(1, "Avant"), CreateClassification() with { RawResponse = "{\"usage\":{}}" }, ContentFetchResult.Skipped, cutoff.AddDays(-1), TestContext.Current.CancellationToken);
         await _repository.UpsertAsync(
-            CreateItem(2, "Après"), CreateClassification() with { RawResponse = "{\"usage\":{\"input_tokens\":10}}" }, cutoff.AddDays(1), TestContext.Current.CancellationToken);
+            CreateItem(2, "Après"), CreateClassification() with { RawResponse = "{\"usage\":{\"input_tokens\":10}}" }, ContentFetchResult.Skipped, cutoff.AddDays(1), TestContext.Current.CancellationToken);
 
         var responses = await _repository.GetClassificationRawResponsesSinceAsync(cutoff, TestContext.Current.CancellationToken);
 
@@ -163,5 +191,5 @@ public class ArticleRepositoryTests : IAsyncLifetime
     private static ClassificationResult CreateClassification() =>
         // "raw" n'est plus une valeur de test valide pour ClassificationRawResponse : la colonne est
         // désormais un vrai jsonb, qui rejette tout ce qui n'est pas du JSON valide.
-        new(null, [], RecommendedAction.ALire, Priority.Moyenne, "raison", "model", "{}");
+        new(null, [], RecommendedAction.ALire, Priority.Moyenne, "raison", "résumé", "model", "{}");
 }

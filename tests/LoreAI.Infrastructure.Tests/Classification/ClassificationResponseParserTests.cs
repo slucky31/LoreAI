@@ -6,7 +6,7 @@ namespace LoreAI.Infrastructure.Tests.Classification;
 public class ClassificationResponseParserTests
 {
     private const string ValidJson = """
-        { "suggestedCollection": ".NET", "tags": ["dotnet", "outil"], "action": "ATester", "priority": "Haute", "reason": "Nouvel outil .NET intéressant." }
+        { "suggestedCollection": ".NET", "tags": ["dotnet", "outil"], "action": "ATester", "priority": "Haute", "reason": "Nouvel outil .NET intéressant.", "summary": "Un outil qui simplifie le déploiement .NET sur ARM." }
         """;
 
     [Fact]
@@ -19,8 +19,23 @@ public class ClassificationResponseParserTests
         Assert.Equal(RecommendedAction.ATester, result.Action);
         Assert.Equal(Priority.Haute, result.Priority);
         Assert.Equal("Nouvel outil .NET intéressant.", result.Reason);
+        Assert.Equal("Un outil qui simplifie le déploiement .NET sur ARM.", result.Summary);
         Assert.Equal("claude-haiku-4-5", result.Model);
         Assert.Equal("raw", result.RawResponse);
+    }
+
+    /// <summary>
+    /// Traitement lenient, comme `reason` : un fixture pré-lot-4 (sans `summary`) doit continuer de parser,
+    /// pas lever — le schéma d'outil le marque `required`, mais rien ne garantit que le modèle l'honore.
+    /// </summary>
+    [Fact]
+    public void Parse_MissingSummary_DefaultsToEmptyString()
+    {
+        const string json = """{ "suggestedCollection": null, "tags": [], "action": "ATester", "priority": "Haute", "reason": "x" }""";
+
+        var result = ClassificationResponseParser.Parse(json, "model", "raw");
+
+        Assert.Equal(string.Empty, result.Summary);
     }
 
     [Fact]
