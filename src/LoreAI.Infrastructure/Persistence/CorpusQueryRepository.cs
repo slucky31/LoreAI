@@ -40,17 +40,52 @@ public sealed class CorpusQueryRepository : ICorpusQueryRepository
     }
 
     /// <summary>
-    /// <c>ILIKE '%terme%'</c> plutôt qu'un <c>tsvector</c>/index GIN (Q2 de la roadmap) : le volume actuel
-    /// ne justifie pas encore ce changement de schéma, et ce n'est pas un prérequis du squelette du lot 3.
+    /// Recherche plein texte (Q2, lot 5) : <c>websearch_to_tsquery</c> contre la colonne <c>SearchVector</c>
+    /// générée, classée par pertinence (<c>ts_rank_cd</c>). <c>EF.Functions.WebSearchToTsQuery</c> doit
+    /// rester inline dans chaque lambda LINQ (pas extrait en variable) : c'est un marqueur de traduction
+    /// SQL sans corps réel, appelé en dehors d'une expression tree il lève au runtime.
     /// </summary>
     public async Task<IReadOnlyList<LibraryItemSummary>> SearchAsync(string query, int limit, CancellationToken cancellationToken)
     {
         await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
 
-        var pattern = $"%{query}%";
         return await context.LibraryItems
-            .Where(i => EF.Functions.ILike(i.Title, pattern) || EF.Functions.ILike(i.Url, pattern))
-            .OrderByDescending(i => i.CapturedAtUtc)
+            .Where(i => i.SearchVector.Matches(EF.Functions.WebSearchToTsQuery("french", query)))
+            .OrderByDescending(i => i.SearchVector.RankCoverDensity(EF.Functions.WebSearchToTsQuery("french", query)))
+            .Take(limit)
+            .Select(ToSummary)
+            .ToListAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// S5 (lot 5) : dérive une requête plein texte en <c>OR</c> à partir des mots du titre de l'item source,
+    /// puis classe les autres items par pertinence contre cette requête. Recherche plein texte plutôt que
+    /// des embeddings — cf. l'arbitrage du roadmap sur S5 (« recherche plein texte d'abord »).
+    /// </summary>
+    public async Task<IReadOnlyList<LibraryItemSummary>> FindSimilarAsync(long id, int limit, CancellationToken cancellationToken)
+    {
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+
+        var source = await context.LibraryItems.SingleOrDefaultAsync(i => i.Id == id, cancellationToken);
+        if (source is null)
+        {
+            return [];
+        }
+
+        var words = source.Title
+            .Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)
+            .Where(w => w.Length > 2)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        if (words.Count == 0)
+        {
+            return [];
+        }
+
+        var queryText = string.Join(" or ", words);
+        return await context.LibraryItems
+            .Where(i => i.Id != id && i.SearchVector.Matches(EF.Functions.WebSearchToTsQuery("french", queryText)))
+            .OrderByDescending(i => i.SearchVector.RankCoverDensity(EF.Functions.WebSearchToTsQuery("french", queryText)))
             .Take(limit)
             .Select(ToSummary)
             .ToListAsync(cancellationToken);
@@ -66,6 +101,45 @@ public sealed class CorpusQueryRepository : ICorpusQueryRepository
         var lastIndexedAtUtc = await context.LibraryItems.MaxAsync(i => (DateTimeOffset?)i.IndexedAtUtc, cancellationToken);
 
         return new CorpusStats(totalItems, importantItems, brokenItems, lastIndexedAtUtc);
+    }
+
+    public async Task<IReadOnlyList<ToolSummary>> GetToolsAsync(CancellationToken cancellationToken)
+    {
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+
+        return await context.Tools
+            .OrderByDescending(t => t.LastSeenAtUtc)
+            .Select(t => new ToolSummary(t.Id, t.Name, t.Category, t.Status, t.Verdict, t.RelatedArticleIds.Length, t.FirstSeenAtUtc, t.LastSeenAtUtc))
+            .ToListAsync(cancellationToken);
+    }
+
+    /// <summary>Jointure sur <c>Articles</c> via <c>RelatedArticleIds</c> (EF Core/Npgsql traduit <c>Contains</c> sur un tableau en <c>= ANY(...)</c>).</summary>
+    public async Task<ToolCard?> GetToolByNameAsync(string name, CancellationToken cancellationToken)
+    {
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+
+        var tool = await context.Tools.SingleOrDefaultAsync(t => EF.Functions.ILike(t.Name, name), cancellationToken);
+        if (tool is null)
+        {
+            return null;
+        }
+
+        var relatedArticles = await context.Articles
+            .Where(a => tool.RelatedArticleIds.Contains(a.Id))
+            .Select(a => new ToolRelatedArticle(a.Id, a.Title, a.Url, a.Summary))
+            .ToListAsync(cancellationToken);
+
+        return new ToolCard(tool.Id, tool.Name, tool.Category, tool.Status, tool.Verdict, tool.FirstSeenAtUtc, tool.LastSeenAtUtc, relatedArticles);
+    }
+
+    public async Task<string?> GetArticleSummaryAsync(long id, CancellationToken cancellationToken)
+    {
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+
+        return await context.Articles
+            .Where(a => a.Id == id)
+            .Select(a => a.Summary)
+            .SingleOrDefaultAsync(cancellationToken);
     }
 
     private static readonly System.Linq.Expressions.Expression<Func<LibraryItemEntity, LibraryItemSummary>> ToSummary =

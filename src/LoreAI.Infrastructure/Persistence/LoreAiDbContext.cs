@@ -9,6 +9,7 @@ public sealed class LoreAiDbContext(DbContextOptions<LoreAiDbContext> options) :
     public DbSet<CycleRunEntity> CycleRuns => Set<CycleRunEntity>();
     public DbSet<LibraryItemEntity> LibraryItems => Set<LibraryItemEntity>();
     public DbSet<LibraryIndexStateEntity> LibraryIndexStates => Set<LibraryIndexStateEntity>();
+    public DbSet<ToolEntity> Tools => Set<ToolEntity>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -42,11 +43,23 @@ public sealed class LoreAiDbContext(DbContextOptions<LoreAiDbContext> options) :
             libraryItem.Property(i => i.Id).ValueGeneratedNever();
             libraryItem.Property(i => i.HighlightsJson).HasColumnType("jsonb");
             libraryItem.HasIndex(i => i.Origin);
+
+            // Q2 (lot 5) : recherche plein texte française sur titre + extrait, indexée GIN. Remplace
+            // l'ILIKE naïf de CorpusQueryRepository.SearchAsync.
+            libraryItem.HasGeneratedTsVectorColumn(i => i.SearchVector, "french", i => new { i.Title, i.Excerpt });
+            libraryItem.HasIndex(i => i.SearchVector).HasMethod("GIN");
         });
 
         modelBuilder.Entity<LibraryIndexStateEntity>(libraryIndexState =>
         {
             libraryIndexState.HasKey(s => s.SourceType);
+        });
+
+        modelBuilder.Entity<ToolEntity>(tool =>
+        {
+            // Id généré : contrairement à ArticleEntity/LibraryItemEntity, un outil n'a pas d'identifiant
+            // Raindrop naturel (un même outil peut être rencontré via plusieurs articles).
+            tool.HasIndex(t => t.Name);
         });
     }
 }

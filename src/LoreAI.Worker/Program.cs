@@ -63,6 +63,7 @@ try
     builder.Services.AddSingleton<ICycleRunRepository, CycleRunRepository>();
     builder.Services.AddSingleton<ILibraryItemRepository, LibraryItemRepository>();
     builder.Services.AddSingleton<ILibraryIndexStateRepository, LibraryIndexStateRepository>();
+    builder.Services.AddSingleton<IToolRepository, ToolRepository>();
     // DefaultNotificationPolicy expose des seuils en paramètres de constructeur ; ils étaient annoncés
     // « injectables » mais aucun appelant ne les fournissait. On les alimente depuis la configuration ici,
     // plutôt que de faire dépendre Core de Microsoft.Extensions.Options.
@@ -79,6 +80,11 @@ try
 
     // Seul l'appel LLM sort des valeurs par défaut, cf. ClassifierResilience.
     builder.Services.AddHttpClient<IClassifier, AnthropicClassifier>()
+        .AddStandardResilienceHandler(ClassifierResilience.Configure);
+
+    // Même cible API et même résilience que le classifieur (S4, lot 5) : appel Anthropic texte libre, pas
+    // de tool-use.
+    builder.Services.AddHttpClient<IThemeNarrativeGenerator, AnthropicThemeNarrativeGenerator>()
         .AddStandardResilienceHandler(ClassifierResilience.Configure);
 
     // Politesse envers des sites tiers inconnus (S1, lot 4) : timeout court, pas de retry agressif.
@@ -98,6 +104,7 @@ try
     builder.Services.AddTransient<UnsortedClassificationJob>();
     builder.Services.AddTransient<LibraryIndexingJob>();
     builder.Services.AddTransient<WeeklyInsightsJob>();
+    builder.Services.AddTransient<MonthlyReviewJob>();
 
     var host = builder.Build();
 
@@ -134,6 +141,10 @@ try
         scheduler.Schedule<WeeklyInsightsJob>()
             .Cron(workerOptions.WeeklyInsightsCronExpression)
             .PreventOverlapping(nameof(WeeklyInsightsJob));
+
+        scheduler.Schedule<MonthlyReviewJob>()
+            .Cron(workerOptions.MonthlyReviewCronExpression)
+            .PreventOverlapping(nameof(MonthlyReviewJob));
     });
 
     host.Run();

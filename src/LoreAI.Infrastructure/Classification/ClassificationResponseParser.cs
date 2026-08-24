@@ -20,6 +20,9 @@ public static class ClassificationResponseParser
 
     private const int MaxTags = 10;
 
+    private const int MaxToolNameLength = 100;
+    private const int MaxToolCategoryLength = 60;
+
     /// <summary>
     /// Variante sans exception, destinée à l'appelant nominal : une sortie de modèle invalide est un
     /// résultat attendu, pas un incident. Cela permet à <c>AnthropicClassifier</c> de ne plus envelopper
@@ -65,8 +68,14 @@ public static class ClassificationResponseParser
             var summary = root.TryGetProperty("summary", out var summaryElement)
                 ? summaryElement.GetString() ?? string.Empty
                 : string.Empty;
+            var toolName = SanitizeOptionalText(TryParseOptionalNullableString(root, "toolName"), MaxToolNameLength);
+            var toolCategory = SanitizeOptionalText(TryParseOptionalNullableString(root, "toolCategory"), MaxToolCategoryLength);
 
-            return new ClassificationResult(suggestedCollection, tags, action, priority, reason, summary, model, rawResponse);
+            return new ClassificationResult(suggestedCollection, tags, action, priority, reason, summary, model, rawResponse)
+            {
+                ToolName = toolName,
+                ToolCategory = toolCategory,
+            };
         }
         catch (Exception ex) when (ex is not ClassificationParseException)
         {
@@ -89,6 +98,16 @@ public static class ClassificationResponseParser
         };
     }
 
+    /// <summary>
+    /// Comme <c>summary</c> (lot 4) : le schéma marque le champ <c>required</c> mais rien ne garantit que le
+    /// modèle l'honore, et les fixtures pré-lot-5 ne le portent pas — champ absent ou <c>null</c> traités
+    /// identiquement, contrairement à <see cref="ParseNullableString"/> qui exige la présence du champ.
+    /// </summary>
+    private static string? TryParseOptionalNullableString(JsonElement root, string propertyName) =>
+        root.TryGetProperty(propertyName, out var element) && element.ValueKind == JsonValueKind.String
+            ? element.GetString()
+            : null;
+
     private static List<string> ParseStringArray(JsonElement root, string propertyName)
     {
         if (!root.TryGetProperty(propertyName, out var element) || element.ValueKind != JsonValueKind.Array)
@@ -109,17 +128,26 @@ public static class ClassificationResponseParser
     /// Aplatit les blancs (un tag ne tient que sur une ligne), retire les caractères de contrôle et tronque.
     /// Rien de ce que renvoie le modèle ne doit pouvoir se déverser tel quel dans les données de l'utilisateur.
     /// </summary>
-    private static string SanitizeTag(string? raw)
+    private static string SanitizeTag(string? raw) => SanitizeFreeText(raw, MaxTagLength) ?? string.Empty;
+
+    /// <summary>Même traitement que <see cref="SanitizeTag"/> (F-11) pour toolName/toolCategory (S7, lot 5), mais <c>null</c> plutôt que vide quand rien n'exploitable ne subsiste.</summary>
+    private static string? SanitizeOptionalText(string? raw, int maxLength) => SanitizeFreeText(raw, maxLength);
+
+    private static string? SanitizeFreeText(string? raw, int maxLength)
     {
         if (string.IsNullOrWhiteSpace(raw))
         {
-            return string.Empty;
+            return null;
         }
 
         var collapsed = string.Join(' ', raw.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
         var printable = new string(collapsed.Where(c => !char.IsControl(c)).ToArray()).Trim();
+        if (printable.Length == 0)
+        {
+            return null;
+        }
 
-        return printable.Length <= MaxTagLength ? printable : printable[..MaxTagLength].TrimEnd();
+        return printable.Length <= maxLength ? printable : printable[..maxLength].TrimEnd();
     }
 
     private static TEnum ParseEnum<TEnum>(JsonElement root, string propertyName) where TEnum : struct, Enum

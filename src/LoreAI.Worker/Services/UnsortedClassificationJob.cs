@@ -26,6 +26,7 @@ public sealed class UnsortedClassificationJob : IInvocable, ICancellableInvocabl
     private readonly IContentFetcher _contentFetcher;
     private readonly IImmediateNotifier _immediateNotifier;
     private readonly INotificationPolicy _notificationPolicy;
+    private readonly IToolRepository _toolRepository;
     private readonly WorkerOptions _options;
     private readonly ILogger<UnsortedClassificationJob> _logger;
 
@@ -39,6 +40,7 @@ public sealed class UnsortedClassificationJob : IInvocable, ICancellableInvocabl
         IContentFetcher contentFetcher,
         IImmediateNotifier immediateNotifier,
         INotificationPolicy notificationPolicy,
+        IToolRepository toolRepository,
         IOptions<WorkerOptions> options,
         ILogger<UnsortedClassificationJob> logger)
     {
@@ -51,6 +53,7 @@ public sealed class UnsortedClassificationJob : IInvocable, ICancellableInvocabl
         _contentFetcher = contentFetcher;
         _immediateNotifier = immediateNotifier;
         _notificationPolicy = notificationPolicy;
+        _toolRepository = toolRepository;
         _options = options.Value;
         _logger = logger;
     }
@@ -110,6 +113,7 @@ public sealed class UnsortedClassificationJob : IInvocable, ICancellableInvocabl
 
                     var classification = await _classifier.ClassifyAsync(item, taxonomy, content.Text, cancellationToken);
                     await _articleRepository.UpsertAsync(item, classification, content, DateTimeOffset.UtcNow, cancellationToken);
+                    await UpsertToolAsync(item, classification, cancellationToken);
 
                     if (classification.IsFallback)
                     {
@@ -315,6 +319,28 @@ public sealed class UnsortedClassificationJob : IInvocable, ICancellableInvocabl
             _logger.LogWarning(ex, "Échec de l'application des tags/déplacement pour l'item {SourceId}", item.SourceId);
             await _articleRepository.RecordWriteBackAsync(raindropId, success: false, moved: false, DateTimeOffset.UtcNow, cancellationToken);
             return new WriteBackOutcome(Moved: false, TagsAdded: 0);
+        }
+    }
+
+    /// <summary>
+    /// S7 (lot 5) : n'alimente la base d'outils que pour une vraie classification ATester avec un nom
+    /// d'outil renseigné — c'est la définition même de cette action (cf. le prompt de classification), pas
+    /// une extension à ALire/Reference. Best-effort, comme le reste de la méthode : ne bloque jamais le cycle.
+    /// </summary>
+    private async Task UpsertToolAsync(Item item, ClassificationResult classification, CancellationToken cancellationToken)
+    {
+        if (classification.IsFallback || classification.Action != RecommendedAction.ATester || string.IsNullOrWhiteSpace(classification.ToolName))
+        {
+            return;
+        }
+
+        try
+        {
+            await _toolRepository.UpsertFromArticleAsync(classification.ToolName, classification.ToolCategory, ParseRaindropId(item), DateTimeOffset.UtcNow, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Échec de la mise à jour de la base d'outils pour l'item {SourceId}", item.SourceId);
         }
     }
 

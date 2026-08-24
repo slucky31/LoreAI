@@ -19,6 +19,12 @@ public sealed record ClassificationResult(
     /// </summary>
     public bool IsFallback { get; init; }
 
+    /// <summary>Nom court de l'outil/produit (S7, lot 5) — renseigné par le modèle uniquement quand <see cref="Action"/> vaut <see cref="RecommendedAction.ATester"/>, <c>null</c> sinon.</summary>
+    public string? ToolName { get; init; }
+
+    /// <summary>Catégorie libre de l'outil (S7, lot 5), même condition que <see cref="ToolName"/>.</summary>
+    public string? ToolCategory { get; init; }
+
     public static ClassificationResult Fallback(string model, string reason, string rawResponse) =>
         new(null, [], RecommendedAction.Reference, Priority.Basse, reason, string.Empty, model, rawResponse) { IsFallback = true };
 }

@@ -18,4 +18,10 @@ public interface IArticleRepository
     /// c'est tout ce dont <c>LlmUsageAnalyzer</c> a besoin.
     /// </summary>
     Task<IReadOnlyList<string>> GetClassificationRawResponsesSinceAsync(DateTimeOffset sinceUtc, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Articles réellement classifiés (jamais un repli) dans <c>[startUtc, endUtc)</c> — alimente la revue
+    /// mensuelle (S4, lot 5).
+    /// </summary>
+    Task<IReadOnlyList<MonthlyReviewArticle>> GetClassifiedBetweenAsync(DateTimeOffset startUtc, DateTimeOffset endUtc, CancellationToken cancellationToken);
 }

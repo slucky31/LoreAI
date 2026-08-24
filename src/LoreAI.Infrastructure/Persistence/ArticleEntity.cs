@@ -29,6 +29,11 @@ public sealed class ArticleEntity
     public string? ClassificationRawResponse { get; set; }
     public DateTimeOffset? ClassifiedAtUtc { get; set; }
 
+    // Un résultat de repli (ClassificationResult.IsFallback) est bien persisté (UpsertAsync a lieu avant
+    // le test IsFallback dans UnsortedClassificationJob.Invoke), mais ne représente pas une vraie décision
+    // du modèle. Ce booléen le distingue proprement en base — S4 (lot 5) l'exclut des revues mensuelles.
+    public bool IsFallback { get; set; }
+
     public bool Moved { get; set; }
     public string? WriteBackStatus { get; set; }
     public DateTimeOffset? WriteBackAtUtc { get; set; }
@@ -41,4 +46,8 @@ public sealed class ArticleEntity
     public ContentFetchStatus? ContentStatus { get; set; }
     public int? WordCount { get; set; }
     public string? Summary { get; set; }
+
+    // S7 (lot 5) : uniquement renseignés quand RecommendedAction == ATester, cf. ClassificationResult.
+    public string? ToolName { get; set; }
+    public string? ToolCategory { get; set; }
 }

@@ -44,4 +44,11 @@ public sealed class WorkerOptions
     /// domaine pose problème en production, même logique que <see cref="WriteBackToRaindrop"/>.
     /// </summary>
     public bool FetchArticleContent { get; init; } = true;
+
+    /// <summary>
+    /// Expression cron de la revue mensuelle narrative (S4, lot 5) — par défaut le 1er de chaque mois à 5h
+    /// UTC, une heure après <see cref="WeeklyInsightsCronExpression"/>. Revoit le mois calendaire précédent.
+    /// </summary>
+    [Required(AllowEmptyStrings = false)]
+    public string MonthlyReviewCronExpression { get; init; } = "0 5 1 * *";
 }

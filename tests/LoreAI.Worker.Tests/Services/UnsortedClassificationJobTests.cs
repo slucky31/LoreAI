@@ -589,6 +589,78 @@ public class UnsortedClassificationJobTests
             Arg.Is<CycleRun>(r => r!.Outcome == CycleOutcome.Ok), Arg.Any<CancellationToken>());
     }
 
+    // --- S7 : base d'outils (lot 5) -------------------------------------------------------------
+
+    [Fact]
+    public async Task Invoke_ATesterWithToolName_UpsertsTool()
+    {
+        var fixture = new JobFixture()
+            .WithNewItems(CreateItem(1))
+            .WithClassification(CreateClassification(".NET", ["dotnet"]) with { ToolName = "Ollama", ToolCategory = "CLI" });
+
+        await fixture.Build().Invoke();
+
+        await fixture.ToolRepository.Received(1).UpsertFromArticleAsync(
+            "Ollama", "CLI", 1, Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Invoke_ATesterWithoutToolName_DoesNotUpsertTool()
+    {
+        var fixture = new JobFixture()
+            .WithNewItems(CreateItem(1))
+            .WithClassification(CreateClassification(".NET", ["dotnet"]));
+
+        await fixture.Build().Invoke();
+
+        await fixture.ToolRepository.DidNotReceive().UpsertFromArticleAsync(
+            Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<long>(), Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Invoke_NonATesterActionWithToolName_DoesNotUpsertTool()
+    {
+        var fixture = new JobFixture()
+            .WithNewItems(CreateItem(1))
+            .WithClassification(CreateClassification(".NET", ["dotnet"]) with { Action = RecommendedAction.ALire, ToolName = "Ollama" });
+
+        await fixture.Build().Invoke();
+
+        await fixture.ToolRepository.DidNotReceive().UpsertFromArticleAsync(
+            Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<long>(), Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Invoke_FallbackClassificationWithToolName_DoesNotUpsertTool()
+    {
+        var fixture = new JobFixture()
+            .WithNewItems(CreateItem(1))
+            .WithClassification(ClassificationResult.Fallback("model", "boom", "{}") with { ToolName = "Ollama" });
+
+        await fixture.Build().Invoke();
+
+        await fixture.ToolRepository.DidNotReceive().UpsertFromArticleAsync(
+            Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<long>(), Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>Best-effort (S7) : un échec de la base d'outils ne doit jamais bloquer le cycle.</summary>
+    [Fact]
+    public async Task Invoke_ToolRepositoryThrows_DoesNotThrowAndStillProcessesItem()
+    {
+        var fixture = new JobFixture()
+            .WithNewItems(CreateItem(1))
+            .WithClassification(CreateClassification(".NET", ["dotnet"]) with { ToolName = "Ollama" });
+        fixture.ToolRepository
+            .UpsertFromArticleAsync(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<long>(), Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new InvalidOperationException("database is locked"));
+
+        var exception = await Record.ExceptionAsync(() => fixture.Build().Invoke());
+
+        Assert.Null(exception);
+        await fixture.CycleRunRepository.Received(1).RecordAsync(
+            Arg.Is<CycleRun>(r => r!.Outcome == CycleOutcome.Ok), Arg.Any<CancellationToken>());
+    }
+
     // --- Fixture ------------------------------------------------------------------------------
 
     private static Item CreateItem(long id, IReadOnlyList<string>? tags = null) => new(
@@ -618,6 +690,7 @@ public class UnsortedClassificationJobTests
         public IContentFetcher ContentFetcher { get; } = Substitute.For<IContentFetcher>();
         public IImmediateNotifier ImmediateNotifier { get; } = Substitute.For<IImmediateNotifier>();
         public INotificationPolicy NotificationPolicy { get; } = Substitute.For<INotificationPolicy>();
+        public IToolRepository ToolRepository { get; } = Substitute.For<IToolRepository>();
 
         private bool _writeBack = true;
         private bool _fetchArticleContent = true;
@@ -687,6 +760,7 @@ public class UnsortedClassificationJobTests
             ContentFetcher,
             ImmediateNotifier,
             NotificationPolicy,
+            ToolRepository,
             MsOptions.Create(new WorkerOptions { WriteBackToRaindrop = _writeBack, FetchArticleContent = _fetchArticleContent }),
             NullLogger<UnsortedClassificationJob>.Instance);
     }

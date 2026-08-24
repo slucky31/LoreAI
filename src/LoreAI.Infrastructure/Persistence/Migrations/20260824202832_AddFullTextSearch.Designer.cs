@@ -3,6 +3,7 @@ using System;
 using LoreAI.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using NpgsqlTypes;
@@ -12,9 +13,11 @@ using NpgsqlTypes;
 namespace LoreAI.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(LoreAiDbContext))]
-    partial class LoreAiDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260824202832_AddFullTextSearch")]
+    partial class AddFullTextSearch
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -58,9 +61,6 @@ namespace LoreAI.Infrastructure.Persistence.Migrations
                     b.Property<DateTimeOffset>("FetchedAtUtc")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<bool>("IsFallback")
-                        .HasColumnType("boolean");
-
                     b.Property<bool>("Moved")
                         .HasColumnType("boolean");
 
@@ -94,12 +94,6 @@ namespace LoreAI.Infrastructure.Persistence.Migrations
 
                     b.Property<string>("Title")
                         .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("ToolCategory")
-                        .HasColumnType("text");
-
-                    b.Property<string>("ToolName")
                         .HasColumnType("text");
 
                     b.Property<string>("Url")
@@ -274,45 +268,6 @@ namespace LoreAI.Infrastructure.Persistence.Migrations
                     b.HasKey("SourceType");
 
                     b.ToTable("PollingStates");
-                });
-
-            modelBuilder.Entity("LoreAI.Infrastructure.Persistence.ToolEntity", b =>
-                {
-                    b.Property<long>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
-
-                    b.Property<string>("Category")
-                        .HasColumnType("text");
-
-                    b.Property<DateTimeOffset>("FirstSeenAtUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTimeOffset>("LastSeenAtUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.PrimitiveCollection<long[]>("RelatedArticleIds")
-                        .IsRequired()
-                        .HasColumnType("bigint[]");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("Verdict")
-                        .HasColumnType("text");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("Name");
-
-                    b.ToTable("Tools");
                 });
 #pragma warning restore 612, 618
         }

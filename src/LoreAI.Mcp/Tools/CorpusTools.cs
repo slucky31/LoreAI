@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using LoreAI.Core.Interfaces;
 using LoreAI.Core.Models;
+using LoreAI.Infrastructure.Notifications;
 using ModelContextProtocol;
 using ModelContextProtocol.Server;
 
@@ -45,7 +46,7 @@ public sealed class CorpusTools
         return await _repository.GetRecentAsync(clamped, cancellationToken);
     }
 
-    [McpServerTool(Name = "search_items", ReadOnly = true), Description("Recherche des items par sous-chaîne dans le titre ou l'URL (recherche naïve, pas encore plein texte — voir Q2 de la roadmap).")]
+    [McpServerTool(Name = "search_items", ReadOnly = true), Description("Recherche plein texte française (titre + extrait) des items du corpus, classés par pertinence.")]
     public async Task<IReadOnlyList<LibraryItemSummary>> SearchItems(
         [Description("Terme recherché.")] string query,
         [Description("Nombre maximum de résultats (défaut 20, max 100).")] int limit,
@@ -55,10 +56,47 @@ public sealed class CorpusTools
         return await _repository.SearchAsync(query, clamped, cancellationToken);
     }
 
+    [McpServerTool(Name = "find_similar", ReadOnly = true), Description("Articles liés à un item du corpus (recherche plein texte sur son titre), du plus au moins pertinent.")]
+    public async Task<IReadOnlyList<LibraryItemSummary>> FindSimilar(
+        [Description("Identifiant Raindrop de l'item source.")] long id,
+        [Description("Nombre maximum de résultats (défaut 20, max 100).")] int limit,
+        CancellationToken cancellationToken)
+    {
+        var clamped = Math.Clamp(limit <= 0 ? DefaultSearchLimit : limit, 1, MaxSearchLimit);
+        return await _repository.FindSimilarAsync(id, clamped, cancellationToken);
+    }
+
     [McpServerTool(Name = "stats", ReadOnly = true), Description("Statistiques globales du corpus indexé (volumétrie, items importants/cassés, fraîcheur de l'index).")]
     public async Task<CorpusStats> Stats(CancellationToken cancellationToken)
     {
         return await _repository.GetStatsAsync(cancellationToken);
+    }
+
+    [McpServerTool(Name = "catalog_tools", ReadOnly = true), Description("Catalogue de la base d'outils (S7, lot 5) : produits/librairies rencontrés via des articles classés « à tester ».")]
+    public async Task<IReadOnlyList<ToolSummary>> CatalogTools(CancellationToken cancellationToken)
+    {
+        return await _repository.GetToolsAsync(cancellationToken);
+    }
+
+    [McpServerTool(Name = "tool_card", ReadOnly = true), Description("Fiche Markdown régénérée d'un outil du catalogue (S7, lot 5), avec ses articles liés — à écrire dans le vault Obsidian côté client.")]
+    public async Task<string> ToolCard(
+        [Description("Nom de l'outil (recherche insensible à la casse).")] string name,
+        CancellationToken cancellationToken)
+    {
+        var card = await _repository.GetToolByNameAsync(name, cancellationToken)
+            ?? throw new McpException($"Aucun outil « {name} » dans le catalogue.");
+        return MarkdownReportBuilder.BuildToolCard(card);
+    }
+
+    [McpServerTool(Name = "export_item", ReadOnly = true), Description("Export Markdown d'un item du corpus (S8, lot 5) — frontmatter + résumé, à écrire dans le vault Obsidian côté client.")]
+    public async Task<string> ExportItem(
+        [Description("Identifiant Raindrop de l'item.")] long id,
+        CancellationToken cancellationToken)
+    {
+        var item = await _repository.GetByIdAsync(id, cancellationToken)
+            ?? throw new McpException($"Aucun item {id} dans le corpus indexé.");
+        var summary = await _repository.GetArticleSummaryAsync(id, cancellationToken);
+        return MarkdownReportBuilder.BuildItemExport(item, summary);
     }
 
     [McpServerTool(Name = "list_tools", ReadOnly = true), Description("Liste les outils MCP prévus pour ce serveur (issue #44) et leur statut d'implémentation.")]
@@ -68,10 +106,13 @@ public sealed class CorpusTools
         [
             new McpToolStatus("get_item", "implémenté"),
             new McpToolStatus("list_recent", "implémenté"),
-            new McpToolStatus("search_items", "implémenté (recherche naïve — Q2, tsvector/GIN, à venir)"),
+            new McpToolStatus("search_items", "implémenté (plein texte — Q2, lot 5)"),
             new McpToolStatus("stats", "implémenté"),
             new McpToolStatus("list_tools", "implémenté"),
-            new McpToolStatus("find_similar", "non implémenté — dépend de la recherche plein texte (Q2) ou de pgvector (S5)"),
+            new McpToolStatus("find_similar", "implémenté (S5, lot 5)"),
+            new McpToolStatus("catalog_tools", "implémenté (S7, lot 5)"),
+            new McpToolStatus("tool_card", "implémenté (S7, lot 5)"),
+            new McpToolStatus("export_item", "implémenté (S8, lot 5)"),
             new McpToolStatus("reading_queue", "non implémenté — dépend du scoring du lot 6 (L1)"),
         ];
     }
