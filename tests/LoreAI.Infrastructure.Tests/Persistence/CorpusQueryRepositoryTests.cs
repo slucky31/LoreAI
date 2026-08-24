@@ -79,9 +79,9 @@ public class CorpusQueryRepositoryTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task SearchAsync_MatchesUrlWhenTitleDoesNotMatch()
+    public async Task SearchAsync_MatchesExcerptWhenTitleDoesNotMatch()
     {
-        await SeedAsync(CreateItem(1, "Un article", "https://example.com/raindrop-tips"));
+        await SeedAsync(CreateItem(1, "Un article", "https://example.com/a", excerpt: "Tout sur Raindrop et ses fonctionnalités."));
 
         var results = await _repository.SearchAsync("raindrop", 10, TestContext.Current.CancellationToken);
 
@@ -107,6 +107,43 @@ public class CorpusQueryRepositoryTests : IAsyncLifetime
             CreateItem(3, "dotnet 3", "https://example.com/3"));
 
         var results = await _repository.SearchAsync("dotnet", 2, TestContext.Current.CancellationToken);
+
+        Assert.Equal(2, results.Count);
+    }
+
+    [Fact]
+    public async Task FindSimilarAsync_ReturnsOtherItemsSharingTitleWords_ExcludingSelf()
+    {
+        await SeedAsync(
+            CreateItem(1, "Introduction à ASP.NET Core", "https://example.com/1"),
+            CreateItem(2, "Approfondir ASP.NET Core middleware", "https://example.com/2"),
+            CreateItem(3, "Recette de cuisine", "https://example.com/3"));
+
+        var results = await _repository.FindSimilarAsync(1, 10, TestContext.Current.CancellationToken);
+
+        Assert.Contains(results, i => i.Id == 2);
+        Assert.DoesNotContain(results, i => i.Id == 1);
+        Assert.DoesNotContain(results, i => i.Id == 3);
+    }
+
+    [Fact]
+    public async Task FindSimilarAsync_UnknownSourceId_ReturnsEmpty()
+    {
+        var results = await _repository.FindSimilarAsync(999, 10, TestContext.Current.CancellationToken);
+
+        Assert.Empty(results);
+    }
+
+    [Fact]
+    public async Task FindSimilarAsync_RespectsLimit()
+    {
+        await SeedAsync(
+            CreateItem(1, "ASP.NET Core", "https://example.com/1"),
+            CreateItem(2, "ASP.NET Core avancé", "https://example.com/2"),
+            CreateItem(3, "ASP.NET Core débutant", "https://example.com/3"),
+            CreateItem(4, "ASP.NET Core expert", "https://example.com/4"));
+
+        var results = await _repository.FindSimilarAsync(1, 2, TestContext.Current.CancellationToken);
 
         Assert.Equal(2, results.Count);
     }
@@ -164,6 +201,7 @@ public class CorpusQueryRepositoryTests : IAsyncLifetime
         string title,
         string url,
         string[]? tags = null,
+        string? excerpt = null,
         DateTimeOffset? capturedAtUtc = null,
         DateTimeOffset? indexedAtUtc = null,
         bool important = false,
@@ -173,6 +211,7 @@ public class CorpusQueryRepositoryTests : IAsyncLifetime
             SourceType = "Raindrop",
             Title = title,
             Url = url,
+            Excerpt = excerpt,
             Tags = tags ?? [],
             CapturedAtUtc = capturedAtUtc ?? DateTimeOffset.UtcNow,
             Origin = "Library",

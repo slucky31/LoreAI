@@ -45,7 +45,7 @@ public sealed class CorpusTools
         return await _repository.GetRecentAsync(clamped, cancellationToken);
     }
 
-    [McpServerTool(Name = "search_items", ReadOnly = true), Description("Recherche des items par sous-chaîne dans le titre ou l'URL (recherche naïve, pas encore plein texte — voir Q2 de la roadmap).")]
+    [McpServerTool(Name = "search_items", ReadOnly = true), Description("Recherche plein texte française (titre + extrait) des items du corpus, classés par pertinence.")]
     public async Task<IReadOnlyList<LibraryItemSummary>> SearchItems(
         [Description("Terme recherché.")] string query,
         [Description("Nombre maximum de résultats (défaut 20, max 100).")] int limit,
@@ -53,6 +53,16 @@ public sealed class CorpusTools
     {
         var clamped = Math.Clamp(limit <= 0 ? DefaultSearchLimit : limit, 1, MaxSearchLimit);
         return await _repository.SearchAsync(query, clamped, cancellationToken);
+    }
+
+    [McpServerTool(Name = "find_similar", ReadOnly = true), Description("Articles liés à un item du corpus (recherche plein texte sur son titre), du plus au moins pertinent.")]
+    public async Task<IReadOnlyList<LibraryItemSummary>> FindSimilar(
+        [Description("Identifiant Raindrop de l'item source.")] long id,
+        [Description("Nombre maximum de résultats (défaut 20, max 100).")] int limit,
+        CancellationToken cancellationToken)
+    {
+        var clamped = Math.Clamp(limit <= 0 ? DefaultSearchLimit : limit, 1, MaxSearchLimit);
+        return await _repository.FindSimilarAsync(id, clamped, cancellationToken);
     }
 
     [McpServerTool(Name = "stats", ReadOnly = true), Description("Statistiques globales du corpus indexé (volumétrie, items importants/cassés, fraîcheur de l'index).")]
@@ -68,10 +78,10 @@ public sealed class CorpusTools
         [
             new McpToolStatus("get_item", "implémenté"),
             new McpToolStatus("list_recent", "implémenté"),
-            new McpToolStatus("search_items", "implémenté (recherche naïve — Q2, tsvector/GIN, à venir)"),
+            new McpToolStatus("search_items", "implémenté (plein texte — Q2, lot 5)"),
             new McpToolStatus("stats", "implémenté"),
             new McpToolStatus("list_tools", "implémenté"),
-            new McpToolStatus("find_similar", "non implémenté — dépend de la recherche plein texte (Q2) ou de pgvector (S5)"),
+            new McpToolStatus("find_similar", "implémenté (S5, lot 5)"),
             new McpToolStatus("reading_queue", "non implémenté — dépend du scoring du lot 6 (L1)"),
         ];
     }

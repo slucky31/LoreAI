@@ -62,6 +62,19 @@ public class CorpusToolsTests
         await _repository.Received(1).SearchAsync("dotnet", expected, Arg.Any<CancellationToken>());
     }
 
+    [Theory]
+    [InlineData(0, 20)]
+    [InlineData(-1, 20)]
+    [InlineData(500, 100)]
+    public async Task FindSimilar_ClampsLimitToValidRange(int requested, int expected)
+    {
+        _repository.FindSimilarAsync(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<CancellationToken>()).Returns([]);
+
+        await _tools.FindSimilar(1, requested, TestContext.Current.CancellationToken);
+
+        await _repository.Received(1).FindSimilarAsync(1, expected, Arg.Any<CancellationToken>());
+    }
+
     [Fact]
     public async Task Stats_ReturnsRepositoryResult()
     {
@@ -85,12 +98,19 @@ public class CorpusToolsTests
     }
 
     [Fact]
-    public void ListTools_FindSimilarAndReadingQueue_AreMarkedNotImplemented()
+    public void ListTools_ReadingQueue_IsMarkedNotImplemented()
     {
         var tools = _tools.ListTools();
 
-        Assert.Contains(tools, t => t.Name == "find_similar" && t.Status.StartsWith("non implémenté", StringComparison.Ordinal));
         Assert.Contains(tools, t => t.Name == "reading_queue" && t.Status.StartsWith("non implémenté", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void ListTools_FindSimilar_IsMarkedImplemented()
+    {
+        var tools = _tools.ListTools();
+
+        Assert.Contains(tools, t => t.Name == "find_similar" && t.Status.StartsWith("implémenté", StringComparison.Ordinal));
     }
 
     private static LibraryItemSummary CreateSummary(long id) =>

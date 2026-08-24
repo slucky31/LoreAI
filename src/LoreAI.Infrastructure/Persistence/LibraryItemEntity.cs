@@ -1,3 +1,5 @@
+using NpgsqlTypes;
+
 namespace LoreAI.Infrastructure.Persistence;
 
 /// <summary>
@@ -25,4 +27,11 @@ public sealed class LibraryItemEntity
     public string? HighlightsJson { get; set; }
 
     public DateTimeOffset IndexedAtUtc { get; set; }
+
+    /// <summary>
+    /// Colonne générée par Postgres (dictionnaire <c>french</c>, titre + extrait) — Q2, lot 5. Jamais
+    /// affectée en code : <c>HasGeneratedTsVectorColumn</c> dans <see cref="LoreAiDbContext"/> délègue
+    /// entièrement le calcul à la base.
+    /// </summary>
+    public NpgsqlTsVector SearchVector { get; set; } = null!;
 }
