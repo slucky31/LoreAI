@@ -147,6 +147,7 @@ Ce que ça coûte, et qu'il faut regarder en face :
 | O2 | **Healthcheck Docker pour Portainer** ([#35](https://github.com/slucky31/LoreAI/issues/35)) | 2 | 2 | Reste ouvert depuis [F-10 de l'audit](audit/2026-08-01-audit-code.md) faute de « vrai signal de vivacité ». Ce signal, c'est le journal de cycle ci-dessous |
 | O3 | **Cache de prompt Anthropic** ([#34](https://github.com/slucky31/LoreAI/issues/34)) | 1 | 2 | **Sans effet au régime actuel** — voir l'arbitrage dédié. C'est une optimisation de *backfill*, pas de croisière. À mesurer (30 min) avant de planifier |
 | O4 | **Logs en heure de Paris plutôt qu'UTC** ([#71](https://github.com/slucky31/LoreAI/issues/71)) | 1 | 1 | `TZ=Europe/Paris` sur les deux conteneurs — mais les images finales sont chiselées et tournent en `GLOBALIZATION_INVARIANT`, sans `tzdata` : à résoudre en copiant `/usr/share/zoneinfo` depuis l'étage `build` (qui a `apt`), comme `/data-skeleton`. Seul l'horodatage Serilog change, jamais les valeurs UTC de domaine (Postgres, noms de fichiers de rapport). **Planifié pour le lot 6**, embarqué dans la même PR plutôt qu'en PR dédiée |
+| O5 | **Déclenchement manuel de `WeeklyInsightsJob`/`MonthlyReviewJob`** ([#75](https://github.com/slucky31/LoreAI/issues/75)) | 2 | 1 | Deux jobs à cadence lente (hebdo/mensuelle) sans aucun moyen de forcer un passage — vérifier en prod a coûté plusieurs jours d'attente au lot 5. Mode CLI `--run-weekly-insights`/`--run-monthly-review`, même patron que `--health-check` (`HealthCheckMode.cs`) : pas de nouvel état à persister, contrairement à un flag « on startup » qui rejouerait le rapport à chaque redémarrage. **Planifié pour le lot 6** |
 
 ## Le worker n'a aucune mémoire de son dernier cycle
 
@@ -342,6 +343,7 @@ networks:
 - **L5** collection pilote « À lire cette semaine », **seulement après validation explicite** de l'écriture hors « Non trié ».
 - **O4** logs en heure de Paris ([#71](https://github.com/slucky31/LoreAI/issues/71)) — sans rapport avec le reste du lot, embarqué ici parce que ce lot touche de toute façon `Program.cs`/`Dockerfile`.
 - **S9** lien projet dans la base d'outils ([#73](https://github.com/slucky31/LoreAI/issues/73)) — sans rapport avec le reste du lot ni dépendance technique avec lui ; simplement le prochain lot ouvert, plus économique qu'une PR dédiée pour un seul champ.
+- **O5** déclenchement manuel de `WeeklyInsightsJob`/`MonthlyReviewJob` ([#75](https://github.com/slucky31/LoreAI/issues/75)) — mode CLI `--run-weekly-insights`/`--run-monthly-review`, même patron que `--health-check`. Sans rapport avec le reste du lot, embarqué ici pour la même raison qu'O4/S9.
 
 ### Phase 2 — Élargir les sources
 
