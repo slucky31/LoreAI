@@ -152,3 +152,59 @@ Conforme à l'ADR 0009 (panne transitoire, non fatale) : vérifiez que le résea
 
 **Aucune notification Discord reçue**
 Vérifier `Discord__WebhookUrl` dans `.env`, puis `sudo docker compose logs -f` pour l'erreur d'envoi exacte.
+
+## 11. Lot 3 : activer le serveur MCP (#44, ADR 0014)
+
+La CD publie `ghcr.io/slucky31/loreai-mcp` au même rythme et avec la même version que `loreai-worker` (job `docker` de `cd.yml`, deux images construites et taguées ensemble depuis le lot 3) — rien à construire à la main, seulement à renseigner `.env` et démarrer.
+
+**Rien à reprovisionner côté base** : le rôle `loreai_ro` existe déjà depuis l'étape 3 (`GRANT SELECT` via `ALTER DEFAULT PRIVILEGES`, donc à jour sans regrant même après de nouvelles migrations).
+
+1. **Récupérer l'adresse Tailscale du Pi**, depuis `mcm8` lui-même :
+
+   ```bash
+   tailscale ip -4
+   ```
+
+   Cette IP (jamais `0.0.0.0` ni une IP du LAN — D2/[ADR 0010](adr/0010-topologie-reseau-tailscale.md)) va dans `MCP_TAILSCALE_BIND_IP`.
+
+2. **Générer le jeton bearer** — défense en profondeur derrière le tailnet, pas une seconde ligne de défense optionnelle :
+
+   ```bash
+   openssl rand -hex 32
+   ```
+
+   Ce jeton va dans `MCP_BEARER_TOKEN`, et devra être reporté dans le `.mcp.json` du poste de développement (étape 4 ci-dessous) — ne le perdez pas.
+
+3. **Compléter `.env`** (les trois clés ajoutées par le lot 3, déjà présentes dans `.env.example`) :
+
+   ```bash
+   nano .env
+   ```
+
+   - `MCP_POSTGRES_CONNECTION_STRING` : même hôte/port/base que `Postgres__ConnectionString`, mais `Username=loreai_ro` et son propre mot de passe (celui choisi à l'étape 3, pas celui du rôle `loreai`).
+   - `MCP_BEARER_TOKEN` : le jeton généré ci-dessus.
+   - `MCP_TAILSCALE_BIND_IP` : l'IP obtenue ci-dessus.
+
+4. **Configurer le client MCP** (Claude Code, sur le poste de développement — hors LAN, cf. ADR 0010) : créer ou compléter `.mcp.json` à la racine du projet côté poste de dev, **jamais committé avec le jeton en clair** :
+
+   ```jsonc
+   {
+     "mcpServers": {
+       "loreai": {
+         "type": "http",
+         "url": "http://<ip-tailscale-de-mcm8>:5099/mcp",
+         "headers": { "Authorization": "Bearer <MCP_BEARER_TOKEN>" }
+       }
+     }
+   }
+   ```
+
+5. **Démarrer**, une fois l'image publiée :
+
+   ```bash
+   sudo docker compose pull
+   sudo docker compose up -d loreai-mcp
+   sudo docker compose logs -f loreai-mcp
+   ```
+
+   `Now listening on: http://[::]:8080` confirme le démarrage ; une requête `initialize` sans jeton doit répondre `401`, avec le bon jeton `200` (voir `tests/LoreAI.Mcp.Tests` pour le comportement attendu du middleware).

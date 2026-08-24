@@ -441,13 +441,15 @@ Il y a deux besoins distincts derrière « migrer Feedly vers Miniflux » :
 
 Les deux ne s'excluent pas, et le bon ordre est : **lot 7 d'abord** (le pipeline fonctionne), Miniflux ensuite *si* tu veux l'interface de lecture. Dans ce cas, on lui prend ses flux via son API REST plutôt que de maintenir deux listes d'abonnements.
 
-### Un outil existe-t-il déjà ? — **spike à faire avant le lot 3**
+### Un outil existe-t-il déjà ? — **spike fait, 2026-08-23 : le lot 3 reste nécessaire**
 
-[OpenClaw](https://github.com/openclaw/openclaw) recouvre réellement une partie du périmètre : runtime d'agent auto-hébergé, connecteurs Discord, mémoire longue, skills auto-écrites, et surtout support multi-fournisseurs (Anthropic, OpenAI, Gemini, OpenRouter…). Il ne classe pas des raindrops et ne connaît pas ta taxonomie, mais il pourrait absorber l'axe « veille automatique » (lot 9) et une partie du rôle du MCP.
+[OpenClaw](https://github.com/openclaw/openclaw) recouvre réellement une partie du périmètre : runtime d'agent auto-hébergé, connecteurs Discord, mémoire longue, skills auto-écrites, et surtout support multi-fournisseurs (Anthropic, OpenAI, Gemini, OpenRouter…). Il ne classe pas des raindrops et ne connaît pas ta taxonomie.
 
-Ce qu'il ne remplace pas : le pipeline de classification, le write-back Raindrop avec ses invariants, et le corpus persistant qui fait toute la valeur des axes Synthétiser et Nettoyer.
+**Fait décisif trouvé au spike : OpenClaw est un *client* MCP, pas un serveur.** Son support MCP ([issue openclaw/openclaw#29053](https://github.com/openclaw/openclaw/issues/29053), doc `openclaw.json`) sert à se connecter à des serveurs MCP existants (Postgres générique, GitHub, Filesystem…) — exactement le rôle que joue déjà Claude Code face au MCP du lot 3. Il ne peut pas *devenir* le serveur qui expose le corpus LoreAI : quelqu'un doit toujours écrire ce serveur, qu'il soit consommé par Claude Code ou par OpenClaw ensuite. Un serveur Postgres MCP générique existe bien (community), mais il exposerait du SQL arbitraire sur `loreai_ro` plutôt que les outils métier prévus (`find_similar`, `reading_queue`, matching de taxonomie) — pas un gain, une régression de surface.
 
-Recommandation : **un spike d'une demi-journée avant d'attaquer le lot 3**, pas après. Le lot 3 est le premier qui construit une surface qu'OpenClaw pourrait fournir. Les lots 0 à 2 sont utiles quoi qu'il arrive.
+Ce qu'il ne remplace pas : le pipeline de classification, le write-back Raindrop avec ses invariants, le corpus persistant, **et maintenant confirmé : le serveur MCP lui-même**.
+
+**Décision : le lot 3 s'écrit comme prévu.** Piste ouverte pour plus tard (pas un prérequis) : une fois le MCP du lot 3 en place, OpenClaw pourrait s'y connecter comme *client* pour absorber l'axe « veille automatique » (lot 9) — mais ça reste postérieur au lot 3, pas un substitut.
 
 ## Risques et points de vigilance
 

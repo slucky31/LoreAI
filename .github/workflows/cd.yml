@@ -141,6 +141,28 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      # Lot 3 (#44, ADR 0014) : même version que loreai-worker (Directory.Build.props est la seule
+      # source de vérité, ADR 0008) - les deux images sortent toujours ensemble, jamais désynchronisées.
+      - name: Metadata loreai-mcp
+        id: meta-mcp
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/loreai-mcp
+          tags: |
+            type=raw,value=latest
+            type=semver,pattern={{version}},value=v${{ needs.release.outputs.version }}
+
+      - name: Push loreai-mcp
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: .
+          file: src/LoreAI.Mcp/Dockerfile
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: ${{ steps.meta-mcp.outputs.tags }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
   github-release:
     name: GitHub Release
     needs: [release, docker]
