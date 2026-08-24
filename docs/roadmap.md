@@ -118,6 +118,7 @@ Ce que ça coûte, et qu'il faut regarder en face :
 | S6 | **Coût et consommation LLM** | 2 | 1 | Exploitable **rétroactivement** : `ClassificationRawResponse` stocke la réponse Anthropic entière, bloc `usage` compris → une requête sur la colonne `jsonb` suffit. Valeur relevée à 2 : c'est le garde-fou du budget de 10 €/mois |
 | S7 | **Base d'outils** — table dédiée + projection Markdown vers Obsidian | 3 | 2 | Voir « Le pont Obsidian » ci-dessous. La source de vérité reste LoreAI ; Obsidian n'est qu'une projection |
 | S8 | **Export Markdown du corpus** — un `.md` par article, frontmatter + résumé | 2 | 1 | Même mécanique que S7. Alimente un vrai second cerveau |
+| S9 | **Lien projet dans la base d'outils** ([#73](https://github.com/slucky31/LoreAI/issues/73)) — dépôt GitHub ou site éditeur | 2 | 1 | Champ `toolUrl` sur le tool `classify`, même patron que `toolName`/`toolCategory` (S7). Vérifié : le premier commentaire d'un post LinkedIn (souvent le lien réel) est servi côté serveur dans `<article>`, déjà capturé par `ArticleTextExtractor` — aucun changement de fetch requis |
 
 ### Axe « Lire »
 
@@ -340,6 +341,7 @@ networks:
 - **L1** file de lecture, enfin scorée sur des données complètes (priorité × fraîcheur × temps de lecture × non-traité). C'est ici que le filet perdu au lot 2 est remplacé par quelque chose de mieux.
 - **L5** collection pilote « À lire cette semaine », **seulement après validation explicite** de l'écriture hors « Non trié ».
 - **O4** logs en heure de Paris ([#71](https://github.com/slucky31/LoreAI/issues/71)) — sans rapport avec le reste du lot, embarqué ici parce que ce lot touche de toute façon `Program.cs`/`Dockerfile`.
+- **S9** lien projet dans la base d'outils ([#73](https://github.com/slucky31/LoreAI/issues/73)) — sans rapport avec le reste du lot ni dépendance technique avec lui ; simplement le prochain lot ouvert, plus économique qu'une PR dédiée pour un seul champ.
 
 ### Phase 2 — Élargir les sources
 
