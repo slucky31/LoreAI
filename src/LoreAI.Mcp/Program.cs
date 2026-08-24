@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Reflection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using LoreAI.Core.Interfaces;
@@ -54,6 +55,12 @@ try
         .WithTools<CorpusTools>();
 
     var app = builder.Build();
+
+    // #65 : même besoin que LoreAI.Worker — savoir quelle version tourne réellement sur mcm8 sans avoir
+    // à interroger Docker.
+    var version = Assembly.GetExecutingAssembly()
+        .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
+    Log.Information("LoreAI.Mcp {Version} démarré, environnement {Environment}.", version, builder.Environment.EnvironmentName);
 
     // Défense en profondeur derrière le réseau Tailscale (ADR 0010/0014) : toute requête MCP sans le bon
     // jeton est rejetée avant d'atteindre le protocole.

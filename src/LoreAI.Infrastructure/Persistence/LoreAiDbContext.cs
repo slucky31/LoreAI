@@ -19,6 +19,7 @@ public sealed class LoreAiDbContext(DbContextOptions<LoreAiDbContext> options) :
             article.Property(a => a.ClassificationRawResponse).HasColumnType("jsonb");
             article.Property(a => a.RecommendedAction).HasConversion<string>();
             article.Property(a => a.Priority).HasConversion<string>();
+            article.Property(a => a.ContentStatus).HasConversion<string>();
             article.HasIndex(a => a.CapturedAtUtc);
         });
 

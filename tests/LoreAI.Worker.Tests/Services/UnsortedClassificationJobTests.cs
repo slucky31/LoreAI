@@ -108,7 +108,7 @@ public class UnsortedClassificationJobTests
         await fixture.RaindropClient.DidNotReceive().UpdateRaindropAsync(
             Arg.Any<long>(), Arg.Any<IReadOnlyCollection<string>>(), Arg.Any<string>(), Arg.Any<long?>(), Arg.Any<CancellationToken>());
         await fixture.ArticleRepository.Received(1).UpsertAsync(
-            Arg.Any<Item>(), Arg.Any<ClassificationResult>(), Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>());
+            Arg.Any<Item>(), Arg.Any<ClassificationResult>(), Arg.Any<ContentFetchResult>(), Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>());
     }
 
     /// <summary>Le bloc de note est reconstruit à partir de la note existante — cf. F-04.</summary>
@@ -155,7 +155,7 @@ public class UnsortedClassificationJobTests
         await fixture.Build().Invoke();
 
         await fixture.ArticleRepository.Received(1).UpsertAsync(
-            Arg.Any<Item>(), Arg.Is<ClassificationResult>(c => c!.IsFallback), Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>());
+            Arg.Any<Item>(), Arg.Is<ClassificationResult>(c => c!.IsFallback), Arg.Any<ContentFetchResult>(), Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -214,7 +214,7 @@ public class UnsortedClassificationJobTests
             .WithClassification(CreateClassification(".NET", ["dotnet"]));
 
         fixture.ArticleRepository
-            .UpsertAsync(Arg.Is<Item>(i => i!.SourceId == "3"), Arg.Any<ClassificationResult>(), Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>())
+            .UpsertAsync(Arg.Is<Item>(i => i!.SourceId == "3"), Arg.Any<ClassificationResult>(), Arg.Any<ContentFetchResult>(), Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>())
             .ThrowsAsync(new InvalidOperationException("database is locked"));
 
         await fixture.Build().Invoke();
@@ -233,7 +233,7 @@ public class UnsortedClassificationJobTests
             .WithClassification(CreateClassification(".NET", ["dotnet"]));
 
         fixture.ArticleRepository
-            .UpsertAsync(Arg.Any<Item>(), Arg.Any<ClassificationResult>(), Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>())
+            .UpsertAsync(Arg.Any<Item>(), Arg.Any<ClassificationResult>(), Arg.Any<ContentFetchResult>(), Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>())
             .ThrowsAsync(new InvalidOperationException("database is locked"));
 
         await fixture.Build().Invoke();
@@ -289,7 +289,7 @@ public class UnsortedClassificationJobTests
         await fixture.RaindropClient.DidNotReceive().GetTaxonomyAsync(Arg.Any<CancellationToken>());
         await fixture.PollingStateRepository.DidNotReceive().UpdateAsync(Arg.Any<PollingState>(), Arg.Any<CancellationToken>());
         await fixture.Classifier.DidNotReceive().ClassifyAsync(
-            Arg.Any<Item>(), Arg.Any<RaindropTaxonomy>(), Arg.Any<CancellationToken>());
+            Arg.Any<Item>(), Arg.Any<RaindropTaxonomy>(), Arg.Any<string?>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -317,7 +317,7 @@ public class UnsortedClassificationJobTests
             .WithClassification(CreateClassification(".NET", ["dotnet"]));
 
         fixture.Classifier
-            .ClassifyAsync(Arg.Is<Item>(i => i!.SourceId == "2"), Arg.Any<RaindropTaxonomy>(), Arg.Any<CancellationToken>())
+            .ClassifyAsync(Arg.Is<Item>(i => i!.SourceId == "2"), Arg.Any<RaindropTaxonomy>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
             .Returns<ClassificationResult>(_ =>
             {
                 cts.Cancel();
@@ -397,7 +397,7 @@ public class UnsortedClassificationJobTests
             .WithNewItems(CreateItem(1), CreateItem(2))
             .WithClassification(CreateClassification(".NET", ["dotnet"]));
         fixture.ArticleRepository
-            .UpsertAsync(Arg.Is<Item>(i => i!.SourceId == "1"), Arg.Any<ClassificationResult>(), Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>())
+            .UpsertAsync(Arg.Is<Item>(i => i!.SourceId == "1"), Arg.Any<ClassificationResult>(), Arg.Any<ContentFetchResult>(), Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>())
             .ThrowsAsync(new InvalidOperationException("database is locked"));
 
         await fixture.Build().Invoke();
@@ -435,7 +435,7 @@ public class UnsortedClassificationJobTests
             .WithClassification(CreateClassification(".NET", ["dotnet"]));
 
         fixture.Classifier
-            .ClassifyAsync(Arg.Is<Item>(i => i!.SourceId == "2"), Arg.Any<RaindropTaxonomy>(), Arg.Any<CancellationToken>())
+            .ClassifyAsync(Arg.Is<Item>(i => i!.SourceId == "2"), Arg.Any<RaindropTaxonomy>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
             .Returns<ClassificationResult>(_ =>
             {
                 cts.Cancel();
@@ -538,6 +538,57 @@ public class UnsortedClassificationJobTests
         Assert.Null(exception);
     }
 
+    // --- S1 : fetch de contenu (lot 4) ---------------------------------------------------------
+
+    [Fact]
+    public async Task Invoke_ContentFetched_PassesContentToClassifierAndPersistsIt()
+    {
+        var content = new ContentFetchResult(ContentFetchStatus.Success, "Contenu réel de l'article", 42);
+        var fixture = new JobFixture()
+            .WithNewItems(CreateItem(1))
+            .WithContentFetchResult(content)
+            .WithClassification(CreateClassification(".NET", ["dotnet"]));
+
+        await fixture.Build().Invoke();
+
+        await fixture.Classifier.Received(1).ClassifyAsync(
+            Arg.Any<Item>(), Arg.Any<RaindropTaxonomy>(), "Contenu réel de l'article", Arg.Any<CancellationToken>());
+        await fixture.ArticleRepository.Received(1).UpsertAsync(
+            Arg.Any<Item>(), Arg.Any<ClassificationResult>(), content, Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Invoke_FetchArticleContentDisabled_NeverCallsContentFetcher()
+    {
+        var fixture = new JobFixture()
+            .WithFetchArticleContent(false)
+            .WithNewItems(CreateItem(1))
+            .WithClassification(CreateClassification(".NET", ["dotnet"]));
+
+        await fixture.Build().Invoke();
+
+        await fixture.ContentFetcher.DidNotReceive().FetchAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
+        await fixture.Classifier.Received(1).ClassifyAsync(
+            Arg.Any<Item>(), Arg.Any<RaindropTaxonomy>(), null, Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>Best-effort strict (S1) : un échec de fetch de contenu ne doit jamais bloquer la classification.</summary>
+    [Fact]
+    public async Task Invoke_ContentFetchFails_ClassificationAndWriteBackStillProceed()
+    {
+        var fixture = new JobFixture()
+            .WithNewItems(CreateItem(1))
+            .WithContentFetchResult(new ContentFetchResult(ContentFetchStatus.HttpError, null, null))
+            .WithClassification(CreateClassification(".NET", ["dotnet"]));
+
+        await fixture.Build().Invoke();
+
+        await fixture.RaindropClient.Received(1).UpdateRaindropAsync(
+            1, Arg.Any<IReadOnlyCollection<string>>(), Arg.Any<string>(), DotNetCollection.Id, Arg.Any<CancellationToken>());
+        await fixture.CycleRunRepository.Received(1).RecordAsync(
+            Arg.Is<CycleRun>(r => r!.Outcome == CycleOutcome.Ok), Arg.Any<CancellationToken>());
+    }
+
     // --- Fixture ------------------------------------------------------------------------------
 
     private static Item CreateItem(long id, IReadOnlyList<string>? tags = null) => new(
@@ -554,7 +605,7 @@ public class UnsortedClassificationJobTests
         string? suggestedCollection,
         IReadOnlyList<string> tags,
         string reason = "raison") =>
-        new(suggestedCollection, tags, RecommendedAction.ATester, Priority.Haute, reason, "model", "{}");
+        new(suggestedCollection, tags, RecommendedAction.ATester, Priority.Haute, reason, "résumé", "model", "{}");
 
     private sealed class JobFixture
     {
@@ -564,10 +615,12 @@ public class UnsortedClassificationJobTests
         public ICycleRunRepository CycleRunRepository { get; } = Substitute.For<ICycleRunRepository>();
         public ICycleReportNotifier CycleReportNotifier { get; } = Substitute.For<ICycleReportNotifier>();
         public IClassifier Classifier { get; } = Substitute.For<IClassifier>();
+        public IContentFetcher ContentFetcher { get; } = Substitute.For<IContentFetcher>();
         public IImmediateNotifier ImmediateNotifier { get; } = Substitute.For<IImmediateNotifier>();
         public INotificationPolicy NotificationPolicy { get; } = Substitute.For<INotificationPolicy>();
 
         private bool _writeBack = true;
+        private bool _fetchArticleContent = true;
 
         public JobFixture()
         {
@@ -576,6 +629,8 @@ public class UnsortedClassificationJobTests
                 .Returns(Array.Empty<Item>());
             RaindropClient.GetTaxonomyAsync(Arg.Any<CancellationToken>()).Returns(Taxonomy);
             NotificationPolicy.ShouldNotifyImmediately(Arg.Any<ClassificationResult>()).Returns(false);
+            ContentFetcher.FetchAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+                .Returns(ContentFetchResult.Skipped);
         }
 
         public JobFixture WithTaxonomy(RaindropTaxonomy taxonomy)
@@ -590,6 +645,18 @@ public class UnsortedClassificationJobTests
             return this;
         }
 
+        public JobFixture WithFetchArticleContent(bool enabled)
+        {
+            _fetchArticleContent = enabled;
+            return this;
+        }
+
+        public JobFixture WithContentFetchResult(ContentFetchResult result)
+        {
+            ContentFetcher.FetchAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(result);
+            return this;
+        }
+
         public JobFixture WithNewItems(params Item[] items)
         {
             RaindropClient.GetNewItemsAsync(Arg.Any<PollingState>(), Arg.Any<CancellationToken>()).Returns(items);
@@ -598,14 +665,14 @@ public class UnsortedClassificationJobTests
 
         public JobFixture WithClassification(ClassificationResult result)
         {
-            Classifier.ClassifyAsync(Arg.Any<Item>(), Arg.Any<RaindropTaxonomy>(), Arg.Any<CancellationToken>())
+            Classifier.ClassifyAsync(Arg.Any<Item>(), Arg.Any<RaindropTaxonomy>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
                 .Returns(result);
             return this;
         }
 
         public JobFixture WithClassificationSequence(params ClassificationResult[] results)
         {
-            Classifier.ClassifyAsync(Arg.Any<Item>(), Arg.Any<RaindropTaxonomy>(), Arg.Any<CancellationToken>())
+            Classifier.ClassifyAsync(Arg.Any<Item>(), Arg.Any<RaindropTaxonomy>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
                 .Returns(results[0], results[1..]);
             return this;
         }
@@ -617,9 +684,10 @@ public class UnsortedClassificationJobTests
             CycleRunRepository,
             CycleReportNotifier,
             Classifier,
+            ContentFetcher,
             ImmediateNotifier,
             NotificationPolicy,
-            MsOptions.Create(new WorkerOptions { WriteBackToRaindrop = _writeBack }),
+            MsOptions.Create(new WorkerOptions { WriteBackToRaindrop = _writeBack, FetchArticleContent = _fetchArticleContent }),
             NullLogger<UnsortedClassificationJob>.Instance);
     }
 }

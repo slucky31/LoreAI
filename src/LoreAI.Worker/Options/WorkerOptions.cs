@@ -37,4 +37,11 @@ public sealed class WorkerOptions
     /// </summary>
     [Required(AllowEmptyStrings = false)]
     public string WeeklyInsightsCronExpression { get; init; } = "0 4 * * 0";
+
+    /// <summary>
+    /// Actif par défaut : récupère le contenu réel de chaque nouvel article avant classification (S1, lot 4).
+    /// Best-effort — un échec ne bloque jamais le cycle. Interrupteur de secours à passer à false si un
+    /// domaine pose problème en production, même logique que <see cref="WriteBackToRaindrop"/>.
+    /// </summary>
+    public bool FetchArticleContent { get; init; } = true;
 }

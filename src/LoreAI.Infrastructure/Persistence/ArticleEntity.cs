@@ -33,4 +33,12 @@ public sealed class ArticleEntity
     public string? WriteBackStatus { get; set; }
     public DateTimeOffset? WriteBackAtUtc { get; set; }
     public DateTimeOffset? DiscordNotifiedAtUtc { get; set; }
+
+    // Contenu réel (S1, lot 4) : toujours nullable, alimenté au mieux (best-effort) — un article
+    // pré-lot-4 ou dont le fetch a échoué n'a simplement jamais ces champs renseignés.
+    public string? ContentText { get; set; }
+    public DateTimeOffset? ContentFetchedAtUtc { get; set; }
+    public ContentFetchStatus? ContentStatus { get; set; }
+    public int? WordCount { get; set; }
+    public string? Summary { get; set; }
 }

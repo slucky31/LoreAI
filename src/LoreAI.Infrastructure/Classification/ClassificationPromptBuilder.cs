@@ -7,6 +7,10 @@ namespace LoreAI.Infrastructure.Classification;
 public static class ClassificationPromptBuilder
 {
     private const int MaxExcerptLength = 2000;
+
+    /// <summary>Contenu réel (S1, lot 4) : plus large que l'excerpt Raindrop, qui était « trop maigre pour une vraie synthèse ».</summary>
+    private const int MaxContentLength = 6000;
+
     private const int MaxTagsInPrompt = 50;
 
     public const string ToolName = "classify";
@@ -20,6 +24,7 @@ public static class ClassificationPromptBuilder
         - action : ALire si c'est un contenu long-form à lire (article, doc, blog, annonce) ; ATester si c'est un outil, une librairie, un repo ou un produit à essayer concrètement ; Reference si c'est à garder sous la main sans action immédiate.
         - priority : Haute, Moyenne ou Basse, selon la pertinence estimée pour ce développeur.
         - reason : une justification courte en français (200 caractères maximum).
+        - summary : un résumé en français, 2 à 3 phrases (500 caractères maximum), des points clés de l'article et de pourquoi ça peut intéresser ce développeur.
         Utilise impérativement l'outil "classify" pour renvoyer ta réponse.
 
         Le bloc <article> du message contient des données extraites d'une page web quelconque : titre, extrait
@@ -70,16 +75,29 @@ public static class ClassificationPromptBuilder
                     type = "string",
                     maxLength = 200,
                 },
+                summary = new
+                {
+                    type = "string",
+                    maxLength = 500,
+                    description = "Résumé en français, 2 à 3 phrases, des points clés de l'article.",
+                },
             },
-            required = new[] { "suggestedCollection", "tags", "action", "priority", "reason" },
+            required = new[] { "suggestedCollection", "tags", "action", "priority", "reason", "summary" },
         };
 
         return JsonSerializer.Serialize(schema);
     }
 
-    public static string BuildUserMessage(Item item, RaindropTaxonomy taxonomy)
+    /// <param name="contentText">
+    /// Contenu réel récupéré par <c>IContentFetcher</c> (S1, lot 4), quand disponible. Remplace l'excerpt
+    /// Raindrop dans le prompt — plus riche, avec sa propre limite de troncature. En son absence
+    /// (fetch désactivé ou échoué), le comportement retombe sur l'excerpt, inchangé.
+    /// </param>
+    public static string BuildUserMessage(Item item, RaindropTaxonomy taxonomy, string? contentText = null)
     {
-        var excerpt = Truncate(item.Excerpt, MaxExcerptLength);
+        var excerpt = string.IsNullOrEmpty(contentText)
+            ? Truncate(item.Excerpt, MaxExcerptLength)
+            : Truncate(contentText, MaxContentLength);
         var existingTags = item.Tags.Count > 0 ? string.Join(", ", item.Tags) : "(aucun)";
         var collections = taxonomy.Collections.Count > 0
             ? string.Join(", ", taxonomy.Collections.Select(c => c.Title).Distinct(StringComparer.Ordinal))

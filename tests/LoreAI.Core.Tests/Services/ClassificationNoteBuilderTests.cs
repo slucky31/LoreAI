@@ -89,5 +89,5 @@ public class ClassificationNoteBuilderTests
     }
 
     private static ClassificationResult CreateClassification(string reason) =>
-        new(null, [], RecommendedAction.ATester, Priority.Haute, reason, "model", "raw");
+        new(null, [], RecommendedAction.ATester, Priority.Haute, reason, "résumé", "model", "raw");
 }

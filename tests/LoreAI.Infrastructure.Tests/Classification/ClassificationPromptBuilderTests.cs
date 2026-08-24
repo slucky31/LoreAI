@@ -86,4 +86,47 @@ public class ClassificationPromptBuilderTests
         Assert.Contains("ATester", schema);
         Assert.Contains("Haute", schema);
     }
+
+    [Fact]
+    public void BuildToolInputSchemaJson_IncludesRequiredSummaryField()
+    {
+        var schema = ClassificationPromptBuilder.BuildToolInputSchemaJson(SampleTaxonomy);
+
+        Assert.Contains("\"summary\"", schema);
+        Assert.Contains("\"required\":[\"suggestedCollection\",\"tags\",\"action\",\"priority\",\"reason\",\"summary\"]", schema);
+    }
+
+    /// <summary>S1 (lot 4) : le contenu réel remplace l'excerpt dans le prompt quand il est disponible.</summary>
+    [Fact]
+    public void BuildUserMessage_ContentTextProvided_UsesContentInsteadOfExcerpt()
+    {
+        var item = new Item(SourceType.Raindrop, "1", "https://example.com", "Titre", "Excerpt Raindrop", null, [], DateTimeOffset.UtcNow);
+
+        var message = ClassificationPromptBuilder.BuildUserMessage(item, SampleTaxonomy, "Contenu réel de la page");
+
+        Assert.Contains("Contenu réel de la page", message);
+        Assert.DoesNotContain("Excerpt Raindrop", message);
+    }
+
+    [Fact]
+    public void BuildUserMessage_ContentTextTooLong_IsTruncated()
+    {
+        var item = new Item(SourceType.Raindrop, "1", "https://example.com", "Titre", null, null, [], DateTimeOffset.UtcNow);
+        var longContent = new string('b', 7000);
+
+        var message = ClassificationPromptBuilder.BuildUserMessage(item, SampleTaxonomy, longContent);
+
+        Assert.DoesNotContain(new string('b', 6500), message);
+        Assert.Contains('…', message);
+    }
+
+    [Fact]
+    public void BuildUserMessage_ContentTextAbsent_FallsBackToExcerpt()
+    {
+        var item = new Item(SourceType.Raindrop, "1", "https://example.com", "Titre", "Excerpt Raindrop", null, [], DateTimeOffset.UtcNow);
+
+        var message = ClassificationPromptBuilder.BuildUserMessage(item, SampleTaxonomy, contentText: null);
+
+        Assert.Contains("Excerpt Raindrop", message);
+    }
 }

@@ -1,10 +1,12 @@
 using System.Globalization;
+using System.Reflection;
 using Coravel;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using LoreAI.Core.Interfaces;
 using LoreAI.Core.Services;
 using LoreAI.Infrastructure.Classification;
+using LoreAI.Infrastructure.Content;
 using LoreAI.Infrastructure.Notifications;
 using LoreAI.Infrastructure.Persistence;
 using LoreAI.Infrastructure.Raindrop;
@@ -79,6 +81,10 @@ try
     builder.Services.AddHttpClient<IClassifier, AnthropicClassifier>()
         .AddStandardResilienceHandler(ClassifierResilience.Configure);
 
+    // Politesse envers des sites tiers inconnus (S1, lot 4) : timeout court, pas de retry agressif.
+    builder.Services.AddHttpClient<IContentFetcher, HttpContentFetcher>()
+        .AddStandardResilienceHandler(ContentFetchResilience.Configure);
+
     builder.Services.AddHttpClient<IImmediateNotifier, DiscordNotifier>()
         .AddStandardResilienceHandler();
 
@@ -102,6 +108,12 @@ try
         Environment.ExitCode = await LoreAI.Worker.HealthCheckMode.RunAsync(host.Services, CancellationToken.None) ? 0 : 1;
         return;
     }
+
+    // #65 : seul signal fiable, en dehors des logs applicatifs, pour savoir quelle version tourne réellement
+    // sur mcm8 sans avoir à interroger Docker — utile quand un déploiement partiel laisse un conteneur en retard.
+    var version = Assembly.GetExecutingAssembly()
+        .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
+    Log.Information("LoreAI.Worker {Version} démarré, environnement {Environment}.", version, builder.Environment.EnvironmentName);
 
     var workerOptions = host.Services.GetRequiredService<IOptions<WorkerOptions>>().Value;
     host.Services.UseScheduler(scheduler =>

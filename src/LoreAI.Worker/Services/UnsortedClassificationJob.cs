@@ -23,6 +23,7 @@ public sealed class UnsortedClassificationJob : IInvocable, ICancellableInvocabl
     private readonly ICycleRunRepository _cycleRunRepository;
     private readonly ICycleReportNotifier _cycleReportNotifier;
     private readonly IClassifier _classifier;
+    private readonly IContentFetcher _contentFetcher;
     private readonly IImmediateNotifier _immediateNotifier;
     private readonly INotificationPolicy _notificationPolicy;
     private readonly WorkerOptions _options;
@@ -35,6 +36,7 @@ public sealed class UnsortedClassificationJob : IInvocable, ICancellableInvocabl
         ICycleRunRepository cycleRunRepository,
         ICycleReportNotifier cycleReportNotifier,
         IClassifier classifier,
+        IContentFetcher contentFetcher,
         IImmediateNotifier immediateNotifier,
         INotificationPolicy notificationPolicy,
         IOptions<WorkerOptions> options,
@@ -46,6 +48,7 @@ public sealed class UnsortedClassificationJob : IInvocable, ICancellableInvocabl
         _cycleRunRepository = cycleRunRepository;
         _cycleReportNotifier = cycleReportNotifier;
         _classifier = classifier;
+        _contentFetcher = contentFetcher;
         _immediateNotifier = immediateNotifier;
         _notificationPolicy = notificationPolicy;
         _options = options.Value;
@@ -101,8 +104,12 @@ public sealed class UnsortedClassificationJob : IInvocable, ICancellableInvocabl
                         _logger.LogInformation("Traitement du signet {SourceId} en cours.", item.SourceId);
                     }
 
-                    var classification = await _classifier.ClassifyAsync(item, taxonomy, cancellationToken);
-                    await _articleRepository.UpsertAsync(item, classification, DateTimeOffset.UtcNow, cancellationToken);
+                    var content = _options.FetchArticleContent
+                        ? await _contentFetcher.FetchAsync(item.Url, cancellationToken)
+                        : ContentFetchResult.Skipped;
+
+                    var classification = await _classifier.ClassifyAsync(item, taxonomy, content.Text, cancellationToken);
+                    await _articleRepository.UpsertAsync(item, classification, content, DateTimeOffset.UtcNow, cancellationToken);
 
                     if (classification.IsFallback)
                     {
