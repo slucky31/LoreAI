@@ -145,6 +145,7 @@ Ce que ça coûte, et qu'il faut regarder en face :
 | O1 | **Compte-rendu de cycle sur Discord** ([#31](https://github.com/slucky31/LoreAI/issues/31)) — fin de traitement, articles triés ou non, nombre de tags appliqués | 3 | 1 | Valeur relevée à 3 par **D3** : une fois l'email supprimé, c'est la **seule** preuve que l'outil tourne. Les compteurs existent déjà, ils sont journalisés puis jetés |
 | O2 | **Healthcheck Docker pour Portainer** ([#35](https://github.com/slucky31/LoreAI/issues/35)) | 2 | 2 | Reste ouvert depuis [F-10 de l'audit](audit/2026-08-01-audit-code.md) faute de « vrai signal de vivacité ». Ce signal, c'est le journal de cycle ci-dessous |
 | O3 | **Cache de prompt Anthropic** ([#34](https://github.com/slucky31/LoreAI/issues/34)) | 1 | 2 | **Sans effet au régime actuel** — voir l'arbitrage dédié. C'est une optimisation de *backfill*, pas de croisière. À mesurer (30 min) avant de planifier |
+| O4 | **Logs en heure de Paris plutôt qu'UTC** ([#71](https://github.com/slucky31/LoreAI/issues/71)) | 1 | 1 | `TZ=Europe/Paris` sur les deux conteneurs — mais les images finales sont chiselées et tournent en `GLOBALIZATION_INVARIANT`, sans `tzdata` : à résoudre en copiant `/usr/share/zoneinfo` depuis l'étage `build` (qui a `apt`), comme `/data-skeleton`. Seul l'horodatage Serilog change, jamais les valeurs UTC de domaine (Postgres, noms de fichiers de rapport). **Planifié pour le lot 6**, embarqué dans la même PR plutôt qu'en PR dédiée |
 
 ## Le worker n'a aucune mémoire de son dernier cycle
 
@@ -338,6 +339,7 @@ networks:
 - **L4** relances, **N3** liens morts, **N4** péremption : tous triviaux une fois L3 en place.
 - **L1** file de lecture, enfin scorée sur des données complètes (priorité × fraîcheur × temps de lecture × non-traité). C'est ici que le filet perdu au lot 2 est remplacé par quelque chose de mieux.
 - **L5** collection pilote « À lire cette semaine », **seulement après validation explicite** de l'écriture hors « Non trié ».
+- **O4** logs en heure de Paris ([#71](https://github.com/slucky31/LoreAI/issues/71)) — sans rapport avec le reste du lot, embarqué ici parce que ce lot touche de toute façon `Program.cs`/`Dockerfile`.
 
 ### Phase 2 — Élargir les sources
 
