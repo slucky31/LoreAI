@@ -88,6 +88,17 @@ public sealed class CorpusTools
         return MarkdownReportBuilder.BuildToolCard(card);
     }
 
+    [McpServerTool(Name = "export_item", ReadOnly = true), Description("Export Markdown d'un item du corpus (S8, lot 5) — frontmatter + résumé, à écrire dans le vault Obsidian côté client.")]
+    public async Task<string> ExportItem(
+        [Description("Identifiant Raindrop de l'item.")] long id,
+        CancellationToken cancellationToken)
+    {
+        var item = await _repository.GetByIdAsync(id, cancellationToken)
+            ?? throw new McpException($"Aucun item {id} dans le corpus indexé.");
+        var summary = await _repository.GetArticleSummaryAsync(id, cancellationToken);
+        return MarkdownReportBuilder.BuildItemExport(item, summary);
+    }
+
     [McpServerTool(Name = "list_tools", ReadOnly = true), Description("Liste les outils MCP prévus pour ce serveur (issue #44) et leur statut d'implémentation.")]
     public IReadOnlyList<McpToolStatus> ListTools()
     {
@@ -101,6 +112,7 @@ public sealed class CorpusTools
             new McpToolStatus("find_similar", "implémenté (S5, lot 5)"),
             new McpToolStatus("catalog_tools", "implémenté (S7, lot 5)"),
             new McpToolStatus("tool_card", "implémenté (S7, lot 5)"),
+            new McpToolStatus("export_item", "implémenté (S8, lot 5)"),
             new McpToolStatus("reading_queue", "non implémenté — dépend du scoring du lot 6 (L1)"),
         ];
     }

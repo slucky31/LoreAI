@@ -193,6 +193,28 @@ public class CorpusQueryRepositoryTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task GetArticleSummaryAsync_ClassifiedArticle_ReturnsSummary()
+    {
+        await using (var context = _fixture.CreateContext())
+        {
+            context.Articles.Add(CreateArticle(1, "Titre", "https://a.example", "Un résumé."));
+            await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+        }
+
+        var summary = await _repository.GetArticleSummaryAsync(1, TestContext.Current.CancellationToken);
+
+        Assert.Equal("Un résumé.", summary);
+    }
+
+    [Fact]
+    public async Task GetArticleSummaryAsync_NeverClassified_ReturnsNull()
+    {
+        var summary = await _repository.GetArticleSummaryAsync(999, TestContext.Current.CancellationToken);
+
+        Assert.Null(summary);
+    }
+
+    [Fact]
     public async Task GetStatsAsync_CountsTotalImportantAndBroken()
     {
         await SeedAsync(

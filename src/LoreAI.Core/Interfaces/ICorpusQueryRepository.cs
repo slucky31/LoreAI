@@ -33,4 +33,7 @@ public interface ICorpusQueryRepository
 
     /// <summary>Fiche complète d'un outil par nom (S7, lot 5), avec ses articles liés — <c>null</c> si inconnu.</summary>
     Task<ToolCard?> GetToolByNameAsync(string name, CancellationToken cancellationToken);
+
+    /// <summary>Résumé d'un article classifié (S8, lot 5) — <c>null</c> si l'item n'a jamais été classifié (cas normal pour la majorité de <c>LibraryItems</c>).</summary>
+    Task<string?> GetArticleSummaryAsync(long id, CancellationToken cancellationToken);
 }

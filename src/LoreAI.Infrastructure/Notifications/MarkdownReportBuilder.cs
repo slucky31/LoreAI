@@ -169,6 +169,30 @@ public static class MarkdownReportBuilder
         return builder.ToString();
     }
 
+    /// <summary>
+    /// Export Markdown d'un item du corpus (S8, lot 5) — frontmatter YAML + résumé, à la demande via l'outil
+    /// MCP <c>export_item</c>. Même remarque « régénérée, jamais éditée » que <see cref="BuildToolCard"/>.
+    /// </summary>
+    public static string BuildItemExport(LibraryItemSummary item, string? summary)
+    {
+        var builder = new StringBuilder();
+        builder.AppendLine("---");
+        builder.AppendLine(CultureInfo.InvariantCulture, $"title: {item.Title}");
+        builder.AppendLine(CultureInfo.InvariantCulture, $"url: {item.Url}");
+        builder.AppendLine(CultureInfo.InvariantCulture, $"tags: [{string.Join(", ", item.Tags)}]");
+        builder.AppendLine(CultureInfo.InvariantCulture, $"raindrop_collection_id: {item.RaindropCollectionId?.ToString(CultureInfo.InvariantCulture) ?? "—"}");
+        builder.AppendLine(CultureInfo.InvariantCulture, $"captured: {item.CapturedAtUtc:yyyy-MM-dd}");
+        builder.AppendLine("---");
+        builder.AppendLine();
+        builder.AppendLine(CultureInfo.InvariantCulture, $"# {item.Title}");
+        builder.AppendLine();
+        builder.AppendLine("## Résumé");
+        builder.AppendLine();
+        builder.AppendLine(summary ?? "Jamais classifié — pas de résumé disponible.");
+
+        return builder.ToString();
+    }
+
     private static void AppendLlmUsage(StringBuilder builder, LlmUsageSummary usage)
     {
         builder.AppendLine("## Coût LLM (S6)");

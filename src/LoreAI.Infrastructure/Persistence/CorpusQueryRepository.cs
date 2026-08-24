@@ -132,6 +132,16 @@ public sealed class CorpusQueryRepository : ICorpusQueryRepository
         return new ToolCard(tool.Id, tool.Name, tool.Category, tool.Status, tool.Verdict, tool.FirstSeenAtUtc, tool.LastSeenAtUtc, relatedArticles);
     }
 
+    public async Task<string?> GetArticleSummaryAsync(long id, CancellationToken cancellationToken)
+    {
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+
+        return await context.Articles
+            .Where(a => a.Id == id)
+            .Select(a => a.Summary)
+            .SingleOrDefaultAsync(cancellationToken);
+    }
+
     private static readonly System.Linq.Expressions.Expression<Func<LibraryItemEntity, LibraryItemSummary>> ToSummary =
         i => new LibraryItemSummary(i.Id, i.Title, i.Url, i.Tags, i.RaindropCollectionId, i.CapturedAtUtc);
 }

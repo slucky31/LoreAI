@@ -128,6 +128,29 @@ public class MarkdownReportBuilderTests
         Assert.Contains("Aucun.", markdown);
     }
 
+    [Fact]
+    public void BuildItemExport_ClassifiedItem_IncludesSummary()
+    {
+        var item = new LibraryItemSummary(1, "Titre", "https://a.example", ["dotnet"], 10, new DateTimeOffset(2026, 8, 1, 0, 0, 0, TimeSpan.Zero));
+
+        var markdown = MarkdownReportBuilder.BuildItemExport(item, "Un résumé de l'article.");
+
+        Assert.Contains("title: Titre", markdown);
+        Assert.Contains("url: https://a.example", markdown);
+        Assert.Contains("tags: [dotnet]", markdown);
+        Assert.Contains("Un résumé de l'article.", markdown);
+    }
+
+    [Fact]
+    public void BuildItemExport_NeverClassified_ExplainsMissingSummary()
+    {
+        var item = new LibraryItemSummary(1, "Titre", "https://a.example", [], null, DateTimeOffset.UnixEpoch);
+
+        var markdown = MarkdownReportBuilder.BuildItemExport(item, summary: null);
+
+        Assert.Contains("pas de résumé disponible", markdown);
+    }
+
     private static WeeklyInsightsReport CreateReport(
         IReadOnlyList<DuplicateUrlGroup> duplicates,
         TagHygieneResult hygiene,

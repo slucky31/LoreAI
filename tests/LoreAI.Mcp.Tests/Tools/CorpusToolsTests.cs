@@ -106,6 +106,39 @@ public class CorpusToolsTests
     }
 
     [Fact]
+    public async Task ExportItem_ExistingId_ReturnsMarkdownWithSummary()
+    {
+        var summary = CreateSummary(1);
+        _repository.GetByIdAsync(1, Arg.Any<CancellationToken>()).Returns(summary);
+        _repository.GetArticleSummaryAsync(1, Arg.Any<CancellationToken>()).Returns("Un résumé.");
+
+        var markdown = await _tools.ExportItem(1, TestContext.Current.CancellationToken);
+
+        Assert.Contains(summary.Title, markdown);
+        Assert.Contains("Un résumé.", markdown);
+    }
+
+    [Fact]
+    public async Task ExportItem_NeverClassified_ReturnsMarkdownWithoutSummary()
+    {
+        var summary = CreateSummary(1);
+        _repository.GetByIdAsync(1, Arg.Any<CancellationToken>()).Returns(summary);
+        _repository.GetArticleSummaryAsync(1, Arg.Any<CancellationToken>()).Returns((string?)null);
+
+        var markdown = await _tools.ExportItem(1, TestContext.Current.CancellationToken);
+
+        Assert.Contains("pas de résumé disponible", markdown);
+    }
+
+    [Fact]
+    public async Task ExportItem_UnknownId_ThrowsMcpException()
+    {
+        _repository.GetByIdAsync(999, Arg.Any<CancellationToken>()).Returns((LibraryItemSummary?)null);
+
+        await Assert.ThrowsAsync<McpException>(() => _tools.ExportItem(999, TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
     public async Task Stats_ReturnsRepositoryResult()
     {
         var stats = new CorpusStats(10, 2, 1, DateTimeOffset.UtcNow);
@@ -122,7 +155,7 @@ public class CorpusToolsTests
         var tools = _tools.ListTools();
 
         Assert.Equal(
-            ["get_item", "list_recent", "search_items", "stats", "list_tools", "find_similar", "catalog_tools", "tool_card", "reading_queue"],
+            ["get_item", "list_recent", "search_items", "stats", "list_tools", "find_similar", "catalog_tools", "tool_card", "export_item", "reading_queue"],
             tools.Select(t => t.Name));
     }
 
