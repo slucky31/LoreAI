@@ -24,4 +24,10 @@ public interface IRaindropClient : ISourceIngester
     /// <see cref="ISourceIngester.GetNewItemsAsync"/>, voir son implémentation Raindrop).
     /// </summary>
     Task<IReadOnlyList<LibraryItem>> GetLibraryPageAsync(int page, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Un raindrop existant par id (L3/<c>ReconciliationJob</c>, lot 6). <c>null</c> si l'item n'existe
+    /// plus (404) — supprimé définitivement de Raindrop, pas seulement mis à la corbeille.
+    /// </summary>
+    Task<RaindropSnapshot?> GetRaindropAsync(long raindropId, CancellationToken cancellationToken);
 }

@@ -51,4 +51,13 @@ public sealed class WorkerOptions
     /// </summary>
     [Required(AllowEmptyStrings = false)]
     public string MonthlyReviewCronExpression { get; init; } = "0 5 1 * *";
+
+    /// <summary>
+    /// Expression cron de la réconciliation (L3, lot 6) — par défaut chaque jour à 2h UTC, avant
+    /// <see cref="LibraryIndexCronExpression"/> (3h) pour que le rapport hebdomadaire du dimanche lise
+    /// un état frais. Quotidien plutôt qu'hebdomadaire : les seuils de relance (L4, 14j) et de
+    /// péremption (N4, 90j) restent utiles même si le rapport lui-même reste hebdomadaire.
+    /// </summary>
+    [Required(AllowEmptyStrings = false)]
+    public string ReconciliationCronExpression { get; init; } = "0 2 * * *";
 }

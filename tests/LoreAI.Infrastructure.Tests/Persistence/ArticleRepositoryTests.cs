@@ -60,7 +60,7 @@ public class ArticleRepositoryTests : IAsyncLifetime
     {
         await _repository.UpsertAsync(CreateItem(1, "A"), CreateClassification(), ContentFetchResult.Skipped, DateTimeOffset.UtcNow, TestContext.Current.CancellationToken);
 
-        await _repository.RecordWriteBackAsync(1, success: true, moved: true, DateTimeOffset.UtcNow, TestContext.Current.CancellationToken);
+        await _repository.RecordWriteBackAsync(1, success: true, moved: true, writeBackCollectionId: 42, DateTimeOffset.UtcNow, TestContext.Current.CancellationToken);
 
         var entity = await GetAsync(1);
         Assert.True(entity.Moved);
@@ -71,7 +71,7 @@ public class ArticleRepositoryTests : IAsyncLifetime
     {
         await _repository.UpsertAsync(CreateItem(1, "A"), CreateClassification(), ContentFetchResult.Skipped, DateTimeOffset.UtcNow, TestContext.Current.CancellationToken);
 
-        await _repository.RecordWriteBackAsync(1, success: true, moved: false, DateTimeOffset.UtcNow, TestContext.Current.CancellationToken);
+        await _repository.RecordWriteBackAsync(1, success: true, moved: false, writeBackCollectionId: null, DateTimeOffset.UtcNow, TestContext.Current.CancellationToken);
 
         var entity = await GetAsync(1);
         Assert.False(entity.Moved);

@@ -307,7 +307,7 @@ public sealed class UnsortedClassificationJob : IInvocable, ICancellableInvocabl
             var mergedNote = ClassificationNoteBuilder.Build(item.Note, classification);
 
             await _raindropClient.UpdateRaindropAsync(raindropId, mergedTags, mergedNote, matchedCollection?.Id, cancellationToken);
-            await _articleRepository.RecordWriteBackAsync(raindropId, success: true, moved: matchedCollection is not null, DateTimeOffset.UtcNow, cancellationToken);
+            await _articleRepository.RecordWriteBackAsync(raindropId, success: true, moved: matchedCollection is not null, matchedCollection?.Id, DateTimeOffset.UtcNow, cancellationToken);
 
             // Ne compte que les tags réellement nouveaux (fusion insensible à la casse) : un tag déjà
             // présent sur l'article ne doit pas gonfler le compteur du journal de cycle.
@@ -317,7 +317,7 @@ public sealed class UnsortedClassificationJob : IInvocable, ICancellableInvocabl
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Échec de l'application des tags/déplacement pour l'item {SourceId}", item.SourceId);
-            await _articleRepository.RecordWriteBackAsync(raindropId, success: false, moved: false, DateTimeOffset.UtcNow, cancellationToken);
+            await _articleRepository.RecordWriteBackAsync(raindropId, success: false, moved: false, writeBackCollectionId: null, DateTimeOffset.UtcNow, cancellationToken);
             return new WriteBackOutcome(Moved: false, TagsAdded: 0);
         }
     }

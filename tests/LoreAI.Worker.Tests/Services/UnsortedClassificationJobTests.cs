@@ -255,7 +255,7 @@ public class UnsortedClassificationJobTests
         await fixture.Build().Invoke();
 
         // L'échec de write-back est déjà rattrapé et enregistré ; il ne doit pas bloquer le batch.
-        await fixture.ArticleRepository.Received(1).RecordWriteBackAsync(1, false, false, Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>());
+        await fixture.ArticleRepository.Received(1).RecordWriteBackAsync(1, false, false, null, Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>());
         await fixture.PollingStateRepository.Received(1).UpdateAsync(
             Arg.Is<PollingState>(s => s!.LastSourceItemId == "2"), Arg.Any<CancellationToken>());
     }

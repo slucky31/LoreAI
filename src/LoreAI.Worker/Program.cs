@@ -100,11 +100,16 @@ try
     builder.Services.AddHttpClient<IReportNotifier, DiscordReportNotifier>()
         .AddStandardResilienceHandler();
 
+    // Relance L4 (lot 6), déclenchée par ReconciliationJob.
+    builder.Services.AddHttpClient<IReminderNotifier, DiscordReminderNotifier>()
+        .AddStandardResilienceHandler();
+
     builder.Services.AddScheduler();
     builder.Services.AddTransient<UnsortedClassificationJob>();
     builder.Services.AddTransient<LibraryIndexingJob>();
     builder.Services.AddTransient<WeeklyInsightsJob>();
     builder.Services.AddTransient<MonthlyReviewJob>();
+    builder.Services.AddTransient<ReconciliationJob>();
 
     var host = builder.Build();
 
@@ -145,6 +150,10 @@ try
         scheduler.Schedule<MonthlyReviewJob>()
             .Cron(workerOptions.MonthlyReviewCronExpression)
             .PreventOverlapping(nameof(MonthlyReviewJob));
+
+        scheduler.Schedule<ReconciliationJob>()
+            .Cron(workerOptions.ReconciliationCronExpression)
+            .PreventOverlapping(nameof(ReconciliationJob));
     });
 
     host.Run();

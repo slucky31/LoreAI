@@ -39,6 +39,19 @@ public sealed class ArticleEntity
     public DateTimeOffset? WriteBackAtUtc { get; set; }
     public DateTimeOffset? DiscordNotifiedAtUtc { get; set; }
 
+    // Id de collection réellement écrit au write-back (null = resté en Non trié) — la référence que
+    // ReconciliationJob (L3, lot 6) compare à l'état réel pour détecter un déplacement humain.
+    public long? WriteBackCollectionId { get; set; }
+
+    // L3 (lot 6) : null tant qu'aucune passe de réconciliation n'a eu lieu, distinct de LinkStatus.Ok
+    // qui est une constatation positive. HumanHandledAtUtc n'est jamais réinitialisé une fois posé.
+    public DateTimeOffset? LastSeenAtUtc { get; set; }
+    public DateTimeOffset? HumanHandledAtUtc { get; set; }
+    public LinkStatus? LinkStatus { get; set; }
+
+    // L4 (lot 6) : relance envoyée une seule fois.
+    public DateTimeOffset? RemindedAtUtc { get; set; }
+
     // Contenu réel (S1, lot 4) : toujours nullable, alimenté au mieux (best-effort) — un article
     // pré-lot-4 ou dont le fetch a échoué n'a simplement jamais ces champs renseignés.
     public string? ContentText { get; set; }

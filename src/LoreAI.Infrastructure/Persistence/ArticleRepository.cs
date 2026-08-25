@@ -82,7 +82,7 @@ public sealed class ArticleRepository : IArticleRepository
         }
     }
 
-    public async Task RecordWriteBackAsync(long articleId, bool success, bool moved, DateTimeOffset atUtc, CancellationToken cancellationToken)
+    public async Task RecordWriteBackAsync(long articleId, bool success, bool moved, long? writeBackCollectionId, DateTimeOffset atUtc, CancellationToken cancellationToken)
     {
         await _schemaGuard.EnsureMigratedAsync(cancellationToken);
         await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
@@ -95,6 +95,7 @@ public sealed class ArticleRepository : IArticleRepository
                 setters => setters
                     .SetProperty(a => a.WriteBackStatus, success ? "Done" : "Failed")
                     .SetProperty(a => a.Moved, moved)
+                    .SetProperty(a => a.WriteBackCollectionId, writeBackCollectionId)
                     .SetProperty(a => a.WriteBackAtUtc, atUtc),
                 cancellationToken);
 
@@ -137,6 +138,55 @@ public sealed class ArticleRepository : IArticleRepository
         return await context.Articles
             .Where(a => !a.IsFallback && a.ClassifiedAtUtc != null && a.ClassifiedAtUtc >= startUtc && a.ClassifiedAtUtc < endUtc)
             .Select(a => new MonthlyReviewArticle(a.Id, a.Title, a.Url, a.SuggestedCollection, a.SuggestedTags, a.Summary, a.Reason, a.Priority))
+            .ToListAsync(cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<ReconciliationCandidate>> GetReconciliationCandidatesAsync(int limit, CancellationToken cancellationToken)
+    {
+        await _schemaGuard.EnsureMigratedAsync(cancellationToken);
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+
+        return await context.Articles
+            .Where(a => a.LinkStatus != LinkStatus.Deleted)
+            .OrderBy(a => a.LastSeenAtUtc)
+            .Take(limit)
+            .Select(a => new ReconciliationCandidate(
+                a.Id, a.Title, a.Url, a.OriginalTags, a.SuggestedTags, a.WriteBackCollectionId,
+                a.RecommendedAction, a.Priority, a.ClassifiedAtUtc, a.HumanHandledAtUtc, a.RemindedAtUtc))
+            .ToListAsync(cancellationToken);
+    }
+
+    public async Task RecordReconciliationAsync(long articleId, DateTimeOffset lastSeenAtUtc, DateTimeOffset? humanHandledAtUtc, DateTimeOffset? remindedAtUtc, LinkStatus linkStatus, CancellationToken cancellationToken)
+    {
+        await _schemaGuard.EnsureMigratedAsync(cancellationToken);
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+
+        var affected = await context.Articles
+            .Where(a => a.Id == articleId)
+            .ExecuteUpdateAsync(
+                setters => setters
+                    .SetProperty(a => a.LastSeenAtUtc, lastSeenAtUtc)
+                    .SetProperty(a => a.HumanHandledAtUtc, humanHandledAtUtc)
+                    .SetProperty(a => a.RemindedAtUtc, remindedAtUtc)
+                    .SetProperty(a => a.LinkStatus, linkStatus),
+                cancellationToken);
+
+        if (affected == 0)
+        {
+            _logger.LogWarning("Réconciliation non enregistrée : aucun article {ArticleId} en base.", articleId);
+        }
+    }
+
+    public async Task<IReadOnlyList<TrackedArticle>> GetTrackedArticlesAsync(CancellationToken cancellationToken)
+    {
+        await _schemaGuard.EnsureMigratedAsync(cancellationToken);
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+
+        return await context.Articles
+            .Where(a => !a.IsFallback)
+            .Select(a => new TrackedArticle(
+                a.Id, a.Title, a.Url, a.RecommendedAction, a.Priority, a.CapturedAtUtc,
+                a.ClassifiedAtUtc, a.WordCount, a.HumanHandledAtUtc, a.LinkStatus))
             .ToListAsync(cancellationToken);
     }
 }

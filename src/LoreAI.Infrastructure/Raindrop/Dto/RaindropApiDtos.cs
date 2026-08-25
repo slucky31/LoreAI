@@ -10,6 +10,13 @@ internal sealed class RaindropsPageDto
     public int Count { get; set; }
 }
 
+/// <summary>Réponse de <c>GET /raindrop/{id}</c> — un seul item, pas une page (L3, lot 6).</summary>
+internal sealed class RaindropItemResponseDto
+{
+    public bool Result { get; set; }
+    public RaindropDto? Item { get; set; }
+}
+
 internal sealed class RaindropDto
 {
     [JsonPropertyName("_id")]
