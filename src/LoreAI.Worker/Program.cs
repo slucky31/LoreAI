@@ -121,6 +121,22 @@ try
         return;
     }
 
+    // O5 (#75, lot 6) : force un passage hors cadence pour les deux jobs à cron lent (hebdo/mensuel),
+    // sans attendre leur prochain déclenchement naturel — même patron que --health-check, avant
+    // host.Run() et sans valider les options non liées. Les deux jobs ne lèvent jamais (philosophie
+    // « jamais throw, toujours logger » déjà en place) : pas de code de sortie dédié à calculer ici.
+    if (args.Contains("--run-weekly-insights"))
+    {
+        await host.Services.GetRequiredService<WeeklyInsightsJob>().Invoke();
+        return;
+    }
+
+    if (args.Contains("--run-monthly-review"))
+    {
+        await host.Services.GetRequiredService<MonthlyReviewJob>().Invoke();
+        return;
+    }
+
     // #65 : seul signal fiable, en dehors des logs applicatifs, pour savoir quelle version tourne réellement
     // sur mcm8 sans avoir à interroger Docker — utile quand un déploiement partiel laisse un conteneur en retard.
     var version = Assembly.GetExecutingAssembly()
