@@ -209,6 +209,11 @@ public static class MarkdownReportBuilder
         builder.AppendLine(CultureInfo.InvariantCulture, $"category: {card.Category ?? "—"}");
         builder.AppendLine(CultureInfo.InvariantCulture, $"status: {card.Status}");
         builder.AppendLine(CultureInfo.InvariantCulture, $"verdict: {card.Verdict ?? "(à déterminer)"}");
+        if (!string.IsNullOrEmpty(card.Url))
+        {
+            builder.AppendLine(CultureInfo.InvariantCulture, $"url: {card.Url}");
+        }
+
         builder.AppendLine(CultureInfo.InvariantCulture, $"first_seen: {card.FirstSeenAtUtc:yyyy-MM-dd}");
         builder.AppendLine(CultureInfo.InvariantCulture, $"last_seen: {card.LastSeenAtUtc:yyyy-MM-dd}");
         builder.AppendLine("---");

@@ -336,7 +336,7 @@ public sealed class UnsortedClassificationJob : IInvocable, ICancellableInvocabl
 
         try
         {
-            await _toolRepository.UpsertFromArticleAsync(classification.ToolName, classification.ToolCategory, ParseRaindropId(item), DateTimeOffset.UtcNow, cancellationToken);
+            await _toolRepository.UpsertFromArticleAsync(classification.ToolName, classification.ToolCategory, classification.ToolUrl, ParseRaindropId(item), DateTimeOffset.UtcNow, cancellationToken);
         }
         catch (Exception ex)
         {

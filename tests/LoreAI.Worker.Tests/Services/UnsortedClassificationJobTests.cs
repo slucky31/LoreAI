@@ -601,7 +601,7 @@ public class UnsortedClassificationJobTests
         await fixture.Build().Invoke();
 
         await fixture.ToolRepository.Received(1).UpsertFromArticleAsync(
-            "Ollama", "CLI", 1, Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>());
+            "Ollama", "CLI", null, 1, Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -614,7 +614,7 @@ public class UnsortedClassificationJobTests
         await fixture.Build().Invoke();
 
         await fixture.ToolRepository.DidNotReceive().UpsertFromArticleAsync(
-            Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<long>(), Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>());
+            Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<long>(), Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -627,7 +627,7 @@ public class UnsortedClassificationJobTests
         await fixture.Build().Invoke();
 
         await fixture.ToolRepository.DidNotReceive().UpsertFromArticleAsync(
-            Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<long>(), Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>());
+            Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<long>(), Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -640,7 +640,7 @@ public class UnsortedClassificationJobTests
         await fixture.Build().Invoke();
 
         await fixture.ToolRepository.DidNotReceive().UpsertFromArticleAsync(
-            Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<long>(), Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>());
+            Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<long>(), Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>());
     }
 
     /// <summary>Best-effort (S7) : un échec de la base d'outils ne doit jamais bloquer le cycle.</summary>
@@ -651,7 +651,7 @@ public class UnsortedClassificationJobTests
             .WithNewItems(CreateItem(1))
             .WithClassification(CreateClassification(".NET", ["dotnet"]) with { ToolName = "Ollama" });
         fixture.ToolRepository
-            .UpsertFromArticleAsync(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<long>(), Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>())
+            .UpsertFromArticleAsync(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<long>(), Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>())
             .ThrowsAsync(new InvalidOperationException("database is locked"));
 
         var exception = await Record.ExceptionAsync(() => fixture.Build().Invoke());

@@ -130,7 +130,7 @@ public sealed class CorpusQueryRepository : ICorpusQueryRepository
             .Select(a => new ToolRelatedArticle(a.Id, a.Title, a.Url, a.Summary))
             .ToListAsync(cancellationToken);
 
-        return new ToolCard(tool.Id, tool.Name, tool.Category, tool.Status, tool.Verdict, tool.FirstSeenAtUtc, tool.LastSeenAtUtc, relatedArticles);
+        return new ToolCard(tool.Id, tool.Name, tool.Category, tool.Status, tool.Verdict, tool.FirstSeenAtUtc, tool.LastSeenAtUtc, relatedArticles, tool.Url);
     }
 
     public async Task<string?> GetArticleSummaryAsync(long id, CancellationToken cancellationToken)

@@ -60,7 +60,8 @@ public sealed class ArticleEntity
     public int? WordCount { get; set; }
     public string? Summary { get; set; }
 
-    // S7 (lot 5) : uniquement renseignés quand RecommendedAction == ATester, cf. ClassificationResult.
+    // S7 (lot 5) / S9 (lot 6) : uniquement renseignés quand RecommendedAction == ATester, cf. ClassificationResult.
     public string? ToolName { get; set; }
     public string? ToolCategory { get; set; }
+    public string? ToolUrl { get; set; }
 }
