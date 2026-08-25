@@ -16,6 +16,9 @@ public sealed class WeeklyInsightsJob : IInvocable, ICancellableInvocable
 {
     private static readonly TimeSpan TrendWindow = TimeSpan.FromDays(30);
 
+    /// <summary>Nombre d'entrées de la file de lecture (L1, lot 6) incluses dans le rapport hebdomadaire.</summary>
+    private const int ReadingQueueSize = 10;
+
     private readonly ILibraryItemRepository _libraryItemRepository;
     private readonly IArticleRepository _articleRepository;
     private readonly IRaindropClient _raindropClient;
@@ -50,6 +53,7 @@ public sealed class WeeklyInsightsJob : IInvocable, ICancellableInvocable
             var taxonomy = await _raindropClient.GetTaxonomyAsync(cancellationToken);
             var startOfMonthUtc = new DateTimeOffset(generatedAtUtc.Year, generatedAtUtc.Month, 1, 0, 0, 0, TimeSpan.Zero);
             var rawResponses = await _articleRepository.GetClassificationRawResponsesSinceAsync(startOfMonthUtc, cancellationToken);
+            var trackedArticles = await _articleRepository.GetTrackedArticlesAsync(cancellationToken);
 
             var collectionTitles = taxonomy.Collections.ToDictionary(c => c.Id, c => c.Title);
             var recentItems = libraryItems.Where(i => generatedAtUtc - i.CapturedAtUtc <= TrendWindow).ToList();
@@ -61,6 +65,9 @@ public sealed class WeeklyInsightsJob : IInvocable, ICancellableInvocable
                 TrendAnalyzer.TopDomains(recentItems),
                 TrendAnalyzer.TopTags(recentItems),
                 LlmUsageAnalyzer.Analyze(rawResponses),
+                BrokenTrackedArticlesAnalyzer.Detect(trackedArticles),
+                StaleArticlesAnalyzer.Detect(trackedArticles, generatedAtUtc),
+                ReadingQueueScorer.Score(trackedArticles, generatedAtUtc, ReadingQueueSize),
                 generatedAtUtc);
 
             var markdown = MarkdownReportBuilder.Build(report);
@@ -70,11 +77,14 @@ public sealed class WeeklyInsightsJob : IInvocable, ICancellableInvocable
             if (_logger.IsEnabled(LogLevel.Information))
             {
                 _logger.LogInformation(
-                    "Rapport hebdomadaire envoyé : {DuplicateCount} doublons, {ClusterCount} grappes de tags, {UnbalancedCount} collections déséquilibrées, {ClassificationCount} classifications ce mois-ci.",
+                    "Rapport hebdomadaire envoyé : {DuplicateCount} doublons, {ClusterCount} grappes de tags, {UnbalancedCount} collections déséquilibrées, {ClassificationCount} classifications ce mois-ci, {BrokenCount} liens morts suivis, {StaleCount} articles périmés, {QueueCount} entrées en file de lecture.",
                     report.DuplicateUrls.Count,
                     report.TagHygiene.Clusters.Count,
                     report.UnbalancedCollections.Count,
-                    report.LlmUsage.ClassificationCount);
+                    report.LlmUsage.ClassificationCount,
+                    report.BrokenTrackedArticles.Count,
+                    report.StaleArticles.Count,
+                    report.ReadingQueue.Count);
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)

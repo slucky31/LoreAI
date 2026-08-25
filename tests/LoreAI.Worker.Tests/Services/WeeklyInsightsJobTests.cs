@@ -84,6 +84,7 @@ public class WeeklyInsightsJobTests
             LibraryItemRepository.GetAllForInsightsAsync(Arg.Any<CancellationToken>()).Returns([]);
             RaindropClient.GetTaxonomyAsync(Arg.Any<CancellationToken>()).Returns(EmptyTaxonomy);
             ArticleRepository.GetClassificationRawResponsesSinceAsync(Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>()).Returns([]);
+            ArticleRepository.GetTrackedArticlesAsync(Arg.Any<CancellationToken>()).Returns([]);
         }
 
         public JobFixture WithTaxonomy(RaindropTaxonomy taxonomy)

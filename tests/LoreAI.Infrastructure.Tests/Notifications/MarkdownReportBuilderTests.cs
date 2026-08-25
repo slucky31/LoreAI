@@ -158,5 +158,5 @@ public class MarkdownReportBuilderTests
         IReadOnlyList<DomainTrend> domains,
         IReadOnlyList<TagTrend> tags,
         LlmUsageSummary usage) =>
-        new(duplicates, hygiene, unbalanced, domains, tags, usage, DateTimeOffset.UnixEpoch);
+        new(duplicates, hygiene, unbalanced, domains, tags, usage, [], [], [], DateTimeOffset.UnixEpoch);
 }

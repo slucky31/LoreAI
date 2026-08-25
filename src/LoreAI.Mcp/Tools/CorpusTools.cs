@@ -99,6 +99,15 @@ public sealed class CorpusTools
         return MarkdownReportBuilder.BuildItemExport(item, summary);
     }
 
+    [McpServerTool(Name = "reading_queue", ReadOnly = true), Description("File de lecture scorée (L1, lot 6) : priorité × fraîcheur × temps de lecture, articles non traités uniquement.")]
+    public async Task<IReadOnlyList<ReadingQueueEntry>> ReadingQueue(
+        [Description("Nombre maximum d'entrées (défaut 20, max 100).")] int count,
+        CancellationToken cancellationToken)
+    {
+        var clamped = Math.Clamp(count <= 0 ? DefaultSearchLimit : count, 1, MaxSearchLimit);
+        return await _repository.GetReadingQueueAsync(clamped, cancellationToken);
+    }
+
     [McpServerTool(Name = "list_tools", ReadOnly = true), Description("Liste les outils MCP prévus pour ce serveur (issue #44) et leur statut d'implémentation.")]
     public IReadOnlyList<McpToolStatus> ListTools()
     {
@@ -113,7 +122,7 @@ public sealed class CorpusTools
             new McpToolStatus("catalog_tools", "implémenté (S7, lot 5)"),
             new McpToolStatus("tool_card", "implémenté (S7, lot 5)"),
             new McpToolStatus("export_item", "implémenté (S8, lot 5)"),
-            new McpToolStatus("reading_queue", "non implémenté — dépend du scoring du lot 6 (L1)"),
+            new McpToolStatus("reading_queue", "implémenté (L1, lot 6)"),
         ];
     }
 }

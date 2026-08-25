@@ -160,11 +160,24 @@ public class CorpusToolsTests
     }
 
     [Fact]
-    public void ListTools_ReadingQueue_IsMarkedNotImplemented()
+    public void ListTools_ReadingQueue_IsMarkedImplemented()
     {
         var tools = _tools.ListTools();
 
-        Assert.Contains(tools, t => t.Name == "reading_queue" && t.Status.StartsWith("non implémenté", StringComparison.Ordinal));
+        Assert.Contains(tools, t => t.Name == "reading_queue" && t.Status.StartsWith("implémenté", StringComparison.Ordinal));
+    }
+
+    [Theory]
+    [InlineData(0, 20)]
+    [InlineData(-1, 20)]
+    [InlineData(500, 100)]
+    public async Task ReadingQueue_ClampsCountToValidRange(int requested, int expected)
+    {
+        _repository.GetReadingQueueAsync(Arg.Any<int>(), Arg.Any<CancellationToken>()).Returns([]);
+
+        await _tools.ReadingQueue(requested, TestContext.Current.CancellationToken);
+
+        await _repository.Received(1).GetReadingQueueAsync(expected, Arg.Any<CancellationToken>());
     }
 
     [Fact]
