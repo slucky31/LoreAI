@@ -25,6 +25,9 @@ public sealed record ClassificationResult(
     /// <summary>Catégorie libre de l'outil (S7, lot 5), même condition que <see cref="ToolName"/>.</summary>
     public string? ToolCategory { get; init; }
 
+    /// <summary>Lien vers le dépôt/site officiel de l'outil (S9, lot 6), même condition que <see cref="ToolName"/>.</summary>
+    public string? ToolUrl { get; init; }
+
     public static ClassificationResult Fallback(string model, string reason, string rawResponse) =>
         new(null, [], RecommendedAction.Reference, Priority.Basse, reason, string.Empty, model, rawResponse) { IsFallback = true };
 }

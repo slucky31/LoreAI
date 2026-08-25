@@ -18,8 +18,72 @@ public static class MarkdownReportBuilder
         AppendUnbalancedCollections(builder, report.UnbalancedCollections);
         AppendTrends(builder, report.TopDomains, report.TopTags);
         AppendLlmUsage(builder, report.LlmUsage);
+        AppendBrokenTrackedArticles(builder, report.BrokenTrackedArticles);
+        AppendStaleArticles(builder, report.StaleArticles);
+        AppendReadingQueue(builder, report.ReadingQueue);
 
         return builder.ToString();
+    }
+
+    private static void AppendBrokenTrackedArticles(StringBuilder builder, IReadOnlyList<BrokenTrackedArticle> articles)
+    {
+        builder.AppendLine("## Liens morts parmi les articles suivis (N3)");
+        builder.AppendLine();
+
+        if (articles.Count == 0)
+        {
+            builder.AppendLine("Aucun.");
+            builder.AppendLine();
+            return;
+        }
+
+        foreach (var article in articles)
+        {
+            builder.AppendLine(CultureInfo.InvariantCulture, $"- [{article.Title}]({article.Url}) — {article.LinkStatus}");
+        }
+
+        builder.AppendLine();
+    }
+
+    private static void AppendStaleArticles(StringBuilder builder, IReadOnlyList<StaleArticle> articles)
+    {
+        builder.AppendLine("## Articles périmés — proposition de purge (N4)");
+        builder.AppendLine();
+
+        if (articles.Count == 0)
+        {
+            builder.AppendLine("Aucun.");
+            builder.AppendLine();
+            return;
+        }
+
+        foreach (var article in articles)
+        {
+            builder.AppendLine(CultureInfo.InvariantCulture, $"- [{article.Title}]({article.Url}) — {article.DaysSinceCaptured} jours sans traitement");
+        }
+
+        builder.AppendLine();
+    }
+
+    private static void AppendReadingQueue(StringBuilder builder, IReadOnlyList<ReadingQueueEntry> entries)
+    {
+        builder.AppendLine("## File de lecture (L1)");
+        builder.AppendLine();
+
+        if (entries.Count == 0)
+        {
+            builder.AppendLine("Rien à lire cette semaine.");
+            builder.AppendLine();
+            return;
+        }
+
+        foreach (var entry in entries)
+        {
+            var readingTime = entry.EstimatedMinutes is int minutes ? $"{minutes} min" : "durée inconnue";
+            builder.AppendLine(CultureInfo.InvariantCulture, $"- [{entry.Title}]({entry.Url}) — {entry.Priority}, {readingTime}");
+        }
+
+        builder.AppendLine();
     }
 
     private static void AppendDuplicates(StringBuilder builder, IReadOnlyList<DuplicateUrlGroup> groups)
@@ -145,6 +209,11 @@ public static class MarkdownReportBuilder
         builder.AppendLine(CultureInfo.InvariantCulture, $"category: {card.Category ?? "—"}");
         builder.AppendLine(CultureInfo.InvariantCulture, $"status: {card.Status}");
         builder.AppendLine(CultureInfo.InvariantCulture, $"verdict: {card.Verdict ?? "(à déterminer)"}");
+        if (!string.IsNullOrEmpty(card.Url))
+        {
+            builder.AppendLine(CultureInfo.InvariantCulture, $"url: {card.Url}");
+        }
+
         builder.AppendLine(CultureInfo.InvariantCulture, $"first_seen: {card.FirstSeenAtUtc:yyyy-MM-dd}");
         builder.AppendLine(CultureInfo.InvariantCulture, $"last_seen: {card.LastSeenAtUtc:yyyy-MM-dd}");
         builder.AppendLine("---");

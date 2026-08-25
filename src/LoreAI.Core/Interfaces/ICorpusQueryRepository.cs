@@ -36,4 +36,7 @@ public interface ICorpusQueryRepository
 
     /// <summary>Résumé d'un article classifié (S8, lot 5) — <c>null</c> si l'item n'a jamais été classifié (cas normal pour la majorité de <c>LibraryItems</c>).</summary>
     Task<string?> GetArticleSummaryAsync(long id, CancellationToken cancellationToken);
+
+    /// <summary>File de lecture scorée (L1, lot 6), pour l'outil MCP <c>reading_queue</c> — voir <c>ReadingQueueScorer</c>.</summary>
+    Task<IReadOnlyList<ReadingQueueEntry>> GetReadingQueueAsync(int limit, CancellationToken cancellationToken);
 }

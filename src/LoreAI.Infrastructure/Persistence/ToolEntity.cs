@@ -11,6 +11,9 @@ public sealed class ToolEntity
     public required string Name { get; set; }
     public string? Category { get; set; }
 
+    /// <summary>Lien vers le dépôt/site officiel (S9, lot 6) — même patron que <see cref="Category"/> : renseigné à la création, jamais réécrit ensuite.</summary>
+    public string? Url { get; set; }
+
     /// <summary>
     /// Champ manuel/futur : jamais écrasé par le pipeline de classification, seulement initialisé à la
     /// création (<see cref="ToolRepository"/>). Pas d'enum : rien ne fait encore transitionner ce statut.

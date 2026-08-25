@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using Microsoft.Extensions.Logging;
@@ -106,6 +107,23 @@ public sealed class RaindropClient : IRaindropClient
             ?? throw new InvalidOperationException("Réponse Raindrop vide ou invalide.");
 
         return payload.Items.Select(MapToLibraryItem).ToList();
+    }
+
+    /// <summary>L3 (lot 6) : <c>null</c> sur 404, sans lever — un item supprimé définitivement de Raindrop est un résultat attendu, pas un incident.</summary>
+    public async Task<RaindropSnapshot?> GetRaindropAsync(long raindropId, CancellationToken cancellationToken)
+    {
+        var response = await _httpClient.GetAsync($"raindrop/{raindropId}", cancellationToken);
+        if (response.StatusCode == HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+
+        response.EnsureSuccessStatusCode();
+
+        var payload = await response.Content.ReadFromJsonAsync<RaindropItemResponseDto>(cancellationToken: cancellationToken);
+        return payload?.Item is { } dto
+            ? new RaindropSnapshot(dto.Id, dto.Collection?.Id, dto.Tags, dto.Broken)
+            : null;
     }
 
     public async Task<RaindropTaxonomy> GetTaxonomyAsync(CancellationToken cancellationToken)

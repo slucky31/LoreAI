@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using LoreAI.Core.Interfaces;
 using LoreAI.Core.Models;
+using LoreAI.Core.Services;
 
 namespace LoreAI.Infrastructure.Persistence;
 
@@ -129,7 +130,7 @@ public sealed class CorpusQueryRepository : ICorpusQueryRepository
             .Select(a => new ToolRelatedArticle(a.Id, a.Title, a.Url, a.Summary))
             .ToListAsync(cancellationToken);
 
-        return new ToolCard(tool.Id, tool.Name, tool.Category, tool.Status, tool.Verdict, tool.FirstSeenAtUtc, tool.LastSeenAtUtc, relatedArticles);
+        return new ToolCard(tool.Id, tool.Name, tool.Category, tool.Status, tool.Verdict, tool.FirstSeenAtUtc, tool.LastSeenAtUtc, relatedArticles, tool.Url);
     }
 
     public async Task<string?> GetArticleSummaryAsync(long id, CancellationToken cancellationToken)
@@ -140,6 +141,21 @@ public sealed class CorpusQueryRepository : ICorpusQueryRepository
             .Where(a => a.Id == id)
             .Select(a => a.Summary)
             .SingleOrDefaultAsync(cancellationToken);
+    }
+
+    /// <summary>L1 (lot 6) : projection puis scoring en mémoire (<see cref="ReadingQueueScorer"/>) — le corpus suivi reste petit face à toute la bibliothèque, pas besoin de traduire le score en SQL.</summary>
+    public async Task<IReadOnlyList<ReadingQueueEntry>> GetReadingQueueAsync(int limit, CancellationToken cancellationToken)
+    {
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+
+        var trackedArticles = await context.Articles
+            .Where(a => !a.IsFallback)
+            .Select(a => new TrackedArticle(
+                a.Id, a.Title, a.Url, a.RecommendedAction, a.Priority, a.CapturedAtUtc,
+                a.ClassifiedAtUtc, a.WordCount, a.HumanHandledAtUtc, a.LinkStatus))
+            .ToListAsync(cancellationToken);
+
+        return ReadingQueueScorer.Score(trackedArticles, DateTimeOffset.UtcNow, limit);
     }
 
     private static readonly System.Linq.Expressions.Expression<Func<LibraryItemEntity, LibraryItemSummary>> ToSummary =

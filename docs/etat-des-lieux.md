@@ -4,7 +4,7 @@
 > L'historique est dans `git log` et les Releases. La cible est dans [`roadmap.md`](roadmap.md). Les décisions sont dans [`adr/`](adr/).
 > Le suivi des lots est dans les [issues #41 à #51](https://github.com/slucky31/LoreAI/issues?q=is%3Aissue+milestone%3A*).
 
-**Dernière mise à jour :** 2026-08-24 · **Version publiée :** 0.14.0
+**Dernière mise à jour :** 2026-08-25 · **Version publiée :** 0.14.0
 
 ---
 
@@ -12,10 +12,10 @@
 
 | | |
 |---|---|
-| **Lot en cours** | **Lot 5 ([#46](https://github.com/slucky31/LoreAI/issues/46)) mergé, déployé et vérifié en production sur `mcm8` aux 4/5** (PR [#69](https://github.com/slucky31/LoreAI/pull/69) → release v0.14.0). Vérifié le 2026-08-24 via le MCP en conditions réelles (1333 items indexés) : `search_items` (Q2, plein texte réel, résultats pertinents), `find_similar` (S5, exclut bien la source), `export_item` (S8, frontmatter correct, gère bien le cas « jamais classifié »). **`catalog_tools`/`tool_card` (S7) confirmés** : un cycle réel a classé l'article « browser-use » en `ATester`, la table `Tools` s'est peuplée automatiquement, `tool_card` rend une fiche Markdown correcte (frontmatter + article lié + résumé). **Seul reste à vérifier** : `MonthlyReviewJob` (S4) — cron 1er du mois 5h UTC, pas de `RunOnceAtStart()` : premier passage réel le **2026-09-01**, chercher `loreai-revue-mensuelle-2026-08.md` sur Discord. |
-| **Prochain geste** | Repasser vérifier `MonthlyReviewJob` le 2026-09-01 — dernier morceau du lot 5. Indépendamment : lot 2 ([#43](https://github.com/slucky31/LoreAI/issues/43)) vérifié aux 2/3 — seul `WeeklyInsightsJob` (N1/N2/N5/S3/S6) reste à vérifier en prod, cron dimanche 3h/4h UTC : **on attend le prochain passage naturel, dimanche 2026-08-30**. Chercher dans Discord un fichier attaché `loreai-insights-2026-08-30.md`. |
+| **Lot en cours** | **Lot 6 ([#47](https://github.com/slucky31/LoreAI/issues/47)) implémenté sur `feat/lot6-boucle-de-retour`, pas encore poussé/PR.** 5 commits : L3 (`ReconciliationJob`, nouveau job quotidien qui détecte tags/collection modifiés par l'utilisateur, articles supprimés/liens cassés) + L4 (relance Discord greffée dans le même job) ; N3/N4/L1 (liens morts suivis, péremption, file de lecture scorée — intégrés au rapport hebdomadaire + outil MCP `reading_queue`, qui remplace son stub « non implémenté ») ; O4 (`TZ=Europe/Paris` sur les deux Dockerfiles, non vérifié par un build Docker réel) ; O5 (`--run-weekly-insights`/`--run-monthly-review`) ; S9 (`toolUrl` de bout en bout). **L5 volontairement exclu** (écriture hors « Non trié », validation explicite requise avant). Deux migrations EF Core (`AddReconciliationFields`, `AddToolUrl`). 318/318 tests passent, y compris `Infrastructure.Tests` (Testcontainers/Postgres, vérifié avec Docker actif). Lot 5 ([#46](https://github.com/slucky31/LoreAI/issues/46)) reste mergé/déployé/vérifié à 5/6 — seul `MonthlyReviewJob` (S4) attend son premier passage réel le 2026-09-01. |
+| **Prochain geste** | Pousser `feat/lot6-boucle-de-retour` et ouvrir la PR lot 6. Une fois mergé/déployé : vérifier en prod `ReconciliationJob` (cron quotidien 2h UTC) et la relance L4, puis le prochain rapport hebdomadaire pour les nouvelles sections N3/N4/L1. Indépendamment : repasser vérifier `MonthlyReviewJob` le 2026-09-01 (dernier morceau du lot 5), et `WeeklyInsightsJob` du lot 2 reste à vérifier en prod côté N1/N2/N5/S3/S6 — cron dimanche 3h/4h UTC, prochain passage naturel 2026-08-30 (chercher `loreai-insights-2026-08-30.md` sur Discord). |
 | **Dernière décision** | **#34 (cache de prompt) tranché par une mesure réelle, 2026-08-24 : sans effet, comme prévu.** 5 échantillons post-déploiement du lot 4 (`cache_control` posé sur le tool `classify`) : `cache_creation_input_tokens`/`cache_read_input_tokens` à 0 partout — le préfixe cacheable (system + tools, ~900 tokens estimés) reste bien sous le seuil de 4096 tokens de Claude Haiku 4.5. Sujet clos jusqu'à un vrai backfill (seul scénario où le cache change la facture, cf. roadmap) ; le marqueur reste en place, sans effet ni coût tant que le seuil n'est pas atteint. |
-| **Bloqué par** | Rien. Le Pi (`mcm8`) est en ligne, le lot 4 est vérifié en production. |
+| **Bloqué par** | Rien. Le Pi (`mcm8`) est en ligne. |
 
 ## Ce qui tourne aujourd'hui
 

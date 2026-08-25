@@ -8,5 +8,5 @@ namespace LoreAI.Core.Interfaces;
 /// </summary>
 public interface IToolRepository
 {
-    Task UpsertFromArticleAsync(string name, string? category, long articleId, DateTimeOffset seenAtUtc, CancellationToken cancellationToken);
+    Task UpsertFromArticleAsync(string name, string? category, string? url, long articleId, DateTimeOffset seenAtUtc, CancellationToken cancellationToken);
 }

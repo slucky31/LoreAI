@@ -25,11 +25,23 @@ RUN DOTNET_ARCH="$(echo "$TARGETARCH" | sed 's/amd64/x64/')" \
 # possible. Le squelette de /data est donc préparé ici, puis copié avec la bonne propriété.
 RUN mkdir -p /app/data-skeleton/logs
 
+# O4 (#71, lot 6) : /usr/share/zoneinfo n'est pas garanti présent sur l'image SDK Debian de base —
+# installé explicitement ici plutôt que supposé, puis copié tel quel vers l'étage chiselé qui n'a pas
+# de gestionnaire de paquets pour le faire lui-même.
+RUN apt-get update && apt-get install -y --no-install-recommends tzdata && rm -rf /var/lib/apt/lists/*
+
 # Chiselée : pas de shell ni de gestionnaire de paquets (surface d'attaque réduite), et l'utilisateur
 # applicatif non-root est déjà celui par défaut. Multi-arch, dont arm64 pour le Raspberry Pi.
 FROM mcr.microsoft.com/dotnet/runtime:10.0-noble-chiseled AS final
 WORKDIR /app
 COPY --from=build /app/publish .
+
+# O4 (#71, lot 6) : seul l'horodatage Serilog (heure locale du process) doit passer à Paris — aucune
+# valeur UTC de domaine (Postgres, noms de fichiers de rapport) n'en dépend, ils utilisent déjà
+# DateTimeOffset.UtcNow explicitement. DOTNET_SYSTEM_GLOBALIZATION_INVARIANT n'affecte pas
+# TimeZoneInfo côté Linux : ce sous-système lit /usr/share/zoneinfo indépendamment d'ICU.
+COPY --from=build /usr/share/zoneinfo /usr/share/zoneinfo
+ENV TZ=Europe/Paris
 
 # /data porte la base SQLite et les logs. Cette propriété ne vaut que pour un volume nommé : sur un
 # bind mount (le cas de docker-compose.yml), c'est la propriété côté hôte qui prime — voir le README.

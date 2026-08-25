@@ -28,7 +28,7 @@ public class ToolRepositoryTests : IAsyncLifetime
     {
         var seenAt = DateTimeOffset.UtcNow;
 
-        await _repository.UpsertFromArticleAsync("Ollama", "CLI", 1, seenAt, TestContext.Current.CancellationToken);
+        await _repository.UpsertFromArticleAsync("Ollama", "CLI", null, 1, seenAt, TestContext.Current.CancellationToken);
 
         await using var context = _fixture.CreateContext();
         var tool = await context.Tools.SingleAsync(TestContext.Current.CancellationToken);
@@ -40,11 +40,33 @@ public class ToolRepositoryTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task UpsertFromArticleAsync_NewTool_PersistsUrl()
+    {
+        await _repository.UpsertFromArticleAsync("Ollama", "CLI", "https://ollama.com", 1, DateTimeOffset.UtcNow, TestContext.Current.CancellationToken);
+
+        await using var context = _fixture.CreateContext();
+        var tool = await context.Tools.SingleAsync(TestContext.Current.CancellationToken);
+        Assert.Equal("https://ollama.com", tool.Url);
+    }
+
+    [Fact]
+    public async Task UpsertFromArticleAsync_ExistingTool_NeverOverwritesUrl()
+    {
+        await _repository.UpsertFromArticleAsync("Ollama", "CLI", "https://ollama.com", 1, DateTimeOffset.UtcNow, TestContext.Current.CancellationToken);
+
+        await _repository.UpsertFromArticleAsync("Ollama", "CLI", "https://autre-lien.example", 2, DateTimeOffset.UtcNow, TestContext.Current.CancellationToken);
+
+        await using var context = _fixture.CreateContext();
+        var tool = await context.Tools.SingleAsync(TestContext.Current.CancellationToken);
+        Assert.Equal("https://ollama.com", tool.Url);
+    }
+
+    [Fact]
     public async Task UpsertFromArticleAsync_ExistingToolCaseInsensitiveMatch_AddsRelatedArticleWithoutDuplicating()
     {
-        await _repository.UpsertFromArticleAsync("Ollama", "CLI", 1, DateTimeOffset.UtcNow, TestContext.Current.CancellationToken);
+        await _repository.UpsertFromArticleAsync("Ollama", "CLI", null, 1, DateTimeOffset.UtcNow, TestContext.Current.CancellationToken);
 
-        await _repository.UpsertFromArticleAsync("ollama", "CLI", 2, DateTimeOffset.UtcNow, TestContext.Current.CancellationToken);
+        await _repository.UpsertFromArticleAsync("ollama", "CLI", null, 2, DateTimeOffset.UtcNow, TestContext.Current.CancellationToken);
 
         await using var context = _fixture.CreateContext();
         var tool = await context.Tools.SingleAsync(TestContext.Current.CancellationToken);
@@ -54,9 +76,9 @@ public class ToolRepositoryTests : IAsyncLifetime
     [Fact]
     public async Task UpsertFromArticleAsync_SameArticleTwice_DoesNotDuplicateId()
     {
-        await _repository.UpsertFromArticleAsync("Ollama", "CLI", 1, DateTimeOffset.UtcNow, TestContext.Current.CancellationToken);
+        await _repository.UpsertFromArticleAsync("Ollama", "CLI", null, 1, DateTimeOffset.UtcNow, TestContext.Current.CancellationToken);
 
-        await _repository.UpsertFromArticleAsync("Ollama", "CLI", 1, DateTimeOffset.UtcNow, TestContext.Current.CancellationToken);
+        await _repository.UpsertFromArticleAsync("Ollama", "CLI", null, 1, DateTimeOffset.UtcNow, TestContext.Current.CancellationToken);
 
         await using var context = _fixture.CreateContext();
         var tool = await context.Tools.SingleAsync(TestContext.Current.CancellationToken);
@@ -82,7 +104,7 @@ public class ToolRepositoryTests : IAsyncLifetime
         }
 
         var newSeenAt = DateTimeOffset.UtcNow;
-        await _repository.UpsertFromArticleAsync("Ollama", "CLI", 2, newSeenAt, TestContext.Current.CancellationToken);
+        await _repository.UpsertFromArticleAsync("Ollama", "CLI", null, 2, newSeenAt, TestContext.Current.CancellationToken);
 
         await using var readContext = _fixture.CreateContext();
         var tool = await readContext.Tools.SingleAsync(TestContext.Current.CancellationToken);

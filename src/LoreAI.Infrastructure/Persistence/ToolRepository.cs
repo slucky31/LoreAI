@@ -14,7 +14,7 @@ public sealed class ToolRepository : IToolRepository
         _schemaGuard = schemaGuard;
     }
 
-    public async Task UpsertFromArticleAsync(string name, string? category, long articleId, DateTimeOffset seenAtUtc, CancellationToken cancellationToken)
+    public async Task UpsertFromArticleAsync(string name, string? category, string? url, long articleId, DateTimeOffset seenAtUtc, CancellationToken cancellationToken)
     {
         await _schemaGuard.EnsureMigratedAsync(cancellationToken);
         await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
@@ -26,6 +26,7 @@ public sealed class ToolRepository : IToolRepository
             {
                 Name = name,
                 Category = category,
+                Url = url,
                 RelatedArticleIds = [articleId],
                 FirstSeenAtUtc = seenAtUtc,
                 LastSeenAtUtc = seenAtUtc,

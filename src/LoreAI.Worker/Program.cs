@@ -100,11 +100,16 @@ try
     builder.Services.AddHttpClient<IReportNotifier, DiscordReportNotifier>()
         .AddStandardResilienceHandler();
 
+    // Relance L4 (lot 6), déclenchée par ReconciliationJob.
+    builder.Services.AddHttpClient<IReminderNotifier, DiscordReminderNotifier>()
+        .AddStandardResilienceHandler();
+
     builder.Services.AddScheduler();
     builder.Services.AddTransient<UnsortedClassificationJob>();
     builder.Services.AddTransient<LibraryIndexingJob>();
     builder.Services.AddTransient<WeeklyInsightsJob>();
     builder.Services.AddTransient<MonthlyReviewJob>();
+    builder.Services.AddTransient<ReconciliationJob>();
 
     var host = builder.Build();
 
@@ -113,6 +118,22 @@ try
     if (args.Contains("--health-check"))
     {
         Environment.ExitCode = await LoreAI.Worker.HealthCheckMode.RunAsync(host.Services, CancellationToken.None) ? 0 : 1;
+        return;
+    }
+
+    // O5 (#75, lot 6) : force un passage hors cadence pour les deux jobs à cron lent (hebdo/mensuel),
+    // sans attendre leur prochain déclenchement naturel — même patron que --health-check, avant
+    // host.Run() et sans valider les options non liées. Les deux jobs ne lèvent jamais (philosophie
+    // « jamais throw, toujours logger » déjà en place) : pas de code de sortie dédié à calculer ici.
+    if (args.Contains("--run-weekly-insights"))
+    {
+        await host.Services.GetRequiredService<WeeklyInsightsJob>().Invoke();
+        return;
+    }
+
+    if (args.Contains("--run-monthly-review"))
+    {
+        await host.Services.GetRequiredService<MonthlyReviewJob>().Invoke();
         return;
     }
 
@@ -145,6 +166,10 @@ try
         scheduler.Schedule<MonthlyReviewJob>()
             .Cron(workerOptions.MonthlyReviewCronExpression)
             .PreventOverlapping(nameof(MonthlyReviewJob));
+
+        scheduler.Schedule<ReconciliationJob>()
+            .Cron(workerOptions.ReconciliationCronExpression)
+            .PreventOverlapping(nameof(ReconciliationJob));
     });
 
     host.Run();

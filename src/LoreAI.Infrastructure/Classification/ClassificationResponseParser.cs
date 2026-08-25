@@ -22,6 +22,7 @@ public static class ClassificationResponseParser
 
     private const int MaxToolNameLength = 100;
     private const int MaxToolCategoryLength = 60;
+    private const int MaxToolUrlLength = 300;
 
     /// <summary>
     /// Variante sans exception, destinée à l'appelant nominal : une sortie de modèle invalide est un
@@ -70,11 +71,13 @@ public static class ClassificationResponseParser
                 : string.Empty;
             var toolName = SanitizeOptionalText(TryParseOptionalNullableString(root, "toolName"), MaxToolNameLength);
             var toolCategory = SanitizeOptionalText(TryParseOptionalNullableString(root, "toolCategory"), MaxToolCategoryLength);
+            var toolUrl = SanitizeOptionalText(TryParseOptionalNullableString(root, "toolUrl"), MaxToolUrlLength);
 
             return new ClassificationResult(suggestedCollection, tags, action, priority, reason, summary, model, rawResponse)
             {
                 ToolName = toolName,
                 ToolCategory = toolCategory,
+                ToolUrl = toolUrl,
             };
         }
         catch (Exception ex) when (ex is not ClassificationParseException)

@@ -129,6 +129,26 @@ public class MarkdownReportBuilderTests
     }
 
     [Fact]
+    public void BuildToolCard_WithUrl_IncludesUrlInFrontmatter()
+    {
+        var card = new ToolCard(1, "Ollama", "CLI", "À évaluer", null, DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch, [], "https://ollama.com");
+
+        var markdown = MarkdownReportBuilder.BuildToolCard(card);
+
+        Assert.Contains("url: https://ollama.com", markdown);
+    }
+
+    [Fact]
+    public void BuildToolCard_NoUrl_OmitsUrlLine()
+    {
+        var card = new ToolCard(1, "Ollama", "CLI", "À évaluer", null, DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch, []);
+
+        var markdown = MarkdownReportBuilder.BuildToolCard(card);
+
+        Assert.DoesNotContain("url:", markdown);
+    }
+
+    [Fact]
     public void BuildItemExport_ClassifiedItem_IncludesSummary()
     {
         var item = new LibraryItemSummary(1, "Titre", "https://a.example", ["dotnet"], 10, new DateTimeOffset(2026, 8, 1, 0, 0, 0, TimeSpan.Zero));
@@ -158,5 +178,5 @@ public class MarkdownReportBuilderTests
         IReadOnlyList<DomainTrend> domains,
         IReadOnlyList<TagTrend> tags,
         LlmUsageSummary usage) =>
-        new(duplicates, hygiene, unbalanced, domains, tags, usage, DateTimeOffset.UnixEpoch);
+        new(duplicates, hygiene, unbalanced, domains, tags, usage, [], [], [], DateTimeOffset.UnixEpoch);
 }

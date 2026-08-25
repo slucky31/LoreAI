@@ -12,4 +12,5 @@ public sealed record ToolCard(
     string? Verdict,
     DateTimeOffset FirstSeenAtUtc,
     DateTimeOffset LastSeenAtUtc,
-    IReadOnlyList<ToolRelatedArticle> RelatedArticles);
+    IReadOnlyList<ToolRelatedArticle> RelatedArticles,
+    string? Url = null);

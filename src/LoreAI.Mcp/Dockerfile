@@ -25,12 +25,22 @@ RUN DOTNET_ARCH="$(echo "$TARGETARCH" | sed 's/amd64/x64/')" \
 # possible. Le squelette de /data est donc préparé ici, puis copié avec la bonne propriété.
 RUN mkdir -p /app/data-skeleton/logs
 
+# O4 (#71, lot 6) : /usr/share/zoneinfo n'est pas garanti présent sur l'image SDK Debian de base —
+# installé explicitement ici plutôt que supposé, puis copié tel quel vers l'étage chiselé qui n'a pas
+# de gestionnaire de paquets pour le faire lui-même.
+RUN apt-get update && apt-get install -y --no-install-recommends tzdata && rm -rf /var/lib/apt/lists/*
+
 # Chiselée, variante ASP.NET Core (contrairement à LoreAI.Worker : ce process héberge Kestrel, pas
 # seulement le runtime .NET) : pas de shell ni de gestionnaire de paquets, utilisateur non-root par
 # défaut. Multi-arch, dont arm64 pour le Raspberry Pi.
 FROM mcr.microsoft.com/dotnet/aspnet:10.0-noble-chiseled AS final
 WORKDIR /app
 COPY --from=build /app/publish .
+
+# O4 (#71, lot 6) : même traitement que LoreAI.Worker — seul l'horodatage Serilog (heure locale du
+# process) change, aucune valeur UTC de domaine n'en dépend.
+COPY --from=build /usr/share/zoneinfo /usr/share/zoneinfo
+ENV TZ=Europe/Paris
 
 # /data ne porte que les logs (pas de base ici, ADR 0009) — même convention que LoreAI.Worker. Sur un
 # bind mount, c'est la propriété côté hôte qui prime, voir docs/deploiement-raspberry-pi.md.
