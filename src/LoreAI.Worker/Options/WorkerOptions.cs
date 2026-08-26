@@ -60,4 +60,15 @@ public sealed class WorkerOptions
     /// </summary>
     [Required(AllowEmptyStrings = false)]
     public string ReconciliationCronExpression { get; init; } = "0 2 * * *";
+
+    /// <summary>Expression cron du connecteur Gmail (lot 8, #49) — par défaut chaque heure : les newsletters sont peu fréquentes, pas besoin du rythme 15 min de « Non trié ».</summary>
+    [Required(AllowEmptyStrings = false)]
+    public string EmailIngestionCronExpression { get; init; } = "0 * * * *";
+
+    /// <summary>
+    /// Inactif par défaut (lot 8, #49) : tant qu'aucun client OAuth Google n'est configuré (étape manuelle,
+    /// cf. README), le connecteur Gmail ne doit ni être planifié, ni exiger une section <c>Gmail</c>
+    /// valide au démarrage — même logique que <see cref="WriteBackToRaindrop"/>.
+    /// </summary>
+    public bool EmailIngestionEnabled { get; init; }
 }

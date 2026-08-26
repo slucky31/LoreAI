@@ -56,7 +56,7 @@ public static class ClassificationResponseParser
     {
         try
         {
-            using var document = JsonDocument.Parse(StripCodeFences(toolInputJson));
+            using var document = JsonDocument.Parse(LlmResponseTextSanitizer.StripCodeFences(toolInputJson));
             var root = document.RootElement;
 
             var suggestedCollection = ParseNullableString(root, "suggestedCollection");
@@ -128,30 +128,13 @@ public static class ClassificationResponseParser
     }
 
     /// <summary>
-    /// Aplatit les blancs (un tag ne tient que sur une ligne), retire les caractères de contrôle et tronque.
-    /// Rien de ce que renvoie le modèle ne doit pouvoir se déverser tel quel dans les données de l'utilisateur.
+    /// Rien de ce que renvoie le modèle ne doit pouvoir se déverser tel quel dans les données de
+    /// l'utilisateur (cf. F-11) — nettoyage partagé, voir <see cref="LlmResponseTextSanitizer"/>.
     /// </summary>
-    private static string SanitizeTag(string? raw) => SanitizeFreeText(raw, MaxTagLength) ?? string.Empty;
+    private static string SanitizeTag(string? raw) => LlmResponseTextSanitizer.SanitizeFreeText(raw, MaxTagLength) ?? string.Empty;
 
-    /// <summary>Même traitement que <see cref="SanitizeTag"/> (F-11) pour toolName/toolCategory (S7, lot 5), mais <c>null</c> plutôt que vide quand rien n'exploitable ne subsiste.</summary>
-    private static string? SanitizeOptionalText(string? raw, int maxLength) => SanitizeFreeText(raw, maxLength);
-
-    private static string? SanitizeFreeText(string? raw, int maxLength)
-    {
-        if (string.IsNullOrWhiteSpace(raw))
-        {
-            return null;
-        }
-
-        var collapsed = string.Join(' ', raw.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
-        var printable = new string(collapsed.Where(c => !char.IsControl(c)).ToArray()).Trim();
-        if (printable.Length == 0)
-        {
-            return null;
-        }
-
-        return printable.Length <= maxLength ? printable : printable[..maxLength].TrimEnd();
-    }
+    /// <summary>Même traitement que <see cref="SanitizeTag"/> pour toolName/toolCategory (S7, lot 5), mais <c>null</c> plutôt que vide quand rien d'exploitable ne subsiste.</summary>
+    private static string? SanitizeOptionalText(string? raw, int maxLength) => LlmResponseTextSanitizer.SanitizeFreeText(raw, maxLength);
 
     private static TEnum ParseEnum<TEnum>(JsonElement root, string propertyName) where TEnum : struct, Enum
     {
@@ -169,23 +152,4 @@ public static class ClassificationResponseParser
         return value;
     }
 
-    private static string StripCodeFences(string text)
-    {
-        var trimmed = text.Trim();
-        if (!trimmed.StartsWith("```", StringComparison.Ordinal))
-        {
-            return trimmed;
-        }
-
-        var firstNewLine = trimmed.IndexOf('\n');
-        trimmed = firstNewLine >= 0 ? trimmed[(firstNewLine + 1)..] : trimmed;
-
-        var lastFence = trimmed.LastIndexOf("```", StringComparison.Ordinal);
-        if (lastFence >= 0)
-        {
-            trimmed = trimmed[..lastFence];
-        }
-
-        return trimmed.Trim();
-    }
 }

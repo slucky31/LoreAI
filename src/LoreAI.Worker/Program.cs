@@ -7,6 +7,7 @@ using LoreAI.Core.Interfaces;
 using LoreAI.Core.Services;
 using LoreAI.Infrastructure.Classification;
 using LoreAI.Infrastructure.Content;
+using LoreAI.Infrastructure.Gmail;
 using LoreAI.Infrastructure.Notifications;
 using LoreAI.Infrastructure.Persistence;
 using LoreAI.Infrastructure.Raindrop;
@@ -48,6 +49,16 @@ try
         .AddValidatedOptions<DiscordOptions>(builder.Configuration, "Discord")
         .AddValidatedOptions<WorkerOptions>(builder.Configuration, "Worker")
         .AddValidatedOptions<NotificationOptions>(builder.Configuration, "Notification");
+
+    // Interrupteur dédié (lot 8, #49), même patron que Worker__WriteBackToRaindrop : inactif par défaut,
+    // pour qu'un déploiement existant sans client OAuth Google configuré (le cas aujourd'hui, cf. README)
+    // continue de démarrer normalement plutôt que d'échouer sur une section Gmail incomplète. Lu
+    // directement sur IConfiguration : WorkerOptions n'est pas encore résolu à ce stade du bootstrap.
+    var emailIngestionEnabled = builder.Configuration.GetValue("Worker:EmailIngestionEnabled", false);
+    if (emailIngestionEnabled)
+    {
+        builder.Services.AddValidatedOptions<GoogleOAuthOptions>(builder.Configuration, "Gmail");
+    }
 
     // IDbContextFactory plutôt qu'AddDbContext : les repositories restent des singletons (inchangé),
     // et un DbContext n'est ni thread-safe ni fait pour être partagé sur la durée de vie du host.
@@ -103,6 +114,22 @@ try
     // Relance L4 (lot 6), déclenchée par ReconciliationJob.
     builder.Services.AddHttpClient<IReminderNotifier, DiscordReminderNotifier>()
         .AddStandardResilienceHandler();
+
+    // S6 (lot 8) : toujours enregistré, même désactivé — la table reste simplement vide, et
+    // WeeklyInsightsJob peut combiner cette source sans condition.
+    builder.Services.AddSingleton<IEmailExtractionLogRepository, EmailExtractionLogRepository>();
+
+    if (emailIngestionEnabled)
+    {
+        builder.Services.AddHttpClient<IGmailIngester, GmailIngester>()
+            .AddStandardResilienceHandler();
+
+        // Même cible API et même résilience que le classifieur (S6/lot 8) : appel Anthropic tool-use en amont.
+        builder.Services.AddHttpClient<IEmailLinkExtractor, AnthropicEmailLinkExtractor>()
+            .AddStandardResilienceHandler(ClassifierResilience.Configure);
+
+        builder.Services.AddTransient<EmailIngestionJob>();
+    }
 
     builder.Services.AddScheduler();
     builder.Services.AddTransient<ArticleClassificationStep>();
@@ -171,6 +198,13 @@ try
         scheduler.Schedule<ReconciliationJob>()
             .Cron(workerOptions.ReconciliationCronExpression)
             .PreventOverlapping(nameof(ReconciliationJob));
+
+        if (workerOptions.EmailIngestionEnabled)
+        {
+            scheduler.Schedule<EmailIngestionJob>()
+                .Cron(workerOptions.EmailIngestionCronExpression)
+                .PreventOverlapping(nameof(EmailIngestionJob));
+        }
     });
 
     host.Run();

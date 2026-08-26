@@ -21,6 +21,7 @@ public sealed class WeeklyInsightsJob : IInvocable, ICancellableInvocable
 
     private readonly ILibraryItemRepository _libraryItemRepository;
     private readonly IArticleRepository _articleRepository;
+    private readonly IEmailExtractionLogRepository _emailExtractionLogRepository;
     private readonly IRaindropClient _raindropClient;
     private readonly IReportNotifier _reportNotifier;
     private readonly ILogger<WeeklyInsightsJob> _logger;
@@ -28,12 +29,14 @@ public sealed class WeeklyInsightsJob : IInvocable, ICancellableInvocable
     public WeeklyInsightsJob(
         ILibraryItemRepository libraryItemRepository,
         IArticleRepository articleRepository,
+        IEmailExtractionLogRepository emailExtractionLogRepository,
         IRaindropClient raindropClient,
         IReportNotifier reportNotifier,
         ILogger<WeeklyInsightsJob> logger)
     {
         _libraryItemRepository = libraryItemRepository;
         _articleRepository = articleRepository;
+        _emailExtractionLogRepository = emailExtractionLogRepository;
         _raindropClient = raindropClient;
         _reportNotifier = reportNotifier;
         _logger = logger;
@@ -52,7 +55,12 @@ public sealed class WeeklyInsightsJob : IInvocable, ICancellableInvocable
             var libraryItems = await _libraryItemRepository.GetAllForInsightsAsync(cancellationToken);
             var taxonomy = await _raindropClient.GetTaxonomyAsync(cancellationToken);
             var startOfMonthUtc = new DateTimeOffset(generatedAtUtc.Year, generatedAtUtc.Month, 1, 0, 0, 0, TimeSpan.Zero);
-            var rawResponses = await _articleRepository.GetClassificationRawResponsesSinceAsync(startOfMonthUtc, cancellationToken);
+            // S6 (lot 8) : les appels d'extraction de liens Newsletter (en amont de la classification) sont
+            // un second type d'appel LLM au même fournisseur — le rapport reste un total unique, pas de
+            // distinction par type d'appel (cf. roadmap lot 8).
+            var classificationRawResponses = await _articleRepository.GetClassificationRawResponsesSinceAsync(startOfMonthUtc, cancellationToken);
+            var extractionRawResponses = await _emailExtractionLogRepository.GetRawResponsesSinceAsync(startOfMonthUtc, cancellationToken);
+            var rawResponses = classificationRawResponses.Concat(extractionRawResponses).ToList();
             var trackedArticles = await _articleRepository.GetTrackedArticlesAsync(cancellationToken);
 
             var collectionTitles = taxonomy.Collections.ToDictionary(c => c.Id, c => c.Title);

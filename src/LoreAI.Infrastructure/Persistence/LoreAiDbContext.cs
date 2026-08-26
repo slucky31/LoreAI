@@ -10,6 +10,7 @@ public sealed class LoreAiDbContext(DbContextOptions<LoreAiDbContext> options) :
     public DbSet<LibraryItemEntity> LibraryItems => Set<LibraryItemEntity>();
     public DbSet<LibraryIndexStateEntity> LibraryIndexStates => Set<LibraryIndexStateEntity>();
     public DbSet<ToolEntity> Tools => Set<ToolEntity>();
+    public DbSet<EmailExtractionLogEntity> EmailExtractionLogs => Set<EmailExtractionLogEntity>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -63,6 +64,13 @@ public sealed class LoreAiDbContext(DbContextOptions<LoreAiDbContext> options) :
             // Id généré : contrairement à ArticleEntity/LibraryItemEntity, un outil n'a pas d'identifiant
             // Raindrop naturel (un même outil peut être rencontré via plusieurs articles).
             tool.HasIndex(t => t.Name);
+        });
+
+        modelBuilder.Entity<EmailExtractionLogEntity>(extractionLog =>
+        {
+            // Pas de clé applicative (lot 8, #49), comme CycleRunEntity : rien n'identifie un appel a priori.
+            extractionLog.Property(e => e.RawResponse).HasColumnType("jsonb");
+            extractionLog.HasIndex(e => e.ProcessedAtUtc);
         });
     }
 }
