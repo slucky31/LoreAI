@@ -148,6 +148,7 @@ Ce que ça coûte, et qu'il faut regarder en face :
 | O3 | **Cache de prompt Anthropic** ([#34](https://github.com/slucky31/LoreAI/issues/34)) | 1 | 2 | **Sans effet au régime actuel** — voir l'arbitrage dédié. C'est une optimisation de *backfill*, pas de croisière. À mesurer (30 min) avant de planifier |
 | O4 | **Logs en heure de Paris plutôt qu'UTC** ([#71](https://github.com/slucky31/LoreAI/issues/71)) | 1 | 1 | `TZ=Europe/Paris` sur les deux conteneurs — mais les images finales sont chiselées et tournent en `GLOBALIZATION_INVARIANT`, sans `tzdata` : à résoudre en copiant `/usr/share/zoneinfo` depuis l'étage `build` (qui a `apt`), comme `/data-skeleton`. Seul l'horodatage Serilog change, jamais les valeurs UTC de domaine (Postgres, noms de fichiers de rapport). **Planifié pour le lot 6**, embarqué dans la même PR plutôt qu'en PR dédiée |
 | O5 | **Déclenchement manuel de `WeeklyInsightsJob`/`MonthlyReviewJob`** ([#75](https://github.com/slucky31/LoreAI/issues/75)) | 2 | 1 | Deux jobs à cadence lente (hebdo/mensuelle) sans aucun moyen de forcer un passage — vérifier en prod a coûté plusieurs jours d'attente au lot 5. Mode CLI `--run-weekly-insights`/`--run-monthly-review`, même patron que `--health-check` (`HealthCheckMode.cs`) : pas de nouvel état à persister, contrairement à un flag « on startup » qui rejouerait le rapport à chaque redémarrage. **Planifié pour le lot 6** |
+| O6 | **Rapport hebdomadaire : digest Discord mobile-friendly** ([#78](https://github.com/slucky31/LoreAI/issues/78)) | 2 | 2 | Constaté à la vérification en prod du lot 6 : le fichier `.md` en pièce jointe est peu pratique sur mobile, et une section à fort volume (34 articles périmés) décourage plus qu'elle n'encourage. Remplacé par un digest Discord natif (embeds), top 10 + total par section, réparti en deux messages (actionnable / hygiène) pour rester sous la limite Discord de 6000 caractères. `MonthlyReviewJob` non concerné (format narratif conservé). **Planifié pour le lot 7** |
 
 ## Le worker n'a aucune mémoire de son dernier cycle
 
@@ -354,6 +355,8 @@ Ne commence qu'une fois le lot 4 livré : les deux connecteurs ont besoin de l'e
 `FeedIngester` implémentant `ISourceIngester` : liste de flux en configuration ou en base, parsing via `System.ServiceModel.Syndication`, curseur par flux sur la date de publication. Les entrées deviennent des `Item` avec `SourceType = Feed` et passent dans le pipeline de classification existant.
 
 Remplace Feedly sans rien auto-héberger de plus (voir l'arbitrage Miniflux).
+
+- **O6** rapport hebdomadaire mobile-friendly ([#78](https://github.com/slucky31/LoreAI/issues/78)) — sans rapport avec le connecteur RSS, embarqué ici parce que c'est le prochain lot ouvert, même raison qu'O4/S9/O5 au lot 6.
 
 #### Lot 8 — Connecteur newsletters Gmail (**C2**)
 
