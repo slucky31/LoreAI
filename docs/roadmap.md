@@ -341,7 +341,6 @@ networks:
 - **L3** `ReconciliationJob` : re-fetch des items Raindrop suivis, détection des tags et collections modifiés, des articles supprimés, du flag `broken`. Colonnes `LastSeenAtUtc`, `HumanHandledAtUtc`, `LinkStatus`.
 - **L4** relances, **N3** liens morts, **N4** péremption : tous triviaux une fois L3 en place.
 - **L1** file de lecture, enfin scorée sur des données complètes (priorité × fraîcheur × temps de lecture × non-traité). C'est ici que le filet perdu au lot 2 est remplacé par quelque chose de mieux.
-- **L5** collection pilote « À lire cette semaine », **seulement après validation explicite** de l'écriture hors « Non trié ».
 - **O4** logs en heure de Paris ([#71](https://github.com/slucky31/LoreAI/issues/71)) — sans rapport avec le reste du lot, embarqué ici parce que ce lot touche de toute façon `Program.cs`/`Dockerfile`.
 - **S9** lien projet dans la base d'outils ([#73](https://github.com/slucky31/LoreAI/issues/73)) — sans rapport avec le reste du lot ni dépendance technique avec lui ; simplement le prochain lot ouvert, plus économique qu'une PR dédiée pour un seul champ.
 - **O5** déclenchement manuel de `WeeklyInsightsJob`/`MonthlyReviewJob` ([#75](https://github.com/slucky31/LoreAI/issues/75)) — mode CLI `--run-weekly-insights`/`--run-monthly-review`, même patron que `--health-check`. Sans rapport avec le reste du lot, embarqué ici pour la même raison qu'O4/S9.
@@ -363,6 +362,8 @@ Remplace Feedly sans rien auto-héberger de plus (voir l'arbitrage Miniflux).
 `GmailIngester` : OAuth Google en scope `gmail.readonly`, `users.messages.list` filtré sur `q=label:<tag>`, extraction du corps HTML avec le même extracteur que S1, curseur sur `historyId`.
 
 ⚠️ Deux points de vigilance : le refresh token doit être stocké (jamais en clair dans le dépôt, cf. `.env`), et une newsletter contient typiquement **plusieurs liens** — il faut décider si l'unité est le mail ou chaque lien qu'il contient. Recommandation : le mail comme `Item`, les liens extraits comme items secondaires rattachés, sinon le corpus explose en bruit.
+
+- **L5** collection pilote « À lire cette semaine », alimentée par L1 ([#47](https://github.com/slucky31/LoreAI/issues/47)) — exclue du lot 6 faute de validation explicite de l'écriture hors « Non trié » ; replanifiée ici comme prochain lot ouvert, même raison qu'O4/S9/O5/O6. **Toujours conditionnée à cette validation avant implémentation.**
 
 #### Lot 9 — Veille automatique (**C4**)
 
