@@ -704,6 +704,11 @@ public class UnsortedClassificationJobTests
             NotificationPolicy.ShouldNotifyImmediately(Arg.Any<ClassificationResult>()).Returns(false);
             ContentFetcher.FetchAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
                 .Returns(ContentFetchResult.Skipped);
+            // L'id généré (lot 8, #49) est mocké pour valoir le SourceId numérique de l'item, comme avant
+            // la généralisation de la clé Articles : les assertions existantes comparent à cet id littéral.
+            ArticleRepository
+                .UpsertAsync(Arg.Any<Item>(), Arg.Any<ClassificationResult>(), Arg.Any<ContentFetchResult>(), Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>())
+                .Returns(callInfo => long.Parse(callInfo.ArgAt<Item>(0).SourceId, System.Globalization.CultureInfo.InvariantCulture));
         }
 
         public JobFixture WithTaxonomy(RaindropTaxonomy taxonomy)
@@ -750,18 +755,28 @@ public class UnsortedClassificationJobTests
             return this;
         }
 
-        public UnsortedClassificationJob Build() => new(
-            RaindropClient,
-            PollingStateRepository,
-            ArticleRepository,
-            CycleRunRepository,
-            CycleReportNotifier,
-            Classifier,
-            ContentFetcher,
-            ImmediateNotifier,
-            NotificationPolicy,
-            ToolRepository,
-            MsOptions.Create(new WorkerOptions { WriteBackToRaindrop = _writeBack, FetchArticleContent = _fetchArticleContent }),
-            NullLogger<UnsortedClassificationJob>.Instance);
+        public UnsortedClassificationJob Build()
+        {
+            var options = MsOptions.Create(new WorkerOptions { WriteBackToRaindrop = _writeBack, FetchArticleContent = _fetchArticleContent });
+            var classificationStep = new ArticleClassificationStep(
+                Classifier,
+                ContentFetcher,
+                ArticleRepository,
+                ImmediateNotifier,
+                NotificationPolicy,
+                ToolRepository,
+                options,
+                NullLogger<ArticleClassificationStep>.Instance);
+
+            return new UnsortedClassificationJob(
+                RaindropClient,
+                PollingStateRepository,
+                ArticleRepository,
+                CycleRunRepository,
+                CycleReportNotifier,
+                classificationStep,
+                options,
+                NullLogger<UnsortedClassificationJob>.Instance);
+        }
     }
 }

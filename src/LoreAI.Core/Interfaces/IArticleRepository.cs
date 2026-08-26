@@ -5,8 +5,12 @@ namespace LoreAI.Core.Interfaces;
 
 public interface IArticleRepository
 {
-    /// <summary>Insère ou remplace un article classifié — idempotent sur Item.SourceId.</summary>
-    Task UpsertAsync(Item item, ClassificationResult classification, ContentFetchResult content, DateTimeOffset classifiedAtUtc, CancellationToken cancellationToken);
+    /// <summary>
+    /// Insère ou remplace un article classifié — idempotent sur <c>(Item.SourceType, Item.SourceId)</c>.
+    /// Retourne l'id généré par la base (lot 8, #49) : la clé applicative n'est plus l'id Raindrop
+    /// numérique, un lien Newsletter n'en ayant pas.
+    /// </summary>
+    Task<long> UpsertAsync(Item item, ClassificationResult classification, ContentFetchResult content, DateTimeOffset classifiedAtUtc, CancellationToken cancellationToken);
 
     /// <summary>
     /// Enregistre le résultat de l'application (tags + déplacement éventuel) sur Raindrop.

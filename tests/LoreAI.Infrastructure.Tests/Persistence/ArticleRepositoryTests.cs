@@ -151,6 +151,27 @@ public class ArticleRepositoryTests : IAsyncLifetime
         Assert.Single(await GetAllAsync());
     }
 
+    /// <summary>
+    /// Lot 8 (#49) : Id est désormais généré par la base, la clé applicative devient (SourceType, SourceId).
+    /// Un lien Newsletter portant le même SourceId textuel qu'un article Raindrop (ex. "1") ne doit ni
+    /// entrer en collision, ni se faire écraser par l'autre.
+    /// </summary>
+    [Fact]
+    public async Task UpsertAsync_SameSourceIdDifferentSourceType_DoesNotCollide()
+    {
+        var raindropItem = CreateItem(1, "Article Raindrop");
+        var newsletterItem = raindropItem with { SourceType = SourceType.Newsletter, Title = "Lien newsletter" };
+
+        var raindropId = await _repository.UpsertAsync(raindropItem, CreateClassification(), ContentFetchResult.Skipped, DateTimeOffset.UtcNow, TestContext.Current.CancellationToken);
+        var newsletterId = await _repository.UpsertAsync(newsletterItem, CreateClassification(), ContentFetchResult.Skipped, DateTimeOffset.UtcNow, TestContext.Current.CancellationToken);
+
+        Assert.NotEqual(raindropId, newsletterId);
+        var all = await GetAllAsync();
+        Assert.Equal(2, all.Count);
+        Assert.Contains(all, a => a.SourceType == SourceType.Raindrop && a.Title == "Article Raindrop");
+        Assert.Contains(all, a => a.SourceType == SourceType.Newsletter && a.Title == "Lien newsletter");
+    }
+
     [Fact]
     public async Task GetClassificationRawResponsesSinceAsync_ExcludesArticlesClassifiedBeforeCutoff()
     {
