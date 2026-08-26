@@ -359,7 +359,9 @@ Remplace Feedly sans rien auto-héberger de plus (voir l'arbitrage Miniflux).
 
 #### Lot 8 — Connecteur newsletters Gmail (**C2**)
 
-`GmailIngester` : OAuth Google en scope `gmail.readonly`, `users.messages.list` filtré sur `q=label:<tag>`, extraction du corps HTML avec le même extracteur que S1, curseur sur `historyId` (bookkeeping interne à l'ingester, jamais persisté comme `Item` — pas d'`Item` pour le mail lui-même).
+`GmailIngester` : OAuth Google en scope `gmail.readonly`, `users.messages.list` filtré sur `q=label:<tag>`, curseur sur `historyId` (bookkeeping interne à l'ingester, jamais persisté comme `Item` — pas d'`Item` pour le mail lui-même).
+
+**Corps du mail : privilégier la partie `text/plain`**, pas de parsing DOM. Sur 5 newsletters réelles (Kit, ConvertKit, EmailOctopus...), le fallback `text/plain` du `multipart/alternative` est déjà du texte lisible, en ordre de lecture, avec les URLs inlinées (`texte ( https://... )`) — nettement plus robuste qu'analyser le DOM HTML de templates chacun différents. Fallback HTML→texte brut (strip tags, décode entités) seulement si un mail est HTML-only sans partie texte ; pas besoin d'un extracteur readability comme S1, la fidélité de mise en page n'a pas à être parfaite ici.
 
 ⚠️ **Secrets** : le refresh token doit être stocké hors du dépôt (`.env`/`user-secrets`, jamais en clair).
 
@@ -367,8 +369,8 @@ Remplace Feedly sans rien auto-héberger de plus (voir l'arbitrage Miniflux).
 
 **Tri contenu vs bruit — décidé sur échantillons réels (2026-08-26)** : une newsletter mono-article (Milan Jovanovic, Anton DevTips) noie 1 vrai article dans ~15 liens de sponsors/auto-promo/réseaux sociaux/désinscription ; une newsletter perso (Kit) répète le même lien de tracking sous plusieurs ancres ; un vrai digest (Programmez) contient ~12 articles distincts légitimes — **et le lien éditorial comme le lien de nav partagent le même domaine de tracking**, donc aucun filtre par domaine ne peut les distinguer seul. Pipeline à deux étages :
 
-1. **Filtre heuristique** (gratuit, dans `GmailIngester`) : dédup des hrefs strictement identiques, exclusion des patterns triviaux (`unsubscribe`, `preferences`, profils réseaux sociaux type `linkedin.com/in/`/`youtube.com/@` — en gardant `youtube.com/watch` qui peut être le contenu).
-2. **Extraction LLM** (nouveau composant `IEmailLinkExtractor`, symétrique à `IClassifier` mais en amont — tool-use forcé comme `AnthropicClassifier`) : sur les liens restants + leur contexte textuel, tranche lesquels sont de vrais articles (0 à N par mail, gère aussi bien le cas mono-article que le digest).
+1. **Filtre heuristique** (gratuit, dans `GmailIngester`) : dédup des hrefs strictement identiques, exclusion des patterns triviaux (`unsubscribe`, `preferences`, profils réseaux sociaux type `linkedin.com/in/`/`youtube.com/@` — en gardant `youtube.com/watch` qui peut être le contenu). Aucune URL trouvée après ce filtre → court-circuit, 0 item, pas d'appel LLM.
+2. **Extraction LLM** (nouveau composant `IEmailLinkExtractor`, symétrique à `IClassifier` mais en amont — tool-use forcé comme `AnthropicClassifier`) : **pas de fenêtrage par lien** — le corps entier du mail (quelques Ko, largement dans le budget de contexte de Haiku) est donné en une fois, le LLM tranche lesquelles des URLs restantes sont de vrais articles (0 à N par mail, gère aussi bien le cas mono-article que le digest) et propose au passage le titre de l'article (`Item.Title`) à partir du contexte, sans fetch séparé. Une liste vide en retour est un résultat légitime, même philosophie que `ClassificationResult.Fallback` : jamais une erreur, le curseur `historyId` avance quand même.
 
 ⚠️ **Coût** : ajoute un **second type d'appel LLM** au pipeline Gmail (extraction par mail, en plus de la classification par item déjà existante) — à faire remonter dans `LlmUsageAnalyzer` (S6) comme le reste.
 
