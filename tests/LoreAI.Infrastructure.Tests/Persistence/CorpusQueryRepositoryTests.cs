@@ -1,4 +1,6 @@
+using System.Globalization;
 using Microsoft.EntityFrameworkCore;
+using LoreAI.Core.Enums;
 using LoreAI.Infrastructure.Persistence;
 
 namespace LoreAI.Infrastructure.Tests.Persistence;
@@ -289,6 +291,8 @@ public class CorpusQueryRepositoryTests : IAsyncLifetime
     private static ArticleEntity CreateArticle(long id, string title, string url, string? summary = null) => new()
     {
         Id = id,
+        SourceType = SourceType.Raindrop,
+        SourceId = id.ToString(CultureInfo.InvariantCulture),
         Title = title,
         Url = url,
         Summary = summary,

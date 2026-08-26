@@ -105,6 +105,7 @@ try
         .AddStandardResilienceHandler();
 
     builder.Services.AddScheduler();
+    builder.Services.AddTransient<ArticleClassificationStep>();
     builder.Services.AddTransient<UnsortedClassificationJob>();
     builder.Services.AddTransient<LibraryIndexingJob>();
     builder.Services.AddTransient<WeeklyInsightsJob>();

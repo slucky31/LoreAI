@@ -15,14 +15,16 @@ public sealed class LoreAiDbContext(DbContextOptions<LoreAiDbContext> options) :
     {
         modelBuilder.Entity<ArticleEntity>(article =>
         {
-            // Id est l'identifiant Raindrop, jamais généré côté base : UpsertAsync le fournit toujours.
-            article.Property(a => a.Id).ValueGeneratedNever();
+            // Id est généré par la base depuis le lot 8 (#49) : la clé applicative est (SourceType, SourceId),
+            // seule commune à toutes les sources (un lien Newsletter n'a pas d'id Raindrop numérique).
+            article.Property(a => a.SourceType).HasConversion<string>();
             article.Property(a => a.ClassificationRawResponse).HasColumnType("jsonb");
             article.Property(a => a.RecommendedAction).HasConversion<string>();
             article.Property(a => a.Priority).HasConversion<string>();
             article.Property(a => a.ContentStatus).HasConversion<string>();
             article.Property(a => a.LinkStatus).HasConversion<string>();
             article.HasIndex(a => a.CapturedAtUtc);
+            article.HasIndex(a => new { a.SourceType, a.SourceId }).IsUnique();
         });
 
         modelBuilder.Entity<PollingStateEntity>(pollingState =>

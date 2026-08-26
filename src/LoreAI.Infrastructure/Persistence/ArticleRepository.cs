@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -21,16 +20,18 @@ public sealed class ArticleRepository : IArticleRepository
         _logger = logger;
     }
 
-    public async Task UpsertAsync(Item item, ClassificationResult classification, ContentFetchResult content, DateTimeOffset classifiedAtUtc, CancellationToken cancellationToken)
+    public async Task<long> UpsertAsync(Item item, ClassificationResult classification, ContentFetchResult content, DateTimeOffset classifiedAtUtc, CancellationToken cancellationToken)
     {
         await _schemaGuard.EnsureMigratedAsync(cancellationToken);
         await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
 
-        var id = long.Parse(item.SourceId, CultureInfo.InvariantCulture);
-        var entity = await context.Articles.FindAsync([id], cancellationToken);
+        // Clé applicative (SourceType, SourceId) depuis le lot 8 (#49) : Id est généré par la base, un lien
+        // Newsletter n'ayant pas d'id Raindrop numérique à réutiliser tel quel.
+        var entity = await context.Articles
+            .SingleOrDefaultAsync(a => a.SourceType == item.SourceType && a.SourceId == item.SourceId, cancellationToken);
         if (entity is null)
         {
-            entity = new ArticleEntity { Id = id, Title = item.Title, Url = item.Url };
+            entity = new ArticleEntity { SourceType = item.SourceType, SourceId = item.SourceId, Title = item.Title, Url = item.Url };
             context.Articles.Add(entity);
         }
 
@@ -61,6 +62,8 @@ public sealed class ArticleRepository : IArticleRepository
         entity.ContentFetchedAtUtc = content.Status == ContentFetchStatus.Skipped ? null : DateTimeOffset.UtcNow;
 
         await context.SaveChangesAsync(cancellationToken);
+
+        return entity.Id;
     }
 
     /// <summary>

@@ -6,12 +6,15 @@ namespace LoreAI.Infrastructure.Persistence;
 /// Forme persistée d'un article classifié. Distincte des records immuables de <c>Core</c> : c'est la
 /// classe qu'EF Core suit et matérialise, mappée vers/depuis <c>Item</c>/<c>ClassificationResult</c>
 /// dans <see cref="ArticleRepository"/> — même séparation que l'ancien <c>ArticleRow</c> de Dapper.
-/// L'identifiant reste l'id Raindrop numérique (ADR 0012) : généraliser la clé en <c>(SourceType, SourceId)</c>
-/// n'a de sens que lorsqu'une deuxième source existe réellement.
 /// </summary>
 public sealed class ArticleEntity
 {
+    // Généré par la base (lot 8, #49) : un lien Newsletter n'a pas d'id Raindrop numérique à réutiliser
+    // tel quel. La clé applicative est désormais (SourceType, SourceId) ; Id reste l'identifiant technique
+    // exposé aux autres repositories (write-back, réconciliation, base d'outils...).
     public long Id { get; set; }
+    public SourceType SourceType { get; set; }
+    public required string SourceId { get; set; }
     public required string Title { get; set; }
     public required string Url { get; set; }
     public string? Excerpt { get; set; }

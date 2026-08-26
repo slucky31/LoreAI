@@ -22,11 +22,7 @@ public sealed class UnsortedClassificationJob : IInvocable, ICancellableInvocabl
     private readonly IArticleRepository _articleRepository;
     private readonly ICycleRunRepository _cycleRunRepository;
     private readonly ICycleReportNotifier _cycleReportNotifier;
-    private readonly IClassifier _classifier;
-    private readonly IContentFetcher _contentFetcher;
-    private readonly IImmediateNotifier _immediateNotifier;
-    private readonly INotificationPolicy _notificationPolicy;
-    private readonly IToolRepository _toolRepository;
+    private readonly ArticleClassificationStep _classificationStep;
     private readonly WorkerOptions _options;
     private readonly ILogger<UnsortedClassificationJob> _logger;
 
@@ -36,11 +32,7 @@ public sealed class UnsortedClassificationJob : IInvocable, ICancellableInvocabl
         IArticleRepository articleRepository,
         ICycleRunRepository cycleRunRepository,
         ICycleReportNotifier cycleReportNotifier,
-        IClassifier classifier,
-        IContentFetcher contentFetcher,
-        IImmediateNotifier immediateNotifier,
-        INotificationPolicy notificationPolicy,
-        IToolRepository toolRepository,
+        ArticleClassificationStep classificationStep,
         IOptions<WorkerOptions> options,
         ILogger<UnsortedClassificationJob> logger)
     {
@@ -49,11 +41,7 @@ public sealed class UnsortedClassificationJob : IInvocable, ICancellableInvocabl
         _articleRepository = articleRepository;
         _cycleRunRepository = cycleRunRepository;
         _cycleReportNotifier = cycleReportNotifier;
-        _classifier = classifier;
-        _contentFetcher = contentFetcher;
-        _immediateNotifier = immediateNotifier;
-        _notificationPolicy = notificationPolicy;
-        _toolRepository = toolRepository;
+        _classificationStep = classificationStep;
         _options = options.Value;
         _logger = logger;
     }
@@ -107,13 +95,8 @@ public sealed class UnsortedClassificationJob : IInvocable, ICancellableInvocabl
                         _logger.LogInformation("Traitement du signet {SourceId} en cours.", item.SourceId);
                     }
 
-                    var content = _options.FetchArticleContent
-                        ? await _contentFetcher.FetchAsync(item.Url, cancellationToken)
-                        : ContentFetchResult.Skipped;
-
-                    var classification = await _classifier.ClassifyAsync(item, taxonomy, content.Text, cancellationToken);
-                    await _articleRepository.UpsertAsync(item, classification, content, DateTimeOffset.UtcNow, cancellationToken);
-                    await UpsertToolAsync(item, classification, cancellationToken);
+                    var outcome = await _classificationStep.ProcessAsync(item, taxonomy, cancellationToken);
+                    var classification = outcome.Classification;
 
                     if (classification.IsFallback)
                     {
@@ -132,7 +115,7 @@ public sealed class UnsortedClassificationJob : IInvocable, ICancellableInvocabl
 
                     if (_options.WriteBackToRaindrop)
                     {
-                        var writeBack = await ApplyClassificationAsync(item, classification, matchedCollection, cancellationToken);
+                        var writeBack = await ApplyClassificationAsync(item, outcome.ArticleId, classification, matchedCollection, cancellationToken);
                         if (writeBack.Moved)
                         {
                             movedCount++;
@@ -140,10 +123,8 @@ public sealed class UnsortedClassificationJob : IInvocable, ICancellableInvocabl
                         tagsAppliedCount += writeBack.TagsAdded;
                     }
 
-                    if (_notificationPolicy.ShouldNotifyImmediately(classification))
+                    if (outcome.Notified)
                     {
-                        await _immediateNotifier.NotifyAsync(item, classification, cancellationToken);
-                        await _articleRepository.MarkDiscordNotifiedAsync(ParseRaindropId(item), DateTimeOffset.UtcNow, cancellationToken);
                         notifiedCount++;
                     }
 
@@ -291,6 +272,7 @@ public sealed class UnsortedClassificationJob : IInvocable, ICancellableInvocabl
     /// </summary>
     private async Task<WriteBackOutcome> ApplyClassificationAsync(
         Item item,
+        long articleId,
         ClassificationResult classification,
         RaindropCollection? matchedCollection,
         CancellationToken cancellationToken)
@@ -307,7 +289,7 @@ public sealed class UnsortedClassificationJob : IInvocable, ICancellableInvocabl
             var mergedNote = ClassificationNoteBuilder.Build(item.Note, classification);
 
             await _raindropClient.UpdateRaindropAsync(raindropId, mergedTags, mergedNote, matchedCollection?.Id, cancellationToken);
-            await _articleRepository.RecordWriteBackAsync(raindropId, success: true, moved: matchedCollection is not null, matchedCollection?.Id, DateTimeOffset.UtcNow, cancellationToken);
+            await _articleRepository.RecordWriteBackAsync(articleId, success: true, moved: matchedCollection is not null, matchedCollection?.Id, DateTimeOffset.UtcNow, cancellationToken);
 
             // Ne compte que les tags réellement nouveaux (fusion insensible à la casse) : un tag déjà
             // présent sur l'article ne doit pas gonfler le compteur du journal de cycle.
@@ -317,30 +299,8 @@ public sealed class UnsortedClassificationJob : IInvocable, ICancellableInvocabl
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Échec de l'application des tags/déplacement pour l'item {SourceId}", item.SourceId);
-            await _articleRepository.RecordWriteBackAsync(raindropId, success: false, moved: false, writeBackCollectionId: null, DateTimeOffset.UtcNow, cancellationToken);
+            await _articleRepository.RecordWriteBackAsync(articleId, success: false, moved: false, writeBackCollectionId: null, DateTimeOffset.UtcNow, cancellationToken);
             return new WriteBackOutcome(Moved: false, TagsAdded: 0);
-        }
-    }
-
-    /// <summary>
-    /// S7 (lot 5) : n'alimente la base d'outils que pour une vraie classification ATester avec un nom
-    /// d'outil renseigné — c'est la définition même de cette action (cf. le prompt de classification), pas
-    /// une extension à ALire/Reference. Best-effort, comme le reste de la méthode : ne bloque jamais le cycle.
-    /// </summary>
-    private async Task UpsertToolAsync(Item item, ClassificationResult classification, CancellationToken cancellationToken)
-    {
-        if (classification.IsFallback || classification.Action != RecommendedAction.ATester || string.IsNullOrWhiteSpace(classification.ToolName))
-        {
-            return;
-        }
-
-        try
-        {
-            await _toolRepository.UpsertFromArticleAsync(classification.ToolName, classification.ToolCategory, classification.ToolUrl, ParseRaindropId(item), DateTimeOffset.UtcNow, cancellationToken);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Échec de la mise à jour de la base d'outils pour l'item {SourceId}", item.SourceId);
         }
     }
 
