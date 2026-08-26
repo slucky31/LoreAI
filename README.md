@@ -95,6 +95,27 @@ VALUES ('Raindrop', '<id_du_dernier_raindrop_a_ignorer>', '<date_ISO8601_UTC>', 
 
 En parallèle, `LibraryIndexingJob` (`Worker__LibraryIndexCronExpression`, chaque dimanche 3h UTC par défaut) parcourt en **lecture seule** toute la bibliothèque Raindrop (`GET /raindrops/0`, hors corbeille) et la persiste dans `LibraryItems` — sans jamais classifier ni écrire quoi que ce soit dans Raindrop. `Worker__IndexLibraryOnStartup=true` déclenche en plus une passe au démarrage du worker, soumise à une garde : si la dernière passe complète date de moins de 24h, elle est ignorée (évite de solliciter l'API à chaque redémarrage rapproché).
 
+## Connecteur newsletters Gmail (lot 8)
+
+Désactivé par défaut (`Worker__EmailIngestionEnabled=false`) : ingère les mails portant un label Gmail donné, en extrait les vrais liens d'articles (filtre heuristique gratuit puis LLM), les classe comme les articles Raindrop — sans jamais rien réécrire dans Gmail ni Raindrop (ADR 0012).
+
+Prérequis, à faire une fois avant d'activer (`Worker__EmailIngestionEnabled=true`) :
+
+1. **Un label Gmail** qui identifie les mails à ingérer (ex. `Newsletters`) — créé et appliqué par un filtre Gmail de votre choix (expéditeur, domaine, présence d'un en-tête `List-Unsubscribe`...). LoreAI ne trie jamais le inbox lui-même, il fait confiance à ce label. Reporter son nom exact dans `Gmail__Label`.
+2. **Un client OAuth Google** : [console.cloud.google.com](https://console.cloud.google.com) → créer un projet → activer l'API Gmail → créer des identifiants OAuth 2.0 (type « Application de bureau » suffit) → reporter `ClientId`/`ClientSecret` dans `Gmail__ClientId`/`Gmail__ClientSecret`.
+3. **Un refresh token**, obtenu une seule fois par consentement interactif — le worker ne fait jamais de flux OAuth interactif lui-même :
+   - Ouvrir [OAuth 2.0 Playground](https://developers.google.com/oauthplayground), icône ⚙️ → « Use your own OAuth credentials » → renseigner le ClientId/ClientSecret de l'étape 2.
+   - Étape 1 : sélectionner le scope `https://www.googleapis.com/auth/gmail.readonly` → « Authorize APIs » → se connecter avec le compte Gmail à surveiller.
+   - Étape 2 : « Exchange authorization code for tokens » → copier le `refresh_token` obtenu dans `Gmail__RefreshToken`.
+4. **Seeder le curseur `historyId`**, même logique que le « Premier lancement » de Raindrop ci-dessus (jamais de backfill automatique) : depuis la même page du Playground, utiliser l'`access_token` de l'étape 2 pour appeler `GET https://gmail.googleapis.com/gmail/v1/users/me/profile` (onglet « Use this token » du Playground, ou `curl -H "Authorization: Bearer <access_token>" https://gmail.googleapis.com/gmail/v1/users/me/profile`), puis insérer le `historyId` retourné :
+
+```sql
+INSERT INTO "PollingStates" ("SourceType", "LastSourceItemId", "LastCreatedUtc", "UpdatedAtUtc")
+VALUES ('Newsletter', '<historyId_retourne_par_users.getProfile>', NULL, '<date_ISO8601_UTC>');
+```
+
+Sans cette ligne, `GmailIngester` refuse tout backfill et journalise un avertissement à chaque passage tant que le curseur n'est pas seedé.
+
 ## Tests automatisés
 
 ```bash
