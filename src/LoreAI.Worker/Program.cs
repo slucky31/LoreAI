@@ -160,6 +160,7 @@ try
     builder.Services.AddTransient<WeeklyInsightsJob>();
     builder.Services.AddTransient<MonthlyReviewJob>();
     builder.Services.AddTransient<ReconciliationJob>();
+    builder.Services.AddTransient<ReadingQueueTaggingJob>();
 
     var host = builder.Build();
 
@@ -233,6 +234,13 @@ try
             scheduler.Schedule<FeedIngestionJob>()
                 .Cron(workerOptions.FeedIngestionCronExpression)
                 .PreventOverlapping(nameof(FeedIngestionJob));
+        }
+
+        if (workerOptions.ReadingQueueTaggingEnabled)
+        {
+            scheduler.Schedule<ReadingQueueTaggingJob>()
+                .Cron(workerOptions.ReadingQueueTaggingCronExpression)
+                .PreventOverlapping(nameof(ReadingQueueTaggingJob));
         }
     });
 

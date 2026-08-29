@@ -55,6 +55,10 @@ public sealed class ArticleEntity
     // L4 (lot 6) : relance envoyée une seule fois.
     public DateTimeOffset? RemindedAtUtc { get; set; }
 
+    // L5 (lot 8) : null tant que l'article n'est pas dans la file de lecture de la semaine — sert à
+    // savoir quoi détaguer au prochain passage de ReadingQueueTaggingJob, jamais réinitialisé à la main.
+    public DateTimeOffset? ReadingQueueTaggedAtUtc { get; set; }
+
     // Contenu réel (S1, lot 4) : toujours nullable, alimenté au mieux (best-effort) — un article
     // pré-lot-4 ou dont le fetch a échoué n'a simplement jamais ces champs renseignés.
     public string? ContentText { get; set; }

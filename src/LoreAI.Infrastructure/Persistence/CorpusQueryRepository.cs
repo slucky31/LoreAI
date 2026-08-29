@@ -152,7 +152,7 @@ public sealed class CorpusQueryRepository : ICorpusQueryRepository
             .Where(a => !a.IsFallback)
             .Select(a => new TrackedArticle(
                 a.Id, a.Title, a.Url, a.RecommendedAction, a.Priority, a.CapturedAtUtc,
-                a.ClassifiedAtUtc, a.WordCount, a.HumanHandledAtUtc, a.LinkStatus))
+                a.ClassifiedAtUtc, a.WordCount, a.HumanHandledAtUtc, a.LinkStatus, a.SourceType, a.SourceId))
             .ToListAsync(cancellationToken);
 
         return ReadingQueueScorer.Score(trackedArticles, DateTimeOffset.UtcNow, limit);

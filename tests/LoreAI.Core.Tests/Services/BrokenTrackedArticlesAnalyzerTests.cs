@@ -45,5 +45,5 @@ public class BrokenTrackedArticlesAnalyzerTests
 
     private static TrackedArticle CreateArticle(long id, LinkStatus? linkStatus) =>
         new(id, $"Titre {id}", $"https://example.com/{id}", RecommendedAction.ALire, Priority.Basse,
-            DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch, null, null, linkStatus);
+            DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch, null, null, linkStatus, SourceType.Raindrop, id.ToString(System.Globalization.CultureInfo.InvariantCulture));
 }

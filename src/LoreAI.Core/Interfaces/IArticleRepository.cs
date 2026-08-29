@@ -47,4 +47,10 @@ public interface IArticleRepository
 
     /// <summary>Articles réellement classifiés (jamais un repli), pour les insights N3/N4/L1 (lot 6).</summary>
     Task<IReadOnlyList<TrackedArticle>> GetTrackedArticlesAsync(CancellationToken cancellationToken);
+
+    /// <summary>Articles actuellement suivis comme tagués « cette-semaine » (L5, lot 8) — toujours <see cref="SourceType.Raindrop"/>, seule source qu'on peut tagger.</summary>
+    Task<IReadOnlyList<ReadingQueueTaggedArticle>> GetReadingQueueTaggedAsync(CancellationToken cancellationToken);
+
+    /// <summary>Pose (<paramref name="taggedAtUtc"/> non nul) ou efface (<c>null</c>) le suivi du tag L5 pour un article.</summary>
+    Task SetReadingQueueTagAsync(long articleId, DateTimeOffset? taggedAtUtc, CancellationToken cancellationToken);
 }
