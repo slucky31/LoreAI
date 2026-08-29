@@ -1,9 +1,10 @@
 services:
-  loreai:
+  loreai-worker:
     # Image construite et publiée par la CD GitHub (multi-arch amd64 + arm64), pas de build ici :
     # `docker compose pull && docker compose up -d` suffit sur le Raspberry Pi.
     # LOREAI_TAG permet d'épingler une version précise plutôt que de suivre latest.
     image: ghcr.io/slucky31/loreai-worker:${LOREAI_TAG:-latest}
+    container_name: loreai-worker
     restart: unless-stopped
     env_file:
       - .env
@@ -17,10 +18,11 @@ services:
       - ./data:/data
 
   loreai-mcp:
-    # Lot 3 (#44, ADR 0014) : serveur MCP en lecture seule. Conteneur et image distincts de "loreai" -
+    # Lot 3 (#44, ADR 0014) : serveur MCP en lecture seule. Conteneur et image distincts de "loreai-worker" -
     # cycle de vie independant, et surtout un role Postgres different (voir Postgres__ConnectionString
     # ci-dessous). Pas de build ici non plus une fois l'image publiee par la CD.
     image: ghcr.io/slucky31/loreai-mcp:${LOREAI_TAG:-latest}
+    container_name: loreai-mcp
     restart: unless-stopped
     environment:
       DOTNET_ENVIRONMENT: Production
@@ -43,6 +45,7 @@ services:
     # (ADR 0009), jamais la base "loreai". RUN_MIGRATIONS/CREATE_ADMIN sont idempotents : sans effet une
     # fois le schema/l'admin en place, pas besoin de les retirer apres le premier demarrage.
     image: docker.io/miniflux/miniflux:${MINIFLUX_TAG:-2.2.12}
+    container_name: miniflux
     restart: unless-stopped
     environment:
       DATABASE_URL: ${MINIFLUX_DATABASE_URL}
@@ -51,9 +54,11 @@ services:
       ADMIN_USERNAME: ${MINIFLUX_ADMIN_USERNAME}
       ADMIN_PASSWORD: ${MINIFLUX_ADMIN_PASSWORD}
     ports:
-      # Meme garde-fou D2/ADR 0010 que loreai-mcp : bind sur l'adresse Tailscale du Pi, jamais "8080:8080"
-      # seul (publierait sur 0.0.0.0). Meme IP que MCP_TAILSCALE_BIND_IP (un seul Pi).
-      - "${MCP_TAILSCALE_BIND_IP}:8080:8080"
+      # Meme garde-fou D2/ADR 0010 que loreai-mcp : bind sur l'adresse Tailscale du Pi, jamais "5100:8080"
+      # seul (publierait sur 0.0.0.0). Meme IP que MCP_TAILSCALE_BIND_IP (un seul Pi). Port hote 5100 (pas
+      # 8080, deja pris par un autre conteneur sur mcm8) - ne concerne que le port publie sur l'hote ;
+      # Miniflux__BaseUrl (cote worker) continue de viser miniflux:8080, le port interne du conteneur.
+      - "${MCP_TAILSCALE_BIND_IP}:5100:8080"
 
 # Reseau Docker externe de l'instance PostgreSQL mutualisee (ADR 0009) : LoreAI la rejoint, il ne la
 # possede pas - stack Compose distincte, proprietaire de son propre reseau. Pas de depends_on vers un

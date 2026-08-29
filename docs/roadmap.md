@@ -209,6 +209,8 @@ Trois canaux restent, et ils se répartissent proprement :
 | Rapport périodique (bilan hebdo, revue mensuelle) | **Fichier Markdown poussé sur Discord en pièce jointe** | Un webhook Discord accepte les fichiers. Le contenu narratif dépasse largement les 2000 caractères d'un message et les 4096 d'un embed — la pièce jointe évite le découpage et reste lisible |
 | Interrogation à la demande | **MCP** | C'est exactement pour ça qu'il existe |
 
+**Amendé par O6 (lot 7, #78)** : le bilan hebdomadaire est passé en digest Discord natif (embeds, deux messages actionnable/hygiène plafonnés à 10 entrées + total par section) — le fichier `.md` en pièce jointe s'est révélé peu pratique sur mobile à l'usage. La revue mensuelle (narrative, lot 5) garde le fichier Markdown en pièce jointe, son contenu dépassant largement la capacité d'un embed.
+
 Le choix du Markdown n'est pas cosmétique : c'est le **même format** que les fiches outils (S7), l'export corpus (S8) et le vault Obsidian. Un seul générateur, trois usages. Concrètement, `DigestMessageBuilder` (aujourd'hui producteur de HTML pour mail) est remplacé par un `MarkdownReportBuilder` pur et statique, calqué sur le même style (`StringBuilder`, `InvariantCulture`, sans état).
 
 Bénéfice collatéral : disparition de MailKit, de la configuration SMTP, et d'`EmailNotifier` — aujourd'hui à **0 % de couverture de tests**, seule classe du projet dans ce cas.
@@ -349,13 +351,11 @@ networks:
 
 Ne commence qu'une fois le lot 4 livré : les deux connecteurs ont besoin de l'extraction de contenu.
 
-#### Lot 7 — Connecteur RSS (**C3**)
+#### Lot 7 — Connecteur RSS (**C3**) — ✅ livré
 
-`FeedIngester` implémentant `ISourceIngester` : liste de flux en configuration ou en base, parsing via `System.ServiceModel.Syndication`, curseur par flux sur la date de publication. Les entrées deviennent des `Item` avec `SourceType = Feed` et passent dans le pipeline de classification existant.
+**Décision revue en cours de lot (2026-08-29)** : livré via **Miniflux auto-hébergé** plutôt que par l'ingestion RSS directe initialement prévue ici (`FeedIngester`/`System.ServiceModel.Syndication`). Miniflux gère abonnements, parsing et santé des flux, et sert aussi d'interface de lecture humaine (remplace Feedly) — couvrant en un seul déploiement les deux besoins que l'arbitrage « Miniflux auto-hébergé » ci-dessous distinguait, plutôt que de les séquencer (ingestion directe d'abord, Miniflux ensuite *si* besoin de lecture). `MinifluxIngester` (`IFeedIngester`) consomme `GET /v1/entries` de l'instance Miniflux, curseur sur l'id d'entrée Miniflux (pas de backfill automatique au premier démarrage, même choix que `GmailIngester`). Les entrées deviennent des `Item` avec `SourceType = Feed` et passent dans le pipeline de classification existant, sans jamais écrire dans Miniflux ni Raindrop (ADR 0012). PR [#87](https://github.com/slucky31/LoreAI/pull/87), déploiement documenté dans `docs/deploiement-raspberry-pi.md` (section 12).
 
-Remplace Feedly sans rien auto-héberger de plus (voir l'arbitrage Miniflux).
-
-- **O6** rapport hebdomadaire mobile-friendly ([#78](https://github.com/slucky31/LoreAI/issues/78)) — sans rapport avec le connecteur RSS, embarqué ici parce que c'est le prochain lot ouvert, même raison qu'O4/S9/O5 au lot 6.
+- **O6** rapport hebdomadaire mobile-friendly ([#78](https://github.com/slucky31/LoreAI/issues/78)) — sans rapport avec le connecteur RSS, embarqué ici parce que c'est le prochain lot ouvert, même raison qu'O4/S9/O5 au lot 6. Livré : `WeeklyInsightsJob` envoie désormais un digest Discord natif (embeds, deux messages actionnable/hygiène, 10 entrées + total par section) via `IWeeklyDigestNotifier`/`DiscordWeeklyDigestNotifier`, plus une pièce jointe `.md` — `MonthlyReviewJob` conserve le format narratif inchangé. PR [#88](https://github.com/slucky31/LoreAI/pull/88).
 
 #### Lot 8 — Connecteur newsletters Gmail (**C2**)
 
@@ -451,16 +451,16 @@ Une piste existe : faire tourner le traitement via Claude Code / l'Agent SDK en 
 
 Vu les chiffres ci-dessus, l'enjeu est de quelques euros par mois. À garder en question ouverte, pas à traiter en priorité.
 
-### Miniflux auto-hébergé — **utile, mais pas pour l'ingestion**
+### Miniflux auto-hébergé — **retenu pour l'ingestion aussi (décision revue, 2026-08-29)**
 
-Il y a deux besoins distincts derrière « migrer Feedly vers Miniflux » :
+Il y avait deux besoins distincts derrière « migrer Feedly vers Miniflux » :
 
 | Besoin | Réponse |
 |---|---|
-| **Une interface de lecture** pour remplacer Feedly côté humain | Miniflux fait très bien le travail : léger, écrit en Go, tourne sans problème sur un Pi. Son prérequis PostgreSQL, autrefois compté comme un coût, est **satisfait d'avance depuis D7** — il lui suffit d'une base de plus sur l'instance mutualisée (vérifier au passage sa version minimale et ses extensions requises) |
-| **Ingérer des flux dans le pipeline** | Ingestion RSS directe dans LoreAI (lot 7). Passer par Miniflux ajouterait un intermédiaire et une API à interroger pour du contenu qu'on sait parser en une classe |
+| **Une interface de lecture** pour remplacer Feedly côté humain | Miniflux fait très bien le travail : léger, écrit en Go, tourne sans problème sur un Pi. Son prérequis PostgreSQL, autrefois compté comme un coût, est **satisfait d'avance depuis D7** — il lui suffit d'une base de plus sur l'instance mutualisée |
+| **Ingérer des flux dans le pipeline** | Initialement prévu comme ingestion RSS directe dans LoreAI (un `FeedIngester` parsant du XML). **Reconsidéré au moment d'attaquer le lot 7** : passer par l'API REST de Miniflux ajoute un intermédiaire, mais évite d'écrire et de maintenir la gestion des abonnements, le parsing et la santé des flux — du travail que Miniflux fait déjà, et qu'il faudrait de toute façon retrouver derrière une interface de lecture si celle-ci était ajoutée ensuite |
 
-Les deux ne s'excluent pas, et le bon ordre est : **lot 7 d'abord** (le pipeline fonctionne), Miniflux ensuite *si* tu veux l'interface de lecture. Dans ce cas, on lui prend ses flux via son API REST plutôt que de maintenir deux listes d'abonnements.
+**Décision initiale** (« lot 7 d'abord en ingestion directe, Miniflux ensuite *si* tu veux l'interface de lecture ») **inversée** : Miniflux couvre les deux besoins dès le lot 7, en un seul déploiement, plutôt que de les séquencer et risquer de refaire le travail d'ingestion une seconde fois derrière l'API Miniflux si l'interface de lecture s'avérait souhaitée peu après. `MinifluxIngester` (`IFeedIngester`) consomme `GET /v1/entries` ; Miniflux gère la liste d'abonnements. Détail dans le lot 7 ci-dessus et l'issue [#48](https://github.com/slucky31/LoreAI/issues/48).
 
 ### Un outil existe-t-il déjà ? — **spike fait, 2026-08-23 : le lot 3 reste nécessaire**
 
