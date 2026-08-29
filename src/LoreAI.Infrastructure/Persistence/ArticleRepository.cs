@@ -150,12 +150,14 @@ public sealed class ArticleRepository : IArticleRepository
         await _schemaGuard.EnsureMigratedAsync(cancellationToken);
         await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
 
+        // SourceType.Raindrop uniquement : c'est le seul qu'IRaindropClient.GetRaindropAsync sait
+        // interroger (Newsletter/Feed n'ont pas de raindrop à réconcilier — ADR 0012).
         return await context.Articles
-            .Where(a => a.LinkStatus != LinkStatus.Deleted)
+            .Where(a => a.SourceType == SourceType.Raindrop && a.LinkStatus != LinkStatus.Deleted)
             .OrderBy(a => a.LastSeenAtUtc)
             .Take(limit)
             .Select(a => new ReconciliationCandidate(
-                a.Id, a.Title, a.Url, a.OriginalTags, a.SuggestedTags, a.WriteBackCollectionId,
+                a.Id, a.SourceId, a.Title, a.Url, a.OriginalTags, a.SuggestedTags, a.WriteBackCollectionId,
                 a.RecommendedAction, a.Priority, a.ClassifiedAtUtc, a.HumanHandledAtUtc, a.RemindedAtUtc))
             .ToListAsync(cancellationToken);
     }
