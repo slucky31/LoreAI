@@ -7,6 +7,7 @@ using LoreAI.Core.Interfaces;
 using LoreAI.Core.Services;
 using LoreAI.Infrastructure.Classification;
 using LoreAI.Infrastructure.Content;
+using LoreAI.Infrastructure.Feed;
 using LoreAI.Infrastructure.Gmail;
 using LoreAI.Infrastructure.Notifications;
 using LoreAI.Infrastructure.Persistence;
@@ -58,6 +59,14 @@ try
     if (emailIngestionEnabled)
     {
         builder.Services.AddValidatedOptions<GoogleOAuthOptions>(builder.Configuration, "Gmail");
+    }
+
+    // Même garde que ci-dessus, pour Miniflux (lot 7, #48) : tant qu'aucune instance n'est déployée/configurée,
+    // le worker continue de démarrer normalement plutôt que d'échouer sur une section Miniflux incomplète.
+    var feedIngestionEnabled = builder.Configuration.GetValue("Worker:FeedIngestionEnabled", false);
+    if (feedIngestionEnabled)
+    {
+        builder.Services.AddValidatedOptions<MinifluxOptions>(builder.Configuration, "Miniflux");
     }
 
     // IDbContextFactory plutôt qu'AddDbContext : les repositories restent des singletons (inchangé),
@@ -129,6 +138,14 @@ try
             .AddStandardResilienceHandler(ClassifierResilience.Configure);
 
         builder.Services.AddTransient<EmailIngestionJob>();
+    }
+
+    if (feedIngestionEnabled)
+    {
+        builder.Services.AddHttpClient<IFeedIngester, MinifluxIngester>()
+            .AddStandardResilienceHandler();
+
+        builder.Services.AddTransient<FeedIngestionJob>();
     }
 
     builder.Services.AddScheduler();
@@ -204,6 +221,13 @@ try
             scheduler.Schedule<EmailIngestionJob>()
                 .Cron(workerOptions.EmailIngestionCronExpression)
                 .PreventOverlapping(nameof(EmailIngestionJob));
+        }
+
+        if (workerOptions.FeedIngestionEnabled)
+        {
+            scheduler.Schedule<FeedIngestionJob>()
+                .Cron(workerOptions.FeedIngestionCronExpression)
+                .PreventOverlapping(nameof(FeedIngestionJob));
         }
     });
 

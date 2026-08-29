@@ -71,4 +71,15 @@ public sealed class WorkerOptions
     /// valide au démarrage — même logique que <see cref="WriteBackToRaindrop"/>.
     /// </summary>
     public bool EmailIngestionEnabled { get; init; }
+
+    /// <summary>Expression cron du connecteur RSS/Miniflux (lot 7, #48) — par défaut chaque heure, même cadence que le connecteur Gmail.</summary>
+    [Required(AllowEmptyStrings = false)]
+    public string FeedIngestionCronExpression { get; init; } = "0 * * * *";
+
+    /// <summary>
+    /// Inactif par défaut (lot 7, #48) : tant qu'aucune instance Miniflux n'est déployée/configurée (étape
+    /// manuelle, cf. guide de déploiement), le connecteur Feed ne doit ni être planifié, ni exiger une
+    /// section <c>Miniflux</c> valide au démarrage — même logique qu'<see cref="EmailIngestionEnabled"/>.
+    /// </summary>
+    public bool FeedIngestionEnabled { get; init; }
 }
