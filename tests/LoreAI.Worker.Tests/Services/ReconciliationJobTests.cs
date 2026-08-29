@@ -169,8 +169,30 @@ public class ReconciliationJobTests
             1, Arg.Any<DateTimeOffset>(), Arg.Any<DateTimeOffset?>(), Arg.Any<DateTimeOffset?>(), Arg.Any<LinkStatus>(), Arg.Any<CancellationToken>());
     }
 
+    /// <summary>
+    /// Régression : <c>Articles.Id</c> (id technique, généré par la base depuis le lot 8) et l'id Raindrop
+    /// réel (<c>SourceId</c>) ont délibérément des valeurs différentes ici — un job qui interrogerait
+    /// Raindrop avec <c>candidate.Id</c> au lieu de <c>candidate.SourceId</c> échouerait ce test.
+    /// </summary>
+    [Fact]
+    public async Task Invoke_ArticleIdDiffersFromRaindropSourceId_QueriesRaindropWithSourceId()
+    {
+        var candidate = CreateCandidate(id: 999, sourceId: "1");
+        var fixture = new JobFixture().WithCandidates(candidate);
+        fixture.RaindropClient.GetRaindropAsync(1, Arg.Any<CancellationToken>())
+            .Returns(new RaindropSnapshot(1, -1, [], Broken: false));
+
+        await fixture.Build().Invoke();
+
+        await fixture.RaindropClient.Received(1).GetRaindropAsync(1, Arg.Any<CancellationToken>());
+        await fixture.RaindropClient.DidNotReceive().GetRaindropAsync(999, Arg.Any<CancellationToken>());
+        await fixture.ArticleRepository.Received(1).RecordReconciliationAsync(
+            999, Arg.Any<DateTimeOffset>(), Arg.Any<DateTimeOffset?>(), Arg.Any<DateTimeOffset?>(), LinkStatus.Ok, Arg.Any<CancellationToken>());
+    }
+
     private static ReconciliationCandidate CreateCandidate(
         long id,
+        string? sourceId = null,
         IReadOnlyList<string>? originalTags = null,
         IReadOnlyList<string>? suggestedTags = null,
         long? writeBackCollectionId = null,
@@ -179,7 +201,7 @@ public class ReconciliationJobTests
         DateTimeOffset? classifiedAtUtc = null,
         DateTimeOffset? humanHandledAtUtc = null,
         DateTimeOffset? remindedAtUtc = null) =>
-        new(id, $"Titre {id}", $"https://example.com/{id}",
+        new(id, sourceId ?? id.ToString(System.Globalization.CultureInfo.InvariantCulture), $"Titre {id}", $"https://example.com/{id}",
             originalTags ?? [], suggestedTags ?? [], writeBackCollectionId,
             action, priority, classifiedAtUtc ?? Now.AddDays(-1), humanHandledAtUtc, remindedAtUtc);
 

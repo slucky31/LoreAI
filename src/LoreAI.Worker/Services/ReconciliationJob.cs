@@ -1,3 +1,4 @@
+using System.Globalization;
 using Coravel.Invocable;
 using LoreAI.Core.Enums;
 using LoreAI.Core.Interfaces;
@@ -121,7 +122,10 @@ public sealed class ReconciliationJob : IInvocable, ICancellableInvocable
     private async Task<(LinkStatus LinkStatus, DateTimeOffset? HumanHandledAtUtc)> ReconcileOneAsync(
         ReconciliationCandidate candidate, DateTimeOffset now, CancellationToken cancellationToken)
     {
-        var snapshot = await _raindropClient.GetRaindropAsync(candidate.Id, cancellationToken);
+        // candidate.Id est l'id technique Articles.Id (généré par la base depuis le lot 8, #49) : jamais
+        // l'id Raindrop, qui vit dans SourceId depuis le passage au modèle multi-sources (ADR 0012).
+        var raindropId = long.Parse(candidate.SourceId, CultureInfo.InvariantCulture);
+        var snapshot = await _raindropClient.GetRaindropAsync(raindropId, cancellationToken);
         if (snapshot is null)
         {
             return (LinkStatus.Deleted, candidate.HumanHandledAtUtc);

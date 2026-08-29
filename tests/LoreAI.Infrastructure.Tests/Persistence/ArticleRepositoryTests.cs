@@ -172,6 +172,27 @@ public class ArticleRepositoryTests : IAsyncLifetime
         Assert.Contains(all, a => a.SourceType == SourceType.Newsletter && a.Title == "Lien newsletter");
     }
 
+    /// <summary>
+    /// Régression : <c>GetReconciliationCandidatesAsync</c> ne doit renvoyer que des articles Raindrop
+    /// (seule source qu'<c>IRaindropClient.GetRaindropAsync</c> sait interroger), et exposer le vrai id
+    /// Raindrop via <c>SourceId</c> — jamais <c>Id</c>, l'id technique généré par la base depuis le lot 8.
+    /// </summary>
+    [Fact]
+    public async Task GetReconciliationCandidatesAsync_ExcludesNonRaindropSourcesAndExposesSourceId()
+    {
+        var raindropItem = CreateItem(42, "Article Raindrop");
+        var newsletterItem = raindropItem with { SourceType = SourceType.Newsletter, SourceId = "42", Title = "Lien newsletter" };
+        await _repository.UpsertAsync(raindropItem, CreateClassification(), ContentFetchResult.Skipped, DateTimeOffset.UtcNow, TestContext.Current.CancellationToken);
+        await _repository.UpsertAsync(newsletterItem, CreateClassification(), ContentFetchResult.Skipped, DateTimeOffset.UtcNow, TestContext.Current.CancellationToken);
+
+        var candidates = await _repository.GetReconciliationCandidatesAsync(10, TestContext.Current.CancellationToken);
+
+        var single = Assert.Single(candidates);
+        Assert.Equal("Article Raindrop", single.Title);
+        Assert.Equal("42", single.SourceId);
+        Assert.NotEqual(single.Id, long.Parse(single.SourceId, CultureInfo.InvariantCulture));
+    }
+
     [Fact]
     public async Task GetClassificationRawResponsesSinceAsync_ExcludesArticlesClassifiedBeforeCutoff()
     {
