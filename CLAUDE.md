@@ -10,6 +10,12 @@ LoreAI is a personal .NET 10 tool that auto-triages the backlog of the **"Non tr
 
 Read `docs/adr/` before making architectural changes — decisions and their rationale are recorded there, not duplicated here. Most relevant: [0007](docs/adr/0007-apprentissage-taxonomie-non-trie.md) (learned taxonomy, why manual validation was rejected), [0001](docs/adr/0001-architecture-generale.md) (why this stays a simple 3-project split, not Clean Architecture/CQRS/MediatR), [0008](docs/adr/0008-versioning-semver-conventional-commits.md) (SemVer versioning via Conventional Commits), [0009](docs/adr/0009-postgresql-mutualise-sur-le-pi.md) (self-hosted shared PostgreSQL instance on the Pi, not SQLite), [0011](docs/adr/0011-ef-core-remplace-dapper.md) (EF Core replaces Dapper for schema and queries) [0012](docs/adr/0012-modele-item-generique-multi-sources.md) (generic `Item`/`ISourceIngester` model replaces `RaindropItem` as the pipeline's central type, ahead of multi-source ingestion) and [0013](docs/adr/0013-retrait-canal-email.md) (email channel removed entirely — supersedes the email half of ADR 0005 — end-of-cycle Discord report is the sole per-cycle signal).
 
+## Facts & accuracy rules
+
+- Never claim a capability is implemented unless you have read the code that implements it (e.g. do not describe search as tsvector/GIN when it is ILIKE).
+- Always reference the correct lot/issue number; re-read the roadmap doc before writing issue or PR text.
+- Reuse shared code from `LoreAI.Infrastructure` — never duplicate helpers (e.g. `StartupInfo`) across projects.
+
 ## Commands
 
 ```bash
@@ -29,6 +35,13 @@ No real API keys are needed for tests: Raindrop/Anthropic/Discord calls are simu
 Local dev config (`appsettings.Development.json`) points at the shared PostgreSQL instance on the Pi (reached via its Tailscale MagicDNS name, ADR 0010) and logs under `logs/`. Never commit real secrets there — use `dotnet user-secrets` or `.env` (see `.env.example`) instead.
 
 Docker deployment target is Raspberry Pi 64-bit (arm64); `docker compose build && docker compose up -d`, built directly on the Pi since the `mcr.microsoft.com/dotnet/*` base images are multi-arch.
+
+## Environment constraints (Pi + WSL)
+
+- Docker/Testcontainers tests require Docker Desktop WSL integration on the active distro; check `docker info` before running the Postgres integration tests and tell the user if it is down instead of retrying.
+- No SSH/API access to the Pi from the sandbox: when deployment steps are needed, output copy-paste-ready commands for the user to run rather than attempting them.
+- Provisioning SQL must be portable: no psql-only meta-commands (`\c`, `\gexec`) — use explicit connection parameters so GUI clients work.
+- `sudo` without a TTY and missing tools like `jq` will fail; verify tool availability first.
 
 ## Architecture
 
@@ -72,3 +85,8 @@ With no prior `PollingState` row, the first cycle backfills the *entire* history
 - Config keys follow .NET's `Section__Property` env-var convention (e.g. `Raindrop__Token`, `Worker__WriteBackToRaindrop`); see `.env.example` for the full list.
 - Tests: xUnit.v3 (Microsoft.Testing.Platform runner) + NSubstitute for doubles + WireMock.Net for HTTP fakes (chosen over RichardSzalay.MockHttp for being actively maintained and exercising a real network stack).
 - Versioning is fully automatic (ADR 0008): open a branch, commit, push, open a PR titled per [Conventional Commits](https://www.conventionalcommits.org/fr/v1.0.0/) (`feat:`, `fix:`, `chore:`, ... — validated by the Semantic PRs app, required to merge) and squash-merge it (the only merge method allowed on `main`). The `cd.yml` `release` job then runs [Versionize](https://github.com/versionize/versionize) to bump `<Version>` in `Directory.Build.props` (the single source of truth — no per-`.csproj` version), commit, tag (`vX.Y.Z`) and push straight to `main`; `build`/`docker`/`github-release` only run when that produced a real release. No `CHANGELOG.md` is committed — release notes live solely in GitHub Releases, generated from merged PRs.
+- Merge & waiting etiquette: do not poll or force-retry CI runs. Open the PR, report the CI status once, and ask the user how to proceed. If CI is blocked by an external outage, stop and say so.
+
+## Roadmap lot workflow
+
+When implementing a roadmap "lot": (1) create a plan and get approval before editing, (2) branch from the latest `main` (never from an already-squash-merged branch — always `git fetch origin && git checkout -b <branch> origin/main`), (3) implement across Core/Infrastructure/Worker with an EF migration when the schema changes, (4) run the full test suite until 100% green, (5) open the PR, wait for CI, then merge, (6) update the roadmap/status doc and open follow-up issues for leftovers.
