@@ -12,15 +12,16 @@ public static class EmailLinkExtractionPromptBuilder
 
     public const string SystemPrompt = """
         Tu aides un développeur .NET à trier les liens d'une newsletter qu'il reçoit par mail, déjà réduite à
-        une liste d'URLs candidates (le bruit évident — désinscription, réseaux sociaux, tracking répété — a
-        déjà été retiré en amont).
+        une liste d'URLs candidates numérotées (le bruit évident — désinscription, réseaux sociaux, tracking
+        répété — a déjà été retiré en amont).
         À partir du sujet et du corps du mail, détermine lesquelles de ces URLs candidates pointent vers un
         vrai article/outil/annonce à conserver (0 à N, aussi bien pour une newsletter mono-article que pour
         un digest de plusieurs articles), et propose pour chacune un titre court à partir du contexte du mail
         — jamais en devinant, uniquement ce qui est déductible du texte fourni.
         Règles strictes :
-        - N'utilise que des URLs qui apparaissent mot pour mot dans la liste candidate fournie. N'en invente
-          jamais et ne modifie jamais une URL candidate.
+        - Désigne chaque URL retenue par son index dans la liste numérotée fournie, jamais en recopiant
+          l'URL elle-même (certaines URLs de tracking sont très longues — l'index suffit et évite toute
+          erreur de recopie).
         - Exclut les liens de simple navigation (sommaire, "lire en ligne", pied de page) qui auraient
           survécu au filtre en amont, s'ils ne pointent pas vers un contenu en propre.
         - Une liste vide est un résultat parfaitement valide si aucune URL candidate ne correspond à un vrai
@@ -48,10 +49,10 @@ public static class EmailLinkExtractionPromptBuilder
                         type = "object",
                         properties = new
                         {
-                            url = new { type = "string", maxLength = 2000, description = "Doit être identique à une des URLs candidates fournies." },
+                            index = new { type = "integer", minimum = 0, description = "Index (0-based) de l'URL retenue dans la liste numérotée fournie." },
                             title = new { type = "string", maxLength = 200 },
                         },
-                        required = new[] { "url", "title" },
+                        required = new[] { "index", "title" },
                     },
                 },
             },
@@ -64,7 +65,7 @@ public static class EmailLinkExtractionPromptBuilder
     public static string BuildUserMessage(string subject, string body, IReadOnlyList<string> candidateUrls)
     {
         var urlsList = candidateUrls.Count > 0
-            ? string.Join('\n', candidateUrls.Select(u => $"- {u}"))
+            ? string.Join('\n', candidateUrls.Select((u, i) => $"[{i}] {u}"))
             : "(aucune)";
 
         return $"""
@@ -74,7 +75,7 @@ public static class EmailLinkExtractionPromptBuilder
             {Truncate(body, MaxBodyLength)}
             </mail>
 
-            URLs candidates (filtre heuristique déjà appliqué) :
+            URLs candidates (filtre heuristique déjà appliqué) — désigne-les par leur index [n], jamais en recopiant l'URL :
             {urlsList}
             """;
     }

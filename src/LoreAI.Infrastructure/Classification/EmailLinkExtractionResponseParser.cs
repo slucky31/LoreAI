@@ -6,9 +6,10 @@ namespace LoreAI.Infrastructure.Classification;
 
 /// <summary>
 /// Valide défensivement la sortie de l'extraction de liens (lot 8, #49), même patron que
-/// <see cref="ClassificationResponseParser"/>. Garde supplémentaire propre à ce parseur : une URL renvoyée
-/// par le modèle qui ne figure pas mot pour mot dans les URLs candidates fournies est rejetée — le modèle
-/// ne doit jamais pouvoir faire écrire une URL inventée ou légèrement modifiée.
+/// <see cref="ClassificationResponseParser"/>. Le modèle désigne un lien par son index dans la liste
+/// candidate (jamais en recopiant l'URL — évite de faire porter au budget de tokens le coût de recopier des
+/// URLs de tracking parfois très longues, cause d'une troncature réelle observée le 2026-08-29) : un index
+/// hors bornes est rejeté, ce qui offre la même garantie qu'avant contre une URL inventée.
 /// </summary>
 public static class EmailLinkExtractionResponseParser
 {
@@ -48,11 +49,9 @@ public static class EmailLinkExtractionResponseParser
                 throw new EmailLinkExtractionParseException("Champ 'links' manquant ou invalide.");
             }
 
-            var candidateSet = new HashSet<string>(candidateUrls, StringComparer.Ordinal);
-
             return linksElement.EnumerateArray()
-                .Select(ParseLink)
-                .Where(link => link is not null && candidateSet.Contains(link.Url))
+                .Select(element => ParseLink(element, candidateUrls))
+                .Where(link => link is not null)
                 .Cast<ExtractedLink>()
                 .DistinctBy(link => link.Url, StringComparer.Ordinal)
                 .Take(MaxLinks)
@@ -64,20 +63,18 @@ public static class EmailLinkExtractionResponseParser
         }
     }
 
-    private static ExtractedLink? ParseLink(JsonElement element)
+    private static ExtractedLink? ParseLink(JsonElement element, IReadOnlyList<string> candidateUrls)
     {
         if (element.ValueKind != JsonValueKind.Object
-            || !element.TryGetProperty("url", out var urlElement)
-            || urlElement.ValueKind != JsonValueKind.String)
+            || !element.TryGetProperty("index", out var indexElement)
+            || indexElement.ValueKind != JsonValueKind.Number
+            || !indexElement.TryGetInt32(out var index)
+            || index < 0 || index >= candidateUrls.Count)
         {
             return null;
         }
 
-        var url = urlElement.GetString();
-        if (string.IsNullOrWhiteSpace(url))
-        {
-            return null;
-        }
+        var url = candidateUrls[index];
 
         var title = element.TryGetProperty("title", out var titleElement) && titleElement.ValueKind == JsonValueKind.String
             ? titleElement.GetString()
