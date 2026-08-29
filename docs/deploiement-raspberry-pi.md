@@ -260,4 +260,4 @@ Miniflux est le moteur d'ingestion RSS (via son API REST, consommée par `Minifl
    VALUES ('Feed', '<id_recupere_ci_dessus>', NULL, '<date_ISO8601_UTC>');
    ```
 
-6. **Activer le connecteur** : `Worker__FeedIngestionEnabled=true` dans `.env`, puis `sudo docker compose up -d loreai` pour redémarrer le worker avec la section `Miniflux__*` désormais validée au démarrage.
+6. **Activer le connecteur** : `Worker__FeedIngestionEnabled=true` dans `.env`, puis `sudo docker compose up -d loreai-worker` pour redémarrer le worker avec la section `Miniflux__*` désormais validée au démarrage.
