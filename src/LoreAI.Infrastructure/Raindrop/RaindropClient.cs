@@ -122,7 +122,7 @@ public sealed class RaindropClient : IRaindropClient
 
         var payload = await response.Content.ReadFromJsonAsync<RaindropItemResponseDto>(cancellationToken: cancellationToken);
         return payload?.Item is { } dto
-            ? new RaindropSnapshot(dto.Id, dto.Collection?.Id, dto.Tags, dto.Broken)
+            ? new RaindropSnapshot(dto.Id, dto.Collection?.Id, dto.Tags, dto.Broken, dto.Note)
             : null;
     }
 

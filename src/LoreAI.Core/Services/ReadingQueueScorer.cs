@@ -27,7 +27,7 @@ public static class ReadingQueueScorer
     {
         var estimatedMinutes = ReadingTimeEstimator.EstimateMinutes(article.WordCount);
         var score = ComputeScore(article, now, estimatedMinutes);
-        return new ReadingQueueEntry(article.Id, article.Title, article.Url, score, estimatedMinutes, article.Priority, article.CapturedAtUtc);
+        return new ReadingQueueEntry(article.Id, article.Title, article.Url, score, estimatedMinutes, article.Priority, article.CapturedAtUtc, article.SourceType, article.SourceId);
     }
 
     private static double ComputeScore(TrackedArticle article, DateTimeOffset now, int? estimatedMinutes)

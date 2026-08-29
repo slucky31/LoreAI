@@ -44,5 +44,5 @@ public class StaleArticlesAnalyzerTests
     }
 
     private static TrackedArticle CreateArticle(long id, RecommendedAction action, DateTimeOffset capturedAtUtc, DateTimeOffset? humanHandledAtUtc) =>
-        new(id, $"Titre {id}", $"https://example.com/{id}", action, Priority.Basse, capturedAtUtc, capturedAtUtc, null, humanHandledAtUtc, LinkStatus.Ok);
+        new(id, $"Titre {id}", $"https://example.com/{id}", action, Priority.Basse, capturedAtUtc, capturedAtUtc, null, humanHandledAtUtc, LinkStatus.Ok, SourceType.Raindrop, id.ToString(System.Globalization.CultureInfo.InvariantCulture));
 }

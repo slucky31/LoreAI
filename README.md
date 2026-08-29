@@ -134,6 +134,12 @@ VALUES ('Feed', '<id_de_la_derniere_entree_a_ignorer>', NULL, '<date_ISO8601_UTC
 
 Sans cette ligne, `MinifluxIngester` refuse tout backfill et journalise un avertissement à chaque passage tant que le curseur n'est pas seedé.
 
+## File de lecture taguée sur Raindrop (L5, lot 8)
+
+Désactivé par défaut (`Worker__ReadingQueueTaggingEnabled=false`) : pose un tag Raindrop dédié (`Worker__ReadingQueueTagName`, défaut `cette-semaine`) sur les articles de la file de lecture hebdomadaire (L1 — mêmes 10 entrées que le digest Discord), et le retire de ceux qui en sont sortis. **Un tag, jamais une vraie collection** : un raindrop n'appartient qu'à une seule collection à la fois, y déplacer l'article le retirerait de sa collection thématique déjà assignée par la classification. Ni la note ni la collection ne sont jamais modifiées — seul le tag change.
+
+C'est la première écriture du projet **hors « Non trié »** : à activer en connaissance de cause. Une fois actif, consultez la file de la semaine dans Raindrop via une recherche sauvegardée sur ce tag (`#cette-semaine` ou équivalent selon le nom choisi).
+
 ## Tests automatisés
 
 ```bash

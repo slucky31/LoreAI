@@ -194,6 +194,46 @@ public class ArticleRepositoryTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task SetReadingQueueTagAsync_ThenGetReadingQueueTaggedAsync_RoundTrips()
+    {
+        var articleId = await _repository.UpsertAsync(CreateItem(1, "A"), CreateClassification(), ContentFetchResult.Skipped, DateTimeOffset.UtcNow, TestContext.Current.CancellationToken);
+
+        await _repository.SetReadingQueueTagAsync(articleId, DateTimeOffset.UtcNow, TestContext.Current.CancellationToken);
+        var tagged = await _repository.GetReadingQueueTaggedAsync(TestContext.Current.CancellationToken);
+
+        var single = Assert.Single(tagged);
+        Assert.Equal(articleId, single.ArticleId);
+        Assert.Equal("1", single.SourceId);
+    }
+
+    [Fact]
+    public async Task SetReadingQueueTagAsync_Null_ClearsTracking()
+    {
+        var articleId = await _repository.UpsertAsync(CreateItem(1, "A"), CreateClassification(), ContentFetchResult.Skipped, DateTimeOffset.UtcNow, TestContext.Current.CancellationToken);
+        await _repository.SetReadingQueueTagAsync(articleId, DateTimeOffset.UtcNow, TestContext.Current.CancellationToken);
+
+        await _repository.SetReadingQueueTagAsync(articleId, null, TestContext.Current.CancellationToken);
+
+        Assert.Empty(await _repository.GetReadingQueueTaggedAsync(TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task GetReadingQueueTaggedAsync_ExcludesNonRaindropSources()
+    {
+        var raindropItem = CreateItem(1, "Article Raindrop");
+        var newsletterItem = raindropItem with { SourceType = SourceType.Newsletter, SourceId = "1", Title = "Lien newsletter" };
+        var raindropId = await _repository.UpsertAsync(raindropItem, CreateClassification(), ContentFetchResult.Skipped, DateTimeOffset.UtcNow, TestContext.Current.CancellationToken);
+        var newsletterId = await _repository.UpsertAsync(newsletterItem, CreateClassification(), ContentFetchResult.Skipped, DateTimeOffset.UtcNow, TestContext.Current.CancellationToken);
+        await _repository.SetReadingQueueTagAsync(raindropId, DateTimeOffset.UtcNow, TestContext.Current.CancellationToken);
+        await _repository.SetReadingQueueTagAsync(newsletterId, DateTimeOffset.UtcNow, TestContext.Current.CancellationToken);
+
+        var tagged = await _repository.GetReadingQueueTaggedAsync(TestContext.Current.CancellationToken);
+
+        var single = Assert.Single(tagged);
+        Assert.Equal(raindropId, single.ArticleId);
+    }
+
+    [Fact]
     public async Task GetClassificationRawResponsesSinceAsync_ExcludesArticlesClassifiedBeforeCutoff()
     {
         var cutoff = new DateTimeOffset(2026, 8, 1, 0, 0, 0, TimeSpan.Zero);

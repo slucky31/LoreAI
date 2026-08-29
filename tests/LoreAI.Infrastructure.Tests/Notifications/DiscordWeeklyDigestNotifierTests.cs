@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
@@ -34,7 +35,7 @@ public class DiscordWeeklyDigestNotifierTests
 
         var report = EmptyReport() with
         {
-            ReadingQueue = [new ReadingQueueEntry(1, "Titre A", "https://a.example", 1.0, 5, Priority.Haute, DateTimeOffset.UtcNow)],
+            ReadingQueue = [new ReadingQueueEntry(1, "Titre A", "https://a.example", 1.0, 5, Priority.Haute, DateTimeOffset.UtcNow, SourceType.Raindrop, "1")],
             BrokenTrackedArticles = [new BrokenTrackedArticle(2, "Titre B", "https://b.example", LinkStatus.Broken)],
             StaleArticles = [new StaleArticle(3, "Titre C", "https://c.example", 95)],
         };
@@ -82,7 +83,7 @@ public class DiscordWeeklyDigestNotifierTests
         var notifier = CreateNotifier(server);
 
         var readingQueue = Enumerable.Range(1, 13)
-            .Select(i => new ReadingQueueEntry(i, $"Titre {i}", $"https://example.com/{i}", 1.0, null, Priority.Moyenne, DateTimeOffset.UtcNow))
+            .Select(i => new ReadingQueueEntry(i, $"Titre {i}", $"https://example.com/{i}", 1.0, null, Priority.Moyenne, DateTimeOffset.UtcNow, SourceType.Raindrop, i.ToString(CultureInfo.InvariantCulture)))
             .ToList();
         var report = EmptyReport() with { ReadingQueue = readingQueue };
 

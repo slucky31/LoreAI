@@ -82,4 +82,24 @@ public sealed class WorkerOptions
     /// section <c>Miniflux</c> valide au démarrage — même logique qu'<see cref="EmailIngestionEnabled"/>.
     /// </summary>
     public bool FeedIngestionEnabled { get; init; }
+
+    /// <summary>
+    /// Expression cron du tag hebdomadaire de la file de lecture (L5, lot 8) — par défaut chaque dimanche
+    /// à 4h05 UTC, 5 min après <see cref="WeeklyInsightsCronExpression"/> pour une file fraîche cohérente
+    /// avec le digest Discord.
+    /// </summary>
+    [Required(AllowEmptyStrings = false)]
+    public string ReadingQueueTaggingCronExpression { get; init; } = "5 4 * * 0";
+
+    /// <summary>
+    /// Inactif par défaut (L5, lot 8) : première écriture du projet hors « Non trié » (pose un tag sur des
+    /// articles déjà classés et rangés) — un flag dédié explicite, jamais un effet de bord, même logique
+    /// que <see cref="WriteBackToRaindrop"/>. N'écrit jamais la note ni ne déplace la collection : seul le
+    /// tag est modifié.
+    /// </summary>
+    public bool ReadingQueueTaggingEnabled { get; init; }
+
+    /// <summary>Nom du tag posé sur les articles de la file de lecture de la semaine (L5, lot 8).</summary>
+    [Required(AllowEmptyStrings = false)]
+    public string ReadingQueueTagName { get; init; } = "cette-semaine";
 }

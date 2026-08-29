@@ -71,5 +71,5 @@ public class ReadingQueueScorerTests
         DateTimeOffset? humanHandledAtUtc = null,
         LinkStatus? linkStatus = null) =>
         new(id, $"Titre {id}", $"https://example.com/{id}", RecommendedAction.ALire, priority,
-            capturedAtUtc ?? Now, Now, null, humanHandledAtUtc, linkStatus ?? LinkStatus.Ok);
+            capturedAtUtc ?? Now, Now, null, humanHandledAtUtc, linkStatus ?? LinkStatus.Ok, SourceType.Raindrop, id.ToString(System.Globalization.CultureInfo.InvariantCulture));
 }

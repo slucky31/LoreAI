@@ -16,4 +16,6 @@ public sealed record TrackedArticle(
     DateTimeOffset? ClassifiedAtUtc,
     int? WordCount,
     DateTimeOffset? HumanHandledAtUtc,
-    LinkStatus? LinkStatus);
+    LinkStatus? LinkStatus,
+    SourceType SourceType,
+    string SourceId);

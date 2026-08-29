@@ -192,7 +192,35 @@ public sealed class ArticleRepository : IArticleRepository
             .Where(a => !a.IsFallback)
             .Select(a => new TrackedArticle(
                 a.Id, a.Title, a.Url, a.RecommendedAction, a.Priority, a.CapturedAtUtc,
-                a.ClassifiedAtUtc, a.WordCount, a.HumanHandledAtUtc, a.LinkStatus))
+                a.ClassifiedAtUtc, a.WordCount, a.HumanHandledAtUtc, a.LinkStatus, a.SourceType, a.SourceId))
             .ToListAsync(cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<ReadingQueueTaggedArticle>> GetReadingQueueTaggedAsync(CancellationToken cancellationToken)
+    {
+        await _schemaGuard.EnsureMigratedAsync(cancellationToken);
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+
+        // SourceType.Raindrop uniquement : même garde que GetReconciliationCandidatesAsync, seule
+        // source qu'IRaindropClient sait interroger pour poser/retirer un tag.
+        return await context.Articles
+            .Where(a => a.SourceType == SourceType.Raindrop && a.ReadingQueueTaggedAtUtc != null)
+            .Select(a => new ReadingQueueTaggedArticle(a.Id, a.SourceId))
+            .ToListAsync(cancellationToken);
+    }
+
+    public async Task SetReadingQueueTagAsync(long articleId, DateTimeOffset? taggedAtUtc, CancellationToken cancellationToken)
+    {
+        await _schemaGuard.EnsureMigratedAsync(cancellationToken);
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+
+        var affected = await context.Articles
+            .Where(a => a.Id == articleId)
+            .ExecuteUpdateAsync(setters => setters.SetProperty(a => a.ReadingQueueTaggedAtUtc, taggedAtUtc), cancellationToken);
+
+        if (affected == 0)
+        {
+            _logger.LogWarning("Suivi du tag « cette-semaine » non enregistré : aucun article {ArticleId} en base.", articleId);
+        }
     }
 }
