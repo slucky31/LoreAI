@@ -15,8 +15,8 @@ public class EmailLinkExtractionResponseParserTests
     {
         const string json = """
             { "links": [
-                { "url": "https://blog.example.com/real-article", "title": "Un vrai article .NET" },
-                { "url": "https://tools.example.com/new-cli", "title": "Un nouvel outil CLI" }
+                { "index": 0, "title": "Un vrai article .NET" },
+                { "index": 1, "title": "Un nouvel outil CLI" }
             ] }
             """;
 
@@ -39,15 +39,15 @@ public class EmailLinkExtractionResponseParserTests
 
     /// <summary>
     /// Garde de sécurité propre à ce parseur (cf. F-11) : le modèle ne doit jamais pouvoir faire écrire
-    /// une URL qu'il aurait inventée ou légèrement modifiée par rapport aux URLs candidates fournies.
+    /// un lien qui ne figure pas dans les URLs candidates fournies.
     /// </summary>
     [Fact]
-    public void Parse_UrlNotInCandidateList_IsDropped()
+    public void Parse_IndexOutOfRange_IsDropped()
     {
         const string json = """
             { "links": [
-                { "url": "https://blog.example.com/real-article", "title": "Un vrai article" },
-                { "url": "https://evil.example.com/not-a-candidate", "title": "Inventé" }
+                { "index": 0, "title": "Un vrai article" },
+                { "index": 5, "title": "Hors bornes" }
             ] }
             """;
 
@@ -58,12 +58,22 @@ public class EmailLinkExtractionResponseParserTests
     }
 
     [Fact]
-    public void Parse_DuplicateUrls_KeepsOnlyFirstOccurrence()
+    public void Parse_NegativeIndex_IsDropped()
+    {
+        const string json = """{ "links": [ { "index": -1, "title": "Invalide" } ] }""";
+
+        var result = EmailLinkExtractionResponseParser.Parse(json, CandidateUrls);
+
+        Assert.Empty(result);
+    }
+
+    [Fact]
+    public void Parse_DuplicateIndexes_KeepsOnlyFirstOccurrence()
     {
         const string json = """
             { "links": [
-                { "url": "https://blog.example.com/real-article", "title": "Titre 1" },
-                { "url": "https://blog.example.com/real-article", "title": "Titre 2" }
+                { "index": 0, "title": "Titre 1" },
+                { "index": 0, "title": "Titre 2" }
             ] }
             """;
 
@@ -76,7 +86,7 @@ public class EmailLinkExtractionResponseParserTests
     [Fact]
     public void Parse_MissingTitle_FallsBackToUrl()
     {
-        const string json = """{ "links": [ { "url": "https://blog.example.com/real-article" } ] }""";
+        const string json = """{ "links": [ { "index": 0 } ] }""";
 
         var result = EmailLinkExtractionResponseParser.Parse(json, CandidateUrls);
 

@@ -49,4 +49,35 @@ public class EmailLinkExtractionPromptBuilderTests
         Assert.Equal("object", root.GetProperty("type").GetString());
         Assert.True(root.GetProperty("properties").TryGetProperty("links", out _));
     }
+
+    /// <summary>
+    /// Régression pour la troncature observée le 2026-08-29 : le modèle désigne un lien par index, jamais en
+    /// recopiant l'URL (coûteux en tokens pour des URLs de tracking longues) — vérifie que le schéma exige
+    /// bien "index" et que le message présente les candidates numérotées.
+    /// </summary>
+    [Fact]
+    public void BuildToolInputSchemaJson_LinksItemsRequireIndexNotUrl()
+    {
+        var schemaJson = EmailLinkExtractionPromptBuilder.BuildToolInputSchemaJson();
+
+        using var document = JsonDocument.Parse(schemaJson);
+        var itemProperties = document.RootElement
+            .GetProperty("properties").GetProperty("links")
+            .GetProperty("items").GetProperty("properties");
+
+        Assert.True(itemProperties.TryGetProperty("index", out _));
+        Assert.False(itemProperties.TryGetProperty("url", out _));
+    }
+
+    [Fact]
+    public void BuildUserMessage_NumbersCandidateUrls()
+    {
+        var message = EmailLinkExtractionPromptBuilder.BuildUserMessage(
+            "Sujet",
+            "Corps",
+            ["https://blog.example.com/article", "https://tools.example.com/cli"]);
+
+        Assert.Contains("[0] https://blog.example.com/article", message);
+        Assert.Contains("[1] https://tools.example.com/cli", message);
+    }
 }

@@ -26,7 +26,7 @@ public class AnthropicEmailLinkExtractorTests
                 .WithBody("""
                     { "id": "msg_1", "type": "message", "content": [
                       { "type": "tool_use", "id": "toolu_1", "name": "extract_links",
-                        "input": { "links": [ { "url": "https://blog.example.com/article", "title": "Un vrai article" } ] } }
+                        "input": { "links": [ { "index": 0, "title": "Un vrai article" } ] } }
                     ] }
                     """));
 
@@ -122,7 +122,7 @@ public class AnthropicEmailLinkExtractorTests
                 .WithBody("""
                     { "id": "msg_1", "type": "message", "content": [
                         { "type": "tool_use", "id": "toolu_1", "name": "extract_links",
-                          "input": { "links": [ { "url": "https://blog.example.com/article", "title": "Titre" } ] } } ] }
+                          "input": { "links": [ { "index": 0, "title": "Titre" } ] } } ] }
                     """));
 
         var (extractor, extractionLogRepository) = CreateExtractor(server);
