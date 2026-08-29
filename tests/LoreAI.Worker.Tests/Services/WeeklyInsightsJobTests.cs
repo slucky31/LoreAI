@@ -72,6 +72,25 @@ public class WeeklyInsightsJobTests
             Arg.Any<CancellationToken>());
     }
 
+    /// <summary>S6 (lot 9, #50) : le coût LLM combine aussi les évaluations de veille dans le total unique.</summary>
+    [Fact]
+    public async Task Invoke_CombinesWatchEvaluationUsage()
+    {
+        var fixture = new JobFixture();
+        fixture.ArticleRepository
+            .GetClassificationRawResponsesSinceAsync(Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>())
+            .Returns(["{\"usage\":{\"input_tokens\":100,\"output_tokens\":10}}"]);
+        fixture.WatchEvaluationLogRepository
+            .GetRawResponsesSinceAsync(Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>())
+            .Returns(["{\"usage\":{\"input_tokens\":20,\"output_tokens\":2}}"]);
+
+        await fixture.Build().Invoke();
+
+        await fixture.WeeklyDigestNotifier.Received(1).SendDigestAsync(
+            Arg.Is<WeeklyInsightsReport>(r => r!.LlmUsage.InputTokens == 120 && r.LlmUsage.OutputTokens == 12),
+            Arg.Any<CancellationToken>());
+    }
+
     [Fact]
     public async Task Invoke_UsesFreshlyLearnedTaxonomyForTagAndCollectionInsights()
     {
@@ -91,6 +110,7 @@ public class WeeklyInsightsJobTests
         public ILibraryItemRepository LibraryItemRepository { get; } = Substitute.For<ILibraryItemRepository>();
         public IArticleRepository ArticleRepository { get; } = Substitute.For<IArticleRepository>();
         public IEmailExtractionLogRepository EmailExtractionLogRepository { get; } = Substitute.For<IEmailExtractionLogRepository>();
+        public IWatchEvaluationLogRepository WatchEvaluationLogRepository { get; } = Substitute.For<IWatchEvaluationLogRepository>();
         public IRaindropClient RaindropClient { get; } = Substitute.For<IRaindropClient>();
         public IWeeklyDigestNotifier WeeklyDigestNotifier { get; } = Substitute.For<IWeeklyDigestNotifier>();
 
@@ -101,6 +121,7 @@ public class WeeklyInsightsJobTests
             ArticleRepository.GetClassificationRawResponsesSinceAsync(Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>()).Returns([]);
             ArticleRepository.GetTrackedArticlesAsync(Arg.Any<CancellationToken>()).Returns([]);
             EmailExtractionLogRepository.GetRawResponsesSinceAsync(Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>()).Returns([]);
+            WatchEvaluationLogRepository.GetRawResponsesSinceAsync(Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>()).Returns([]);
         }
 
         public JobFixture WithTaxonomy(RaindropTaxonomy taxonomy)
@@ -119,6 +140,7 @@ public class WeeklyInsightsJobTests
             LibraryItemRepository,
             ArticleRepository,
             EmailExtractionLogRepository,
+            WatchEvaluationLogRepository,
             RaindropClient,
             WeeklyDigestNotifier,
             NullLogger<WeeklyInsightsJob>.Instance);

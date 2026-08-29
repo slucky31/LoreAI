@@ -21,6 +21,7 @@ public sealed class WeeklyInsightsJob : IInvocable, ICancellableInvocable
     private readonly ILibraryItemRepository _libraryItemRepository;
     private readonly IArticleRepository _articleRepository;
     private readonly IEmailExtractionLogRepository _emailExtractionLogRepository;
+    private readonly IWatchEvaluationLogRepository _watchEvaluationLogRepository;
     private readonly IRaindropClient _raindropClient;
     private readonly IWeeklyDigestNotifier _weeklyDigestNotifier;
     private readonly ILogger<WeeklyInsightsJob> _logger;
@@ -29,6 +30,7 @@ public sealed class WeeklyInsightsJob : IInvocable, ICancellableInvocable
         ILibraryItemRepository libraryItemRepository,
         IArticleRepository articleRepository,
         IEmailExtractionLogRepository emailExtractionLogRepository,
+        IWatchEvaluationLogRepository watchEvaluationLogRepository,
         IRaindropClient raindropClient,
         IWeeklyDigestNotifier weeklyDigestNotifier,
         ILogger<WeeklyInsightsJob> logger)
@@ -36,6 +38,7 @@ public sealed class WeeklyInsightsJob : IInvocable, ICancellableInvocable
         _libraryItemRepository = libraryItemRepository;
         _articleRepository = articleRepository;
         _emailExtractionLogRepository = emailExtractionLogRepository;
+        _watchEvaluationLogRepository = watchEvaluationLogRepository;
         _raindropClient = raindropClient;
         _weeklyDigestNotifier = weeklyDigestNotifier;
         _logger = logger;
@@ -54,12 +57,13 @@ public sealed class WeeklyInsightsJob : IInvocable, ICancellableInvocable
             var libraryItems = await _libraryItemRepository.GetAllForInsightsAsync(cancellationToken);
             var taxonomy = await _raindropClient.GetTaxonomyAsync(cancellationToken);
             var startOfMonthUtc = new DateTimeOffset(generatedAtUtc.Year, generatedAtUtc.Month, 1, 0, 0, 0, TimeSpan.Zero);
-            // S6 (lot 8) : les appels d'extraction de liens Newsletter (en amont de la classification) sont
-            // un second type d'appel LLM au même fournisseur — le rapport reste un total unique, pas de
-            // distinction par type d'appel (cf. roadmap lot 8).
+            // S6 (lot 8) : les appels d'extraction de liens Newsletter (en amont de la classification) et
+            // d'évaluation de veille (lot 9, #50) sont d'autres types d'appel LLM au même fournisseur — le
+            // rapport reste un total unique, pas de distinction par type d'appel (cf. roadmap lot 8).
             var classificationRawResponses = await _articleRepository.GetClassificationRawResponsesSinceAsync(startOfMonthUtc, cancellationToken);
             var extractionRawResponses = await _emailExtractionLogRepository.GetRawResponsesSinceAsync(startOfMonthUtc, cancellationToken);
-            var rawResponses = classificationRawResponses.Concat(extractionRawResponses).ToList();
+            var watchRawResponses = await _watchEvaluationLogRepository.GetRawResponsesSinceAsync(startOfMonthUtc, cancellationToken);
+            var rawResponses = classificationRawResponses.Concat(extractionRawResponses).Concat(watchRawResponses).ToList();
             var trackedArticles = await _articleRepository.GetTrackedArticlesAsync(cancellationToken);
 
             var collectionTitles = taxonomy.Collections.ToDictionary(c => c.Id, c => c.Title);

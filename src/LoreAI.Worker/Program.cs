@@ -12,6 +12,7 @@ using LoreAI.Infrastructure.Gmail;
 using LoreAI.Infrastructure.Notifications;
 using LoreAI.Infrastructure.Persistence;
 using LoreAI.Infrastructure.Raindrop;
+using LoreAI.Infrastructure.Watch;
 using LoreAI.Worker.Options;
 using LoreAI.Worker.Resilience;
 using LoreAI.Worker.Services;
@@ -69,6 +70,21 @@ try
         builder.Services.AddValidatedOptions<MinifluxOptions>(builder.Configuration, "Miniflux");
     }
 
+    // Même garde, pour la veille automatique (lot 9, #50) : tant qu'aucune catégorie Miniflux de veille
+    // n'est configurée, le worker continue de démarrer normalement plutôt que d'échouer sur une section
+    // Watch incomplète. Indépendant de feedIngestionEnabled : la veille peut tourner sans le connecteur
+    // de lecture personnelle du lot 7, tant que Miniflux__* (transport) est configuré — mais MinifluxOptions
+    // n'est validé qu'une fois, sinon double enregistrement si les deux flags sont actifs.
+    var topicWatchEnabled = builder.Configuration.GetValue("Worker:TopicWatchEnabled", false);
+    if (topicWatchEnabled)
+    {
+        if (!feedIngestionEnabled)
+        {
+            builder.Services.AddValidatedOptions<MinifluxOptions>(builder.Configuration, "Miniflux");
+        }
+        builder.Services.AddValidatedOptions<WatchOptions>(builder.Configuration, "Watch");
+    }
+
     // IDbContextFactory plutôt qu'AddDbContext : les repositories restent des singletons (inchangé),
     // et un DbContext n'est ni thread-safe ni fait pour être partagé sur la durée de vie du host.
     builder.Services.AddDbContextFactory<LoreAiDbContext>((serviceProvider, options) =>
@@ -84,6 +100,9 @@ try
     builder.Services.AddSingleton<ILibraryItemRepository, LibraryItemRepository>();
     builder.Services.AddSingleton<ILibraryIndexStateRepository, LibraryIndexStateRepository>();
     builder.Services.AddSingleton<IToolRepository, ToolRepository>();
+    // Rôle propriétaire (pas loreai_ro, contrairement au MCP) : le Worker a déjà accès complet à la base,
+    // réutilisé ici pour la comparaison au corpus de la veille (lot 9, #50).
+    builder.Services.AddSingleton<ICorpusQueryRepository, CorpusQueryRepository>();
     // DefaultNotificationPolicy expose des seuils en paramètres de constructeur ; ils étaient annoncés
     // « injectables » mais aucun appelant ne les fournissait. On les alimente depuis la configuration ici,
     // plutôt que de faire dépendre Core de Microsoft.Extensions.Options.
@@ -132,6 +151,8 @@ try
     // S6 (lot 8) : toujours enregistré, même désactivé — la table reste simplement vide, et
     // WeeklyInsightsJob peut combiner cette source sans condition.
     builder.Services.AddSingleton<IEmailExtractionLogRepository, EmailExtractionLogRepository>();
+    // Même logique (S6, lot 9, #50) : toujours enregistré, la table reste vide tant que la veille est désactivée.
+    builder.Services.AddSingleton<IWatchEvaluationLogRepository, WatchEvaluationLogRepository>();
 
     if (emailIngestionEnabled)
     {
@@ -151,6 +172,21 @@ try
             .AddStandardResilienceHandler();
 
         builder.Services.AddTransient<FeedIngestionJob>();
+    }
+
+    if (topicWatchEnabled)
+    {
+        builder.Services.AddHttpClient<ISourceIngester, MinifluxWatchIngester>()
+            .AddStandardResilienceHandler();
+
+        // Même cible API et même résilience que le classifieur (lot 9, #50) : appel Anthropic tool-use.
+        builder.Services.AddHttpClient<ITopicWatchFilter, AnthropicTopicWatchFilter>()
+            .AddStandardResilienceHandler(ClassifierResilience.Configure);
+
+        builder.Services.AddHttpClient<ITopicWatchNotifier, DiscordTopicWatchNotifier>()
+            .AddStandardResilienceHandler();
+
+        builder.Services.AddTransient<TopicWatchJob>();
     }
 
     builder.Services.AddScheduler();
@@ -241,6 +277,13 @@ try
             scheduler.Schedule<ReadingQueueTaggingJob>()
                 .Cron(workerOptions.ReadingQueueTaggingCronExpression)
                 .PreventOverlapping(nameof(ReadingQueueTaggingJob));
+        }
+
+        if (topicWatchEnabled)
+        {
+            scheduler.Schedule<TopicWatchJob>()
+                .Cron(workerOptions.TopicWatchCronExpression)
+                .PreventOverlapping(nameof(TopicWatchJob));
         }
     });
 
