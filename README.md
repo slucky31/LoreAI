@@ -134,6 +134,24 @@ VALUES ('Feed', '<id_de_la_derniere_entree_a_ignorer>', NULL, '<date_ISO8601_UTC
 
 Sans cette ligne, `MinifluxIngester` refuse tout backfill et journalise un avertissement à chaque passage tant que le curseur n'est pas seedé.
 
+## Veille automatique sur sujets (C4, lot 9)
+
+Désactivée par défaut (`Worker__TopicWatchEnabled=false`) : lit les nouvelles entrées d'une **catégorie Miniflux dédiée** aux flux RSS de recherche (ex. Google News RSS `?q=...`), les compare au corpus déjà connu via la recherche plein texte (Q2, lot 5), puis fait trancher un LLM sur la pertinence contre les sujets suivis et la nouveauté — seules les entrées jugées pertinentes **et** nouvelles déclenchent une alerte Discord. Jamais de write-back, jamais d'article persisté : une entrée de veille n'est ni un `Item` ni un article de la bibliothèque, elle est évaluée puis oubliée (seule sa réponse LLM brute est journalisée, pour S6). Cette catégorie doit rester **strictement séparée** des flux de lecture personnelle du lot 7 : mélanger les deux ferait passer des résultats de recherche par le pipeline de classification Raindrop.
+
+Prérequis, à faire une fois avant d'activer (`Worker__TopicWatchEnabled=true`) — nécessite une instance Miniflux déjà déployée (voir section précédente) :
+
+1. **Créer une catégorie Miniflux dédiée** (ex. « Veille ») dans Settings → Categories, puis y **ajouter les flux RSS de recherche** souhaités (un flux par sujet ou plusieurs, au choix — la veille ne fait pas de mapping flux→sujet).
+2. **Récupérer l'id de cette catégorie** : `curl -H "X-Auth-Token: <jeton>" "http://<miniflux>/v1/categories"` → reporter l'`id` correspondant dans `Watch__MinifluxCategoryId`.
+3. **Définir les sujets suivis**, qui servent de contexte au LLM (indépendamment des flux ci-dessus) : `Watch__Topics__0__Name`/`Watch__Topics__0__Description`, `Watch__Topics__1__Name`/`...`, etc. — voir `.env.example`.
+4. **Seeder le curseur d'entrée**, même logique que le connecteur RSS ci-dessus (jamais de backfill automatique) : récupérer l'id de la dernière entrée existante dans cette catégorie avec `curl -H "X-Auth-Token: <jeton>" "http://<miniflux>/v1/categories/<id>/entries?order=id&direction=desc&limit=1"`, puis :
+
+```sql
+INSERT INTO "PollingStates" ("SourceType", "LastSourceItemId", "LastCreatedUtc", "UpdatedAtUtc")
+VALUES ('Watch', '<id_de_la_derniere_entree_a_ignorer>', NULL, '<date_ISO8601_UTC>');
+```
+
+Sans cette ligne, `MinifluxWatchIngester` refuse tout backfill et journalise un avertissement à chaque passage tant que le curseur n'est pas seedé.
+
 ## File de lecture taguée sur Raindrop (L5, lot 8)
 
 Désactivé par défaut (`Worker__ReadingQueueTaggingEnabled=false`) : pose un tag Raindrop dédié (`Worker__ReadingQueueTagName`, défaut `cette-semaine`) sur les articles de la file de lecture hebdomadaire (L1 — mêmes 10 entrées que le digest Discord), et le retire de ceux qui en sont sortis. **Un tag, jamais une vraie collection** : un raindrop n'appartient qu'à une seule collection à la fois, y déplacer l'article le retirerait de sa collection thématique déjà assignée par la classification. Ni la note ni la collection ne sont jamais modifiées — seul le tag change.

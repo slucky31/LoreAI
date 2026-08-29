@@ -376,11 +376,11 @@ Ne commence qu'une fois le lot 4 livré : les deux connecteurs ont besoin de l'e
 
 - **L5** collection pilote « À lire cette semaine », alimentée par L1 ([#47](https://github.com/slucky31/LoreAI/issues/47)) — exclue du lot 6 faute de validation explicite de l'écriture hors « Non trié » ; replanifiée ici comme prochain lot ouvert, même raison qu'O4/S9/O5/O6. **Toujours conditionnée à cette validation avant implémentation.**
 
-#### Lot 9 — Veille automatique (**C4**)
+#### Lot 9 — Veille automatique (**C4**) — ✅ livré
 
 Sujets définis en configuration → flux de recherche (RSS) → filtrage LLM contre le corpus existant pour ne remonter que ce qui est nouveau et pertinent → alerte Discord.
 
-Construit sur le lot 7. **Ne pas partir sur une recherche web facturée à l'appel** avant d'avoir mesuré : voir l'arbitrage ci-dessous.
+Construit sur le lot 7, comme prévu, avec la contrainte RSS-d'abord respectée (jamais de recherche web facturée à l'appel — voir l'arbitrage ci-dessous). Les flux de recherche vivent dans une **catégorie Miniflux dédiée** (`Watch__MinifluxCategoryId`), strictement séparée des flux de lecture personnelle du lot 7 — sans quoi des résultats de recherche remonteraient dans le pipeline de classification Raindrop. `MinifluxWatchIngester` (`ISourceIngester`, `SourceType.Watch`, curseur propre) lit `GET /v1/categories/{id}/entries` ; les sujets suivis (`Watch__Topics`) ne sont pas mappés à des flux, ils servent de contexte à un seul filtrage LLM par entrée (`ITopicWatchFilter`/`AnthropicTopicWatchFilter`, tool-use forcé, même patron que `AnthropicClassifier`/`AnthropicEmailLinkExtractor`). La « nouveauté » contre le corpus se fait via la recherche plein texte déjà en place (`ICorpusQueryRepository.SearchAsync`, Q2/lot 5) plutôt qu'une infra dédiée : les titres des articles déjà connus les plus proches sont fournis en contexte au LLM. Jamais de write-back, jamais d'`Item`/article persisté (ADR 0012) — seul un log d'audit minimal (`WatchEvaluationLogs`, même patron qu'`EmailExtractionLogs`) alimente S6. Désactivé par défaut (`Worker__TopicWatchEnabled=false`).
 
 #### Lot 10 — Déduplication inter-sources (**C5**)
 

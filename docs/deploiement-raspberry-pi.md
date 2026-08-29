@@ -261,3 +261,23 @@ Miniflux est le moteur d'ingestion RSS (via son API REST, consommée par `Minifl
    ```
 
 6. **Activer le connecteur** : `Worker__FeedIngestionEnabled=true` dans `.env`, puis `sudo docker compose up -d loreai-worker` pour redémarrer le worker avec la section `Miniflux__*` désormais validée au démarrage.
+
+## 13. Lot 9 : activer la veille automatique sur sujets (C4, #50)
+
+Réutilise l'instance Miniflux déployée à l'étape 12, mais via une **catégorie dédiée**, strictement séparée des flux de lecture personnelle — voir README, section « Veille automatique sur sujets », pour le détail des variables `Watch__*`.
+
+1. **Créer la catégorie** dans l'UI Miniflux (Settings → Categories, ex. « Veille »), puis y **ajouter les flux RSS de recherche** (Google News RSS `?q=...` ou équivalent) — jamais dans la catégorie par défaut utilisée par le lot 7.
+2. **Récupérer son id** : `curl -H "X-Auth-Token: <jeton>" "http://<ip-tailscale-de-mcm8>:5100/v1/categories"` → reporter l'`id` correspondant dans `Watch__MinifluxCategoryId` (`.env`).
+3. **Définir les sujets suivis** : `Watch__Topics__0__Name`/`Watch__Topics__0__Description`, etc.
+4. **Seeder le curseur d'entrée** (même logique qu'à l'étape 12.5, sur l'endpoint de la catégorie cette fois) :
+
+   ```bash
+   curl -H "X-Auth-Token: <jeton>" "http://<ip-tailscale-de-mcm8>:5100/v1/categories/<id>/entries?order=id&direction=desc&limit=1"
+   ```
+
+   ```sql
+   INSERT INTO "PollingStates" ("SourceType", "LastSourceItemId", "LastCreatedUtc", "UpdatedAtUtc")
+   VALUES ('Watch', '<id_recupere_ci_dessus>', NULL, '<date_ISO8601_UTC>');
+   ```
+
+5. **Activer** : `Worker__TopicWatchEnabled=true` dans `.env`, puis `sudo docker compose up -d loreai-worker`.
