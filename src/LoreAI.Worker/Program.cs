@@ -111,6 +111,11 @@ try
     builder.Services.AddHttpClient<IReportNotifier, DiscordReportNotifier>()
         .AddStandardResilienceHandler();
 
+    // O6 (#78) : rapport hebdomadaire en digest Discord natif (embeds), IReportNotifier ci-dessus restant
+    // réservé à MonthlyReviewJob (format narratif, fichier .md inchangé).
+    builder.Services.AddHttpClient<IWeeklyDigestNotifier, DiscordWeeklyDigestNotifier>()
+        .AddStandardResilienceHandler();
+
     // Relance L4 (lot 6), déclenchée par ReconciliationJob.
     builder.Services.AddHttpClient<IReminderNotifier, DiscordReminderNotifier>()
         .AddStandardResilienceHandler();
