@@ -17,20 +17,17 @@ public class WeeklyInsightsJobTests
     private static readonly RaindropTaxonomy EmptyTaxonomy = new([], []);
 
     [Fact]
-    public async Task Invoke_HappyPath_SendsMarkdownReportOnce()
+    public async Task Invoke_HappyPath_SendsDigestOnce()
     {
         var fixture = new JobFixture();
 
         await fixture.Build().Invoke();
 
-        await fixture.ReportNotifier.Received(1).SendReportAsync(
-            Arg.Is<string>(name => name!.StartsWith("loreai-insights-", StringComparison.Ordinal) && name.EndsWith(".md", StringComparison.Ordinal)),
-            Arg.Is<string>(markdown => markdown!.Contains("Doublons d'URL", StringComparison.Ordinal)),
-            Arg.Any<CancellationToken>());
+        await fixture.WeeklyDigestNotifier.Received(1).SendDigestAsync(Arg.Any<WeeklyInsightsReport>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
-    public async Task Invoke_LibraryRepositoryThrows_DoesNotThrowAndDoesNotSendReport()
+    public async Task Invoke_LibraryRepositoryThrows_DoesNotThrowAndDoesNotSendDigest()
     {
         var fixture = new JobFixture();
         fixture.LibraryItemRepository
@@ -40,16 +37,15 @@ public class WeeklyInsightsJobTests
         var exception = await Record.ExceptionAsync(() => fixture.Build().Invoke());
 
         Assert.Null(exception);
-        await fixture.ReportNotifier.DidNotReceive().SendReportAsync(
-            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
+        await fixture.WeeklyDigestNotifier.DidNotReceive().SendDigestAsync(Arg.Any<WeeklyInsightsReport>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
-    public async Task Invoke_ReportNotifierThrows_DoesNotThrow()
+    public async Task Invoke_WeeklyDigestNotifierThrows_DoesNotThrow()
     {
         var fixture = new JobFixture();
-        fixture.ReportNotifier
-            .SendReportAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+        fixture.WeeklyDigestNotifier
+            .SendDigestAsync(Arg.Any<WeeklyInsightsReport>(), Arg.Any<CancellationToken>())
             .ThrowsAsync(new HttpRequestException("500"));
 
         var exception = await Record.ExceptionAsync(() => fixture.Build().Invoke());
@@ -71,9 +67,8 @@ public class WeeklyInsightsJobTests
 
         await fixture.Build().Invoke();
 
-        await fixture.ReportNotifier.Received(1).SendReportAsync(
-            Arg.Any<string>(),
-            Arg.Is<string>(markdown => markdown!.Contains("150 / 15", StringComparison.Ordinal)),
+        await fixture.WeeklyDigestNotifier.Received(1).SendDigestAsync(
+            Arg.Is<WeeklyInsightsReport>(r => r!.LlmUsage.InputTokens == 150 && r.LlmUsage.OutputTokens == 15),
             Arg.Any<CancellationToken>());
     }
 
@@ -86,9 +81,8 @@ public class WeeklyInsightsJobTests
 
         await fixture.Build().Invoke();
 
-        await fixture.ReportNotifier.Received(1).SendReportAsync(
-            Arg.Any<string>(),
-            Arg.Is<string>(markdown => markdown!.Contains("Veille", StringComparison.Ordinal) && markdown.Contains("dotnet", StringComparison.Ordinal)),
+        await fixture.WeeklyDigestNotifier.Received(1).SendDigestAsync(
+            Arg.Is<WeeklyInsightsReport>(r => r!.UnbalancedCollections.Any(c => c.Title == "Veille") && r.TagHygiene.SingleUseTags.Contains("dotnet")),
             Arg.Any<CancellationToken>());
     }
 
@@ -98,7 +92,7 @@ public class WeeklyInsightsJobTests
         public IArticleRepository ArticleRepository { get; } = Substitute.For<IArticleRepository>();
         public IEmailExtractionLogRepository EmailExtractionLogRepository { get; } = Substitute.For<IEmailExtractionLogRepository>();
         public IRaindropClient RaindropClient { get; } = Substitute.For<IRaindropClient>();
-        public IReportNotifier ReportNotifier { get; } = Substitute.For<IReportNotifier>();
+        public IWeeklyDigestNotifier WeeklyDigestNotifier { get; } = Substitute.For<IWeeklyDigestNotifier>();
 
         public JobFixture()
         {
@@ -126,7 +120,7 @@ public class WeeklyInsightsJobTests
             ArticleRepository,
             EmailExtractionLogRepository,
             RaindropClient,
-            ReportNotifier,
+            WeeklyDigestNotifier,
             NullLogger<WeeklyInsightsJob>.Instance);
     }
 }

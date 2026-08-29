@@ -2,15 +2,14 @@ using Coravel.Invocable;
 using LoreAI.Core.Interfaces;
 using LoreAI.Core.Models;
 using LoreAI.Core.Services;
-using LoreAI.Infrastructure.Notifications;
 
 namespace LoreAI.Worker.Services;
 
 /// <summary>
 /// Rapport hebdomadaire d'hygiène et de signaux (#43) : doublons d'URL (N1), tags à nettoyer (N2),
 /// collections déséquilibrées (N5), tendances (S3) et coût LLM (S6). Zéro appel LLM, zéro écriture —
-/// lecture seule sur <c>LibraryItems</c>/<c>Articles</c> et la taxonomie Raindrop, envoi Markdown en
-/// pièce jointe via le webhook Discord existant.
+/// lecture seule sur <c>LibraryItems</c>/<c>Articles</c> et la taxonomie Raindrop, envoi en digest
+/// Discord natif (embeds, O6/#78) plutôt qu'en pièce jointe Markdown.
 /// </summary>
 public sealed class WeeklyInsightsJob : IInvocable, ICancellableInvocable
 {
@@ -23,7 +22,7 @@ public sealed class WeeklyInsightsJob : IInvocable, ICancellableInvocable
     private readonly IArticleRepository _articleRepository;
     private readonly IEmailExtractionLogRepository _emailExtractionLogRepository;
     private readonly IRaindropClient _raindropClient;
-    private readonly IReportNotifier _reportNotifier;
+    private readonly IWeeklyDigestNotifier _weeklyDigestNotifier;
     private readonly ILogger<WeeklyInsightsJob> _logger;
 
     public WeeklyInsightsJob(
@@ -31,14 +30,14 @@ public sealed class WeeklyInsightsJob : IInvocable, ICancellableInvocable
         IArticleRepository articleRepository,
         IEmailExtractionLogRepository emailExtractionLogRepository,
         IRaindropClient raindropClient,
-        IReportNotifier reportNotifier,
+        IWeeklyDigestNotifier weeklyDigestNotifier,
         ILogger<WeeklyInsightsJob> logger)
     {
         _libraryItemRepository = libraryItemRepository;
         _articleRepository = articleRepository;
         _emailExtractionLogRepository = emailExtractionLogRepository;
         _raindropClient = raindropClient;
-        _reportNotifier = reportNotifier;
+        _weeklyDigestNotifier = weeklyDigestNotifier;
         _logger = logger;
     }
 
@@ -78,9 +77,7 @@ public sealed class WeeklyInsightsJob : IInvocable, ICancellableInvocable
                 ReadingQueueScorer.Score(trackedArticles, generatedAtUtc, ReadingQueueSize),
                 generatedAtUtc);
 
-            var markdown = MarkdownReportBuilder.Build(report);
-            var fileName = $"loreai-insights-{generatedAtUtc:yyyy-MM-dd}.md";
-            await _reportNotifier.SendReportAsync(fileName, markdown, cancellationToken);
+            await _weeklyDigestNotifier.SendDigestAsync(report, cancellationToken);
 
             if (_logger.IsEnabled(LogLevel.Information))
             {
