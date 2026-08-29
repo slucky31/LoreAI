@@ -116,6 +116,24 @@ VALUES ('Newsletter', '<historyId_retourne_par_users.getProfile>', NULL, '<date_
 
 Sans cette ligne, `GmailIngester` refuse tout backfill et journalise un avertissement à chaque passage tant que le curseur n'est pas seedé.
 
+## Connecteur RSS via Miniflux (lot 7)
+
+Désactivé par défaut (`Worker__FeedIngestionEnabled=false`) : lit les nouvelles entrées d'une instance [Miniflux](https://miniflux.app/) auto-hébergée (tous flux confondus) et les classe comme les articles Raindrop — sans jamais rien réécrire dans Miniflux ni Raindrop (ADR 0012). Miniflux gère lui-même la liste d'abonnements, le parsing des flux et sert d'interface de lecture humaine (remplace Feedly) ; LoreAI ne fait que consommer ses entrées via son API REST.
+
+Prérequis, à faire une fois avant d'activer (`Worker__FeedIngestionEnabled=true`) — voir `docs/deploiement-raspberry-pi.md` pour le déploiement complet du conteneur Miniflux :
+
+1. **Déployer Miniflux** (service `miniflux` du `docker-compose.yml`) — sur sa propre base `miniflux` de l'instance PostgreSQL mutualisée du Pi (ADR 0009), jamais la base `loreai`.
+2. **Créer le compte admin** au premier démarrage (`ADMIN_USERNAME`/`ADMIN_PASSWORD`), s'y connecter, puis **ajouter les flux RSS souhaités** via son interface.
+3. **Générer un jeton API** : Settings → API Keys → Create a new API key → reporter dans `Miniflux__ApiToken`. Reporter aussi l'adresse interne du conteneur dans `Miniflux__BaseUrl` (ex. `http://miniflux:8080`, DNS du réseau Docker partagé).
+4. **Seeder le curseur d'entrée**, même logique que Gmail/Raindrop ci-dessus (jamais de backfill automatique) : récupérer l'id de la dernière entrée existante avec `curl -H "X-Auth-Token: <jeton>" "http://<miniflux>/v1/entries?order=id&direction=desc&limit=1"`, puis :
+
+```sql
+INSERT INTO "PollingStates" ("SourceType", "LastSourceItemId", "LastCreatedUtc", "UpdatedAtUtc")
+VALUES ('Feed', '<id_de_la_derniere_entree_a_ignorer>', NULL, '<date_ISO8601_UTC>');
+```
+
+Sans cette ligne, `MinifluxIngester` refuse tout backfill et journalise un avertissement à chaque passage tant que le curseur n'est pas seedé.
+
 ## Tests automatisés
 
 ```bash

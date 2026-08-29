@@ -208,3 +208,56 @@ La CD publie `ghcr.io/slucky31/loreai-mcp` au même rythme et avec la même vers
    ```
 
    `Now listening on: http://[::]:8080` confirme le démarrage ; une requête `initialize` sans jeton doit répondre `401`, avec le bon jeton `200` (voir `tests/LoreAI.Mcp.Tests` pour le comportement attendu du middleware).
+
+## 12. Lot 7 : déployer Miniflux (connecteur RSS, #48)
+
+Miniflux est le moteur d'ingestion RSS (via son API REST, consommée par `MinifluxIngester`) **et** l'interface de lecture humaine (remplace Feedly) — voir [roadmap.md](roadmap.md), section « Miniflux auto-hébergé ». Il tourne dans son propre conteneur (`miniflux`, `docker-compose.yml`), sur sa propre base de l'instance PostgreSQL mutualisée — jamais la base `loreai`.
+
+1. **Provisionner la base et le rôle**, comme à l'étape 3 mais pour Miniflux (superutilisateur de l'instance, dans n'importe quelle base pour la création des rôles) :
+
+   ```sql
+   CREATE DATABASE miniflux;
+   CREATE ROLE miniflux LOGIN PASSWORD '<mot_de_passe_a_choisir>';
+   GRANT ALL PRIVILEGES ON DATABASE miniflux TO miniflux;
+   ```
+
+   Puis, **connecté directement à la base `miniflux`** (ex. `psql "postgresql://<superutilisateur>@<hote>:5432/miniflux"` — jamais `\c`, non portable vers un client graphique) :
+
+   ```sql
+   GRANT ALL ON SCHEMA public TO miniflux;
+   ```
+
+   Miniflux applique ses propres migrations au démarrage (`RUN_MIGRATIONS=1`) : pas de schéma à créer à la main au-delà de ce `GRANT`.
+
+2. **Compléter `.env`** (clés déjà présentes dans `.env.example`) :
+
+   - `MINIFLUX_DATABASE_URL` : `postgres://miniflux:<mot_de_passe>@pg_main:5432/miniflux?sslmode=disable` (même host/réseau que `Postgres__ConnectionString`, base et rôle différents).
+   - `MINIFLUX_ADMIN_USERNAME` / `MINIFLUX_ADMIN_PASSWORD` : compte admin créé au premier démarrage (`CREATE_ADMIN=1`), servira à se connecter à l'UI.
+   - `MCP_TAILSCALE_BIND_IP` : déjà renseignée si le lot 3 est actif — réutilisée telle quelle (même Pi, même garde-fou D2/ADR 0010 : jamais `0.0.0.0`).
+
+3. **Démarrer et se connecter** :
+
+   ```bash
+   sudo docker compose pull
+   sudo docker compose up -d miniflux
+   sudo docker compose logs -f miniflux
+   ```
+
+   Ouvrir `http://<ip-tailscale-de-mcm8>:8080` depuis un poste sur le tailnet, se connecter avec le compte admin, puis **ajouter les flux RSS souhaités** via l'interface (« Add subscription »).
+
+4. **Générer le jeton API** : Settings → API Keys → Create a new API key → reporter dans `Miniflux__ApiToken` (`.env`, section worker). Reporter aussi `Miniflux__BaseUrl=http://miniflux:8080` (DNS interne du réseau Docker partagé, pas l'adresse Tailscale — le worker et Miniflux sont colocalisés).
+
+5. **Seeder le curseur d'entrée**, même logique que le « Premier démarrage » de Raindrop (étape 8) et le connecteur Gmail (README) : jamais de backfill automatique au premier démarrage.
+
+   ```bash
+   curl -H "X-Auth-Token: <jeton_genere_a_l_etape_4>" "http://<ip-tailscale-de-mcm8>:8080/v1/entries?order=id&direction=desc&limit=1"
+   ```
+
+   Récupérer le champ `id` de l'unique entrée retournée, puis :
+
+   ```sql
+   INSERT INTO "PollingStates" ("SourceType", "LastSourceItemId", "LastCreatedUtc", "UpdatedAtUtc")
+   VALUES ('Feed', '<id_recupere_ci_dessus>', NULL, '<date_ISO8601_UTC>');
+   ```
+
+6. **Activer le connecteur** : `Worker__FeedIngestionEnabled=true` dans `.env`, puis `sudo docker compose up -d loreai` pour redémarrer le worker avec la section `Miniflux__*` désormais validée au démarrage.
