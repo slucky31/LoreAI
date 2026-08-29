@@ -51,9 +51,11 @@ services:
       ADMIN_USERNAME: ${MINIFLUX_ADMIN_USERNAME}
       ADMIN_PASSWORD: ${MINIFLUX_ADMIN_PASSWORD}
     ports:
-      # Meme garde-fou D2/ADR 0010 que loreai-mcp : bind sur l'adresse Tailscale du Pi, jamais "8080:8080"
-      # seul (publierait sur 0.0.0.0). Meme IP que MCP_TAILSCALE_BIND_IP (un seul Pi).
-      - "${MCP_TAILSCALE_BIND_IP}:8080:8080"
+      # Meme garde-fou D2/ADR 0010 que loreai-mcp : bind sur l'adresse Tailscale du Pi, jamais "5100:8080"
+      # seul (publierait sur 0.0.0.0). Meme IP que MCP_TAILSCALE_BIND_IP (un seul Pi). Port hote 5100 (pas
+      # 8080, deja pris par un autre conteneur sur mcm8) - ne concerne que le port publie sur l'hote ;
+      # Miniflux__BaseUrl (cote worker) continue de viser miniflux:8080, le port interne du conteneur.
+      - "${MCP_TAILSCALE_BIND_IP}:5100:8080"
 
 # Reseau Docker externe de l'instance PostgreSQL mutualisee (ADR 0009) : LoreAI la rejoint, il ne la
 # possede pas - stack Compose distincte, proprietaire de son propre reseau. Pas de depends_on vers un

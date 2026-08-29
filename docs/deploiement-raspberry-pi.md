@@ -243,14 +243,14 @@ Miniflux est le moteur d'ingestion RSS (via son API REST, consommée par `Minifl
    sudo docker compose logs -f miniflux
    ```
 
-   Ouvrir `http://<ip-tailscale-de-mcm8>:8080` depuis un poste sur le tailnet, se connecter avec le compte admin, puis **ajouter les flux RSS souhaités** via l'interface (« Add subscription »).
+   Ouvrir `http://<ip-tailscale-de-mcm8>:5100` depuis un poste sur le tailnet (port hôte 5100, cf. `docker-compose.yml` — pas 8080, déjà occupé par un autre conteneur sur `mcm8`), se connecter avec le compte admin, puis **ajouter les flux RSS souhaités** via l'interface (« Add subscription »).
 
 4. **Générer le jeton API** : Settings → API Keys → Create a new API key → reporter dans `Miniflux__ApiToken` (`.env`, section worker). Reporter aussi `Miniflux__BaseUrl=http://miniflux:8080` (DNS interne du réseau Docker partagé, pas l'adresse Tailscale — le worker et Miniflux sont colocalisés).
 
 5. **Seeder le curseur d'entrée**, même logique que le « Premier démarrage » de Raindrop (étape 8) et le connecteur Gmail (README) : jamais de backfill automatique au premier démarrage.
 
    ```bash
-   curl -H "X-Auth-Token: <jeton_genere_a_l_etape_4>" "http://<ip-tailscale-de-mcm8>:8080/v1/entries?order=id&direction=desc&limit=1"
+   curl -H "X-Auth-Token: <jeton_genere_a_l_etape_4>" "http://<ip-tailscale-de-mcm8>:5100/v1/entries?order=id&direction=desc&limit=1"
    ```
 
    Récupérer le champ `id` de l'unique entrée retournée, puis :
