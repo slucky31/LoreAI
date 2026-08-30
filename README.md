@@ -148,7 +148,7 @@ Prérequis, à faire une fois avant d'activer (`Worker__TopicWatchEnabled=true`)
    dotnet LoreAI.Worker.dll --add-watch-topic --name="dotnet-perf" --description="Optimisations de performance .NET, benchmarks, GC"
    ```
 
-   La commande crée la collection Raindrop et la catégorie Miniflux dédiées (même nom que `--name`), seed le curseur (aucun backfill : la catégorie vient d'être créée, donc vide), et persiste le sujet en base. Sur Docker, lancer via `docker compose run --rm loreai-worker dotnet LoreAI.Worker.dll --add-watch-topic --name=... --description=...`.
+   La commande crée la collection Raindrop et la catégorie Miniflux dédiées (même nom que `--name`), seed le curseur (aucun backfill : la catégorie vient d'être créée, donc vide), et persiste le sujet en base. Sur Docker, l'image a déjà `dotnet LoreAI.Worker.dll` en `ENTRYPOINT` — ne pas le répéter, seuls les arguments se passent à `docker compose run` : `docker compose run --rm loreai-worker --add-watch-topic --name=... --description=...`.
 2. **Ajouter les flux RSS de recherche** dans la catégorie Miniflux fraîchement créée, via l'UI (Settings → Feeds → Add).
 3. Répéter pour chaque sujet souhaité.
 
