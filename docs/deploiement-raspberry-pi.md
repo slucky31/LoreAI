@@ -264,20 +264,15 @@ Miniflux est le moteur d'ingestion RSS (via son API REST, consommée par `Minifl
 
 ## 13. Lot 9 : activer la veille automatique sur sujets (C4, #50)
 
-Réutilise l'instance Miniflux déployée à l'étape 12, mais via une **catégorie dédiée**, strictement séparée des flux de lecture personnelle — voir README, section « Veille automatique sur sujets », pour le détail des variables `Watch__*`.
+Réutilise l'instance Miniflux déployée à l'étape 12. Chaque sujet a sa propre collection Raindrop et sa propre catégorie Miniflux, provisionnées par une commande — voir README, section « Veille automatique sur sujets », pour le détail du mécanisme (création directe dans Raindrop, tag `veille`, digest Discord groupé).
 
-1. **Créer la catégorie** dans l'UI Miniflux (Settings → Categories, ex. « Veille »), puis y **ajouter les flux RSS de recherche** (Google News RSS `?q=...` ou équivalent) — jamais dans la catégorie par défaut utilisée par le lot 7.
-2. **Récupérer son id** : `curl -H "X-Auth-Token: <jeton>" "http://<ip-tailscale-de-mcm8>:5100/v1/categories"` → reporter l'`id` correspondant dans `Watch__MinifluxCategoryId` (`.env`).
-3. **Définir les sujets suivis** : `Watch__Topics__0__Name`/`Watch__Topics__0__Description`, etc.
-4. **Seeder le curseur d'entrée** (même logique qu'à l'étape 12.5, sur l'endpoint de la catégorie cette fois) :
+1. **Activer la section Miniflux au démarrage** : `Worker__TopicWatchEnabled=true` dans `.env` (nécessaire même avant de créer le premier sujet, pour que `Miniflux__*` soit validé) — ou lancer la commande de l'étape 2 une fois avant d'activer, elle valide `Miniflux__*` d'elle-même.
+2. **Créer un sujet** :
 
    ```bash
-   curl -H "X-Auth-Token: <jeton>" "http://<ip-tailscale-de-mcm8>:5100/v1/categories/<id>/entries?order=id&direction=desc&limit=1"
+   sudo docker compose run --rm loreai-worker dotnet LoreAI.Worker.dll --add-watch-topic --name="dotnet-perf" --description="Optimisations de performance .NET, benchmarks, GC"
    ```
 
-   ```sql
-   INSERT INTO "PollingStates" ("SourceType", "LastSourceItemId", "LastCreatedUtc", "UpdatedAtUtc")
-   VALUES ('Watch', '<id_recupere_ci_dessus>', NULL, '<date_ISO8601_UTC>');
-   ```
-
-5. **Activer** : `Worker__TopicWatchEnabled=true` dans `.env`, puis `sudo docker compose up -d loreai-worker`.
+   La commande crée la collection Raindrop et la catégorie Miniflux dédiées (même nom que `--name`), seed le curseur (catégorie fraîchement créée, donc vide — aucun backfill), et persiste le sujet en base. Répéter pour chaque sujet souhaité.
+3. **Ajouter les flux RSS de recherche** dans la catégorie Miniflux créée à l'étape 2 (Google News RSS `?q=...` ou équivalent), via l'UI Miniflux (`http://<ip-tailscale-de-mcm8>:5100`) — jamais dans la catégorie par défaut utilisée par le lot 7.
+4. **Redémarrer le worker** si ce n'est pas déjà fait : `sudo docker compose up -d loreai-worker`.

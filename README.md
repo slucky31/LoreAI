@@ -136,21 +136,23 @@ Sans cette ligne, `MinifluxIngester` refuse tout backfill et journalise un avert
 
 ## Veille automatique sur sujets (C4, lot 9)
 
-Désactivée par défaut (`Worker__TopicWatchEnabled=false`) : lit les nouvelles entrées d'une **catégorie Miniflux dédiée** aux flux RSS de recherche (ex. Google News RSS `?q=...`), les compare au corpus déjà connu via la recherche plein texte (Q2, lot 5), puis fait trancher un LLM sur la pertinence contre les sujets suivis et la nouveauté — seules les entrées jugées pertinentes **et** nouvelles déclenchent une alerte Discord. Jamais de write-back, jamais d'article persisté : une entrée de veille n'est ni un `Item` ni un article de la bibliothèque, elle est évaluée puis oubliée (seule sa réponse LLM brute est journalisée, pour S6). Cette catégorie doit rester **strictement séparée** des flux de lecture personnelle du lot 7 : mélanger les deux ferait passer des résultats de recherche par le pipeline de classification Raindrop.
+Désactivée par défaut (`Worker__TopicWatchEnabled=false`). Chaque **sujet de veille** a sa propre collection Raindrop et sa propre catégorie Miniflux dédiée (flux RSS de recherche, ex. Google News RSS `?q=...`) — jamais la catégorie de lecture personnelle du lot 7. Pour chaque nouvelle entrée d'une catégorie, le job compare au corpus déjà connu via la recherche plein texte (Q2, lot 5) puis fait trancher un LLM sur la pertinence pour ce sujet et la nouveauté ; une entrée jugée pertinente **et** nouvelle est **créée directement comme raindrop** dans la collection du sujet, taguée `veille` + les tags que le LLM propose (réutilisant le vocabulaire déjà existant). C'est le seul cas du projet où une source non-Raindrop crée du contenu dans Raindrop — jamais de modification d'un item existant (ADR 0012 intact sur ce point). Un seul résumé Discord groupé est envoyé par exécution (décompte par sujet), jamais une alerte par article.
+
+Les sujets ne se configurent **pas** en `.env` : chacun est créé par une commande dédiée qui provisionne tout en une fois.
 
 Prérequis, à faire une fois avant d'activer (`Worker__TopicWatchEnabled=true`) — nécessite une instance Miniflux déjà déployée (voir section précédente) :
 
-1. **Créer une catégorie Miniflux dédiée** (ex. « Veille ») dans Settings → Categories, puis y **ajouter les flux RSS de recherche** souhaités (un flux par sujet ou plusieurs, au choix — la veille ne fait pas de mapping flux→sujet).
-2. **Récupérer l'id de cette catégorie** : `curl -H "X-Auth-Token: <jeton>" "http://<miniflux>/v1/categories"` → reporter l'`id` correspondant dans `Watch__MinifluxCategoryId`.
-3. **Définir les sujets suivis**, qui servent de contexte au LLM (indépendamment des flux ci-dessus) : `Watch__Topics__0__Name`/`Watch__Topics__0__Description`, `Watch__Topics__1__Name`/`...`, etc. — voir `.env.example`.
-4. **Seeder le curseur d'entrée**, même logique que le connecteur RSS ci-dessus (jamais de backfill automatique) : récupérer l'id de la dernière entrée existante dans cette catégorie avec `curl -H "X-Auth-Token: <jeton>" "http://<miniflux>/v1/categories/<id>/entries?order=id&direction=desc&limit=1"`, puis :
+1. **Créer un sujet** :
 
-```sql
-INSERT INTO "PollingStates" ("SourceType", "LastSourceItemId", "LastCreatedUtc", "UpdatedAtUtc")
-VALUES ('Watch', '<id_de_la_derniere_entree_a_ignorer>', NULL, '<date_ISO8601_UTC>');
-```
+   ```bash
+   dotnet LoreAI.Worker.dll --add-watch-topic --name="dotnet-perf" --description="Optimisations de performance .NET, benchmarks, GC"
+   ```
 
-Sans cette ligne, `MinifluxWatchIngester` refuse tout backfill et journalise un avertissement à chaque passage tant que le curseur n'est pas seedé.
+   La commande crée la collection Raindrop et la catégorie Miniflux dédiées (même nom que `--name`), seed le curseur (aucun backfill : la catégorie vient d'être créée, donc vide), et persiste le sujet en base. Sur Docker, lancer via `docker compose run --rm loreai-worker dotnet LoreAI.Worker.dll --add-watch-topic --name=... --description=...`.
+2. **Ajouter les flux RSS de recherche** dans la catégorie Miniflux fraîchement créée, via l'UI (Settings → Feeds → Add).
+3. Répéter pour chaque sujet souhaité.
+
+Sans écriture manuelle de curseur ni d'id à copier : tout est géré par la commande.
 
 ## File de lecture taguée sur Raindrop (L5, lot 8)
 
