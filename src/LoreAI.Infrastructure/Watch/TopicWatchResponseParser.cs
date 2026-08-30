@@ -9,7 +9,8 @@ namespace LoreAI.Infrastructure.Watch;
 public static class TopicWatchResponseParser
 {
     private const int MaxReasonLength = 200;
-    private const int MaxTopicNameLength = 200;
+    private const int MaxTags = 20;
+    private const int MaxTagLength = 60;
 
     public static bool TryParse(
         string toolInputJson,
@@ -55,9 +56,7 @@ public static class TopicWatchResponseParser
             var isRelevant = isRelevantElement.GetBoolean();
             var isNew = isNewElement.GetBoolean();
 
-            var matchedTopic = root.TryGetProperty("matchedTopic", out var matchedTopicElement) && matchedTopicElement.ValueKind == JsonValueKind.String
-                ? LlmResponseTextSanitizer.SanitizeFreeText(matchedTopicElement.GetString(), MaxTopicNameLength)
-                : null;
+            var tags = ParseTags(root);
 
             var reason = root.TryGetProperty("reason", out var reasonElement) && reasonElement.ValueKind == JsonValueKind.String
                 ? LlmResponseTextSanitizer.SanitizeFreeText(reasonElement.GetString(), MaxReasonLength)
@@ -68,7 +67,7 @@ public static class TopicWatchResponseParser
                 // Une entrée non pertinente n'est jamais nouvelle : cohérence forcée côté code, pas
                 // seulement demandée dans le prompt, au cas où le modèle contredirait l'instruction.
                 isRelevant && isNew,
-                isRelevant ? matchedTopic : null,
+                isRelevant ? tags : [],
                 reason ?? string.Empty,
                 model,
                 rawResponse);
@@ -77,5 +76,22 @@ public static class TopicWatchResponseParser
         {
             throw new TopicWatchParseException($"Impossible de parser la réponse d'évaluation de veille : {ex.Message}", ex);
         }
+    }
+
+    private static List<string> ParseTags(JsonElement root)
+    {
+        if (!root.TryGetProperty("tags", out var tagsElement) || tagsElement.ValueKind != JsonValueKind.Array)
+        {
+            return [];
+        }
+
+        return tagsElement.EnumerateArray()
+            .Where(e => e.ValueKind == JsonValueKind.String)
+            .Select(e => LlmResponseTextSanitizer.SanitizeFreeText(e.GetString(), MaxTagLength))
+            .Where(tag => tag is not null)
+            .Cast<string>()
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Take(MaxTags)
+            .ToList();
     }
 }

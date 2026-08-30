@@ -15,6 +15,10 @@ public class AnthropicTopicWatchFilterTests
     private static readonly Item Candidate = new(
         SourceType.Watch, "1", "https://blog.example.com/article", "Un article", null, null, [], DateTimeOffset.UtcNow);
 
+    private static readonly WatchTopic Topic = new(1, "dotnet-perf", "Optimisations de performance .NET", 7, 42, "0", DateTimeOffset.UtcNow);
+
+    private static readonly RaindropTaxonomy EmptyTaxonomy = new([], []);
+
     [Fact]
     public async Task EvaluateAsync_ValidToolUseResponse_ReturnsEvaluation()
     {
@@ -27,15 +31,15 @@ public class AnthropicTopicWatchFilterTests
                 .WithBody("""
                     { "id": "msg_1", "type": "message", "content": [
                       { "type": "tool_use", "id": "toolu_1", "name": "evaluate_watch_candidate",
-                        "input": { "isRelevant": true, "matchedTopic": "dotnet-perf", "isNew": true, "reason": "Nouveau" } } ] }
+                        "input": { "isRelevant": true, "isNew": true, "tags": ["dotnet"], "reason": "Nouveau" } } ] }
                     """));
 
         var filter = CreateFilter(server);
-        var result = await filter.EvaluateAsync(Candidate, [], [], TestContext.Current.CancellationToken);
+        var result = await filter.EvaluateAsync(Candidate, Topic, EmptyTaxonomy, [], TestContext.Current.CancellationToken);
 
         Assert.True(result.IsRelevant);
         Assert.True(result.IsNew);
-        Assert.Equal("dotnet-perf", result.MatchedTopic);
+        Assert.Equal(["dotnet"], result.Tags);
         Assert.False(result.IsFallback);
     }
 
@@ -48,7 +52,7 @@ public class AnthropicTopicWatchFilterTests
             .RespondWith(Response.Create().WithStatusCode(500).WithBody("""{ "error": "boom" }"""));
 
         var filter = CreateFilter(server);
-        var result = await filter.EvaluateAsync(Candidate, [], [], TestContext.Current.CancellationToken);
+        var result = await filter.EvaluateAsync(Candidate, Topic, EmptyTaxonomy, [], TestContext.Current.CancellationToken);
 
         Assert.True(result.IsFallback);
         Assert.False(result.IsRelevant);
@@ -67,7 +71,7 @@ public class AnthropicTopicWatchFilterTests
                 .WithBody("""{ "id": "msg_1", "type": "message", "content": [] }"""));
 
         var filter = CreateFilter(server);
-        var result = await filter.EvaluateAsync(Candidate, [], [], TestContext.Current.CancellationToken);
+        var result = await filter.EvaluateAsync(Candidate, Topic, EmptyTaxonomy, [], TestContext.Current.CancellationToken);
 
         Assert.True(result.IsFallback);
     }
@@ -84,7 +88,7 @@ public class AnthropicTopicWatchFilterTests
                 .WithBody("""{ "id": "msg_1", "type": "message", "stop_reason": "max_tokens", "content": [] }"""));
 
         var filter = CreateFilter(server);
-        var result = await filter.EvaluateAsync(Candidate, [], [], TestContext.Current.CancellationToken);
+        var result = await filter.EvaluateAsync(Candidate, Topic, EmptyTaxonomy, [], TestContext.Current.CancellationToken);
 
         Assert.True(result.IsFallback);
         Assert.Contains("max_tokens", result.Reason, StringComparison.Ordinal);

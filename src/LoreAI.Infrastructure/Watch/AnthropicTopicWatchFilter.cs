@@ -46,11 +46,12 @@ public sealed class AnthropicTopicWatchFilter : ITopicWatchFilter
 
     public async Task<WatchEvaluation> EvaluateAsync(
         Item candidate,
-        IReadOnlyList<WatchTopic> topics,
+        WatchTopic topic,
+        RaindropTaxonomy taxonomy,
         IReadOnlyList<LibraryItemSummary> relatedCorpusItems,
         CancellationToken cancellationToken)
     {
-        var requestBody = BuildRequestBody(candidate, topics, relatedCorpusItems);
+        var requestBody = BuildRequestBody(candidate, topic, taxonomy, relatedCorpusItems);
         var rawResponseBody = string.Empty;
 
         try
@@ -89,14 +90,14 @@ public sealed class AnthropicTopicWatchFilter : ITopicWatchFilter
         return WatchEvaluation.Fallback(_options.Model, $"Évaluation échouée: {reason}", rawResponseBody);
     }
 
-    private object BuildRequestBody(Item candidate, IReadOnlyList<WatchTopic> topics, IReadOnlyList<LibraryItemSummary> relatedCorpusItems) => new
+    private object BuildRequestBody(Item candidate, WatchTopic topic, RaindropTaxonomy taxonomy, IReadOnlyList<LibraryItemSummary> relatedCorpusItems) => new
     {
         model = _options.Model,
         max_tokens = MaxTokens,
         system = TopicWatchPromptBuilder.SystemPrompt,
         messages = new[]
         {
-            new { role = "user", content = TopicWatchPromptBuilder.BuildUserMessage(candidate, topics, relatedCorpusItems) }
+            new { role = "user", content = TopicWatchPromptBuilder.BuildUserMessage(candidate, topic, taxonomy, relatedCorpusItems) }
         },
         tools = new[]
         {

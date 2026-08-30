@@ -1,7 +1,6 @@
 using System.Text.Json;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
-using LoreAI.Core.Enums;
 using LoreAI.Core.Models;
 using LoreAI.Infrastructure.Notifications;
 using WireMock.RequestBuilders;
@@ -10,10 +9,10 @@ using WireMock.Server;
 
 namespace LoreAI.Infrastructure.Tests.Notifications;
 
-public class DiscordTopicWatchNotifierTests
+public class DiscordWatchDigestNotifierTests
 {
     [Fact]
-    public async Task NotifyAsync_PostsMessageContainingTitleTopicAndLink()
+    public async Task NotifyAsync_PostsMessageContainingPerTopicCounts()
     {
         using var server = WireMockServer.Start();
         server
@@ -21,17 +20,19 @@ public class DiscordTopicWatchNotifierTests
             .RespondWith(Response.Create().WithStatusCode(204));
 
         var notifier = CreateNotifier(server);
-        var candidate = new Item(SourceType.Watch, "1", "https://example.com/article", "Un vrai scoop", null, null, [], DateTimeOffset.UtcNow);
-        var evaluation = new WatchEvaluation(true, true, "dotnet-perf", "Apporte un nouveau benchmark", "model", "raw");
+        var summary = new WatchRunSummary([
+            new WatchTopicRunResult("dotnet-perf", 5, 2),
+            new WatchTopicRunResult("ia-outils", 3, 0),
+        ]);
 
-        await notifier.NotifyAsync(candidate, evaluation, CancellationToken.None);
+        await notifier.NotifyAsync(summary, CancellationToken.None);
 
         var logEntry = Assert.Single(server.LogEntries);
         var content = JsonDocument.Parse(logEntry.RequestMessage!.Body!).RootElement.GetProperty("content").GetString();
-        Assert.Contains("Un vrai scoop", content, StringComparison.Ordinal);
         Assert.Contains("dotnet-perf", content, StringComparison.Ordinal);
-        Assert.Contains("https://example.com/article", content, StringComparison.Ordinal);
-        Assert.Contains("Apporte un nouveau benchmark", content, StringComparison.Ordinal);
+        Assert.Contains("2/5", content, StringComparison.Ordinal);
+        Assert.Contains("ia-outils", content, StringComparison.Ordinal);
+        Assert.Contains("0/3", content, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -43,18 +44,17 @@ public class DiscordTopicWatchNotifierTests
             .RespondWith(Response.Create().WithStatusCode(500));
 
         var notifier = CreateNotifier(server);
-        var candidate = new Item(SourceType.Watch, "1", "https://example.com", "Titre", null, null, [], DateTimeOffset.UtcNow);
-        var evaluation = new WatchEvaluation(true, true, "sujet", "raison", "model", "raw");
+        var summary = new WatchRunSummary([new WatchTopicRunResult("sujet", 1, 0)]);
 
-        var exception = await Record.ExceptionAsync(() => notifier.NotifyAsync(candidate, evaluation, CancellationToken.None));
+        var exception = await Record.ExceptionAsync(() => notifier.NotifyAsync(summary, CancellationToken.None));
 
         Assert.Null(exception);
     }
 
-    private static DiscordTopicWatchNotifier CreateNotifier(WireMockServer server)
+    private static DiscordWatchDigestNotifier CreateNotifier(WireMockServer server)
     {
         var httpClient = new HttpClient();
         var options = Options.Create(new DiscordOptions { WebhookUrl = $"{server.Urls[0]}/webhook" });
-        return new DiscordTopicWatchNotifier(httpClient, options, NullLogger<DiscordTopicWatchNotifier>.Instance);
+        return new DiscordWatchDigestNotifier(httpClient, options, NullLogger<DiscordWatchDigestNotifier>.Instance);
     }
 }

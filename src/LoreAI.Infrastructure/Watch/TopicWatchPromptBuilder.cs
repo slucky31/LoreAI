@@ -7,18 +7,22 @@ namespace LoreAI.Infrastructure.Watch;
 public static class TopicWatchPromptBuilder
 {
     private const int MaxRelatedItems = 5;
+    private const int MaxTagsInPrompt = 50;
 
     public const string ToolName = "evaluate_watch_candidate";
 
     public const string SystemPrompt = """
-        Tu aides un développeur .NET à faire de la veille automatique sur des sujets qu'il a définis, à
-        partir d'entrées provenant de flux RSS de recherche (pas ses propres sauvegardes).
-        Pour chaque entrée candidate, détermine :
-        - isRelevant : vrai si l'entrée correspond clairement à l'un des sujets suivis listés ci-dessous.
-        - matchedTopic : le nom exact du sujet suivi correspondant si isRelevant est vrai ; sinon null.
+        Tu aides un développeur .NET à faire de la veille automatique sur un sujet qu'il a défini, à partir
+        d'une entrée provenant d'un flux RSS de recherche dédié à ce sujet (pas ses propres sauvegardes).
+        Détermine :
+        - isRelevant : vrai si l'entrée correspond vraiment au sujet suivi décrit ci-dessous (le flux RSS
+          d'origine est une recherche par mot-clé, donc pas garanti pertinent à 100%).
         - isNew : vrai si l'entrée apporte une information que les articles déjà connus (listés ci-dessous,
           s'il y en a) ne couvrent pas déjà. Si aucun article connu n'est fourni, considère l'entrée comme
           nouvelle par défaut. Une entrée non pertinente (isRelevant=false) doit avoir isNew=false.
+        - tags : une liste de tags à appliquer si l'entrée est créée dans Raindrop, en réutilisant en
+          priorité le vocabulaire de tags déjà existant fourni ; liste vide si aucun tag pertinent
+          (le tag "veille" est ajouté automatiquement en dehors de cet outil, ne le propose pas toi-même).
         - reason : une justification courte en français (200 caractères maximum).
         Utilise impérativement l'outil "evaluate_watch_candidate" pour renvoyer ta réponse.
 
@@ -35,33 +39,33 @@ public static class TopicWatchPromptBuilder
             properties = new
             {
                 isRelevant = new { type = "boolean" },
-                matchedTopic = new
-                {
-                    type = new[] { "string", "null" },
-                    description = "Nom exact du sujet suivi correspondant, uniquement si isRelevant=true ; sinon null.",
-                },
                 isNew = new { type = "boolean" },
+                tags = new
+                {
+                    type = "array",
+                    items = new { type = "string" },
+                    description = "Tags à appliquer si créé dans Raindrop, de préférence issus du vocabulaire existant fourni. Jamais \"veille\", ajouté automatiquement.",
+                },
                 reason = new { type = "string", maxLength = 200 },
             },
-            required = new[] { "isRelevant", "matchedTopic", "isNew", "reason" },
+            required = new[] { "isRelevant", "isNew", "tags", "reason" },
         };
 
         return JsonSerializer.Serialize(schema);
     }
 
-    public static string BuildUserMessage(Item candidate, IReadOnlyList<WatchTopic> topics, IReadOnlyList<LibraryItemSummary> relatedCorpusItems)
+    public static string BuildUserMessage(Item candidate, WatchTopic topic, RaindropTaxonomy taxonomy, IReadOnlyList<LibraryItemSummary> relatedCorpusItems)
     {
-        var topicsList = topics.Count > 0
-            ? string.Join('\n', topics.Select(t => $"- {t.Name} : {t.Description}"))
-            : "(aucun sujet configuré)";
-
         var relatedList = relatedCorpusItems.Count > 0
             ? string.Join('\n', relatedCorpusItems.Take(MaxRelatedItems).Select(i => $"- {i.Title}"))
             : "(aucun article déjà connu sur un sujet proche)";
 
+        var topTags = taxonomy.Tags.Count > 0
+            ? string.Join(", ", taxonomy.Tags.OrderByDescending(t => t.Count).Take(MaxTagsInPrompt).Select(t => t.Name))
+            : "(aucun tag existant)";
+
         return $"""
-            Sujets suivis :
-            {topicsList}
+            Sujet suivi : {topic.Name} — {topic.Description}
 
             <candidate>
             Titre : {candidate.Title}
@@ -71,6 +75,8 @@ public static class TopicWatchPromptBuilder
 
             Articles déjà connus sur un sujet proche (recherche plein texte sur le titre) :
             {relatedList}
+
+            Tags les plus utilisés dans la bibliothèque : {topTags}
             """;
     }
 
