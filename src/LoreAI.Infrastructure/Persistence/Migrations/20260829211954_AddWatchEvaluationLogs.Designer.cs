@@ -3,6 +3,7 @@ using System;
 using LoreAI.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using NpgsqlTypes;
@@ -12,9 +13,11 @@ using NpgsqlTypes;
 namespace LoreAI.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(LoreAiDbContext))]
-    partial class LoreAiDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260829211954_AddWatchEvaluationLogs")]
+    partial class AddWatchEvaluationLogs
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -395,41 +398,6 @@ namespace LoreAI.Infrastructure.Persistence.Migrations
                     b.HasIndex("ProcessedAtUtc");
 
                     b.ToTable("WatchEvaluationLogs");
-                });
-
-            modelBuilder.Entity("LoreAI.Infrastructure.Persistence.WatchTopicEntity", b =>
-                {
-                    b.Property<long>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
-
-                    b.Property<DateTimeOffset>("CreatedAtUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("Description")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("LastMinifluxEntryId")
-                        .HasColumnType("text");
-
-                    b.Property<int>("MinifluxCategoryId")
-                        .HasColumnType("integer");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<long>("RaindropCollectionId")
-                        .HasColumnType("bigint");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("Name");
-
-                    b.ToTable("WatchTopics");
                 });
 #pragma warning restore 612, 618
         }

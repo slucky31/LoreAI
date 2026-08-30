@@ -348,6 +348,48 @@ public class RaindropClientTests
         Assert.Equal(10, tag.Count);
     }
 
+    [Fact]
+    public async Task CreateCollectionAsync_ReturnsCreatedCollectionId()
+    {
+        using var server = WireMockServer.Start();
+        server
+            .Given(Request.Create().WithPath("/rest/v1/collection").UsingPost())
+            .RespondWith(Response.Create()
+                .WithStatusCode(200)
+                .WithHeader("Content-Type", "application/json")
+                .WithBody("""{ "result": true, "item": { "_id": 42, "title": "dotnet-perf" } }"""));
+
+        var client = CreateClient(server, pageSize: 50);
+
+        var id = await client.CreateCollectionAsync("dotnet-perf", CancellationToken.None);
+
+        Assert.Equal(42, id);
+        var logEntry = Assert.Single(server.LogEntries);
+        Assert.Contains("\"title\":\"dotnet-perf\"", logEntry.RequestMessage!.Body);
+    }
+
+    [Fact]
+    public async Task CreateRaindropAsync_PostsLinkTitleCollectionTagsAndNote()
+    {
+        using var server = WireMockServer.Start();
+        server
+            .Given(Request.Create().WithPath("/rest/v1/raindrop").UsingPost())
+            .RespondWith(Response.Create().WithStatusCode(200).WithHeader("Content-Type", "application/json")
+                .WithBody("""{ "result": true }"""));
+
+        var client = CreateClient(server, pageSize: 50);
+
+        await client.CreateRaindropAsync("https://example.com/article", "Un article", 42, ["veille", "dotnet"], "raison", CancellationToken.None);
+
+        var logEntry = Assert.Single(server.LogEntries);
+        var body = logEntry.RequestMessage!.Body;
+        Assert.Contains("\"link\":\"https://example.com/article\"", body, StringComparison.Ordinal);
+        Assert.Contains("\"title\":\"Un article\"", body, StringComparison.Ordinal);
+        Assert.Contains("\"$id\":42", body, StringComparison.Ordinal);
+        Assert.Contains("\"veille\"", body, StringComparison.Ordinal);
+        Assert.Contains("\"note\":\"raison\"", body, StringComparison.Ordinal);
+    }
+
     private static RaindropClient CreateClient(WireMockServer server, int pageSize)
     {
         var httpClient = new HttpClient();

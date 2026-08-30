@@ -164,6 +164,33 @@ public sealed class RaindropClient : IRaindropClient
         response.EnsureSuccessStatusCode();
     }
 
+    public async Task<long> CreateCollectionAsync(string title, CancellationToken cancellationToken)
+    {
+        var body = new { title };
+
+        var response = await _httpClient.PostAsJsonAsync("collection", body, cancellationToken);
+        response.EnsureSuccessStatusCode();
+
+        var payload = await response.Content.ReadFromJsonAsync<CollectionItemResponseDto>(cancellationToken: cancellationToken);
+        return payload?.Item?.Id
+            ?? throw new InvalidOperationException("Réponse Raindrop POST /collection vide ou invalide.");
+    }
+
+    public async Task CreateRaindropAsync(string url, string title, long collectionId, IReadOnlyCollection<string> tags, string? note, CancellationToken cancellationToken)
+    {
+        var body = new Dictionary<string, object?>
+        {
+            ["link"] = url,
+            ["title"] = title,
+            ["collection"] = new Dictionary<string, object> { ["$id"] = collectionId },
+            ["tags"] = tags,
+            ["note"] = note,
+        };
+
+        var response = await _httpClient.PostAsJsonAsync("raindrop", body, cancellationToken);
+        response.EnsureSuccessStatusCode();
+    }
+
     private async Task<List<CollectionDto>> GetCollectionsAsync(string path, CancellationToken cancellationToken)
     {
         var response = await _httpClient.GetAsync(path, cancellationToken);

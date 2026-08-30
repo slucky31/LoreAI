@@ -53,6 +53,13 @@ internal sealed class CollectionsPageDto
     public List<CollectionDto> Items { get; set; } = [];
 }
 
+/// <summary>Réponse de <c>POST /collection</c> — un seul item créé, pas une page (lot 9, #50).</summary>
+internal sealed class CollectionItemResponseDto
+{
+    public bool Result { get; set; }
+    public CollectionDto? Item { get; set; }
+}
+
 internal sealed class CollectionDto
 {
     [JsonPropertyName("_id")]

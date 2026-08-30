@@ -11,6 +11,8 @@ public sealed class LoreAiDbContext(DbContextOptions<LoreAiDbContext> options) :
     public DbSet<LibraryIndexStateEntity> LibraryIndexStates => Set<LibraryIndexStateEntity>();
     public DbSet<ToolEntity> Tools => Set<ToolEntity>();
     public DbSet<EmailExtractionLogEntity> EmailExtractionLogs => Set<EmailExtractionLogEntity>();
+    public DbSet<WatchEvaluationLogEntity> WatchEvaluationLogs => Set<WatchEvaluationLogEntity>();
+    public DbSet<WatchTopicEntity> WatchTopics => Set<WatchTopicEntity>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -71,6 +73,20 @@ public sealed class LoreAiDbContext(DbContextOptions<LoreAiDbContext> options) :
             // Pas de clé applicative (lot 8, #49), comme CycleRunEntity : rien n'identifie un appel a priori.
             extractionLog.Property(e => e.RawResponse).HasColumnType("jsonb");
             extractionLog.HasIndex(e => e.ProcessedAtUtc);
+        });
+
+        modelBuilder.Entity<WatchEvaluationLogEntity>(watchEvaluationLog =>
+        {
+            // Même patron qu'EmailExtractionLogEntity (lot 9, #50) : pas de clé applicative.
+            watchEvaluationLog.Property(e => e.RawResponse).HasColumnType("jsonb");
+            watchEvaluationLog.HasIndex(e => e.ProcessedAtUtc);
+        });
+
+        modelBuilder.Entity<WatchTopicEntity>(watchTopic =>
+        {
+            // Id généré (lot 9, #50, redesign) : un sujet n'a pas d'identifiant naturel, contrairement à
+            // PollingStateEntity (SourceType) — même raisonnement que ToolEntity.
+            watchTopic.HasIndex(t => t.Name);
         });
     }
 }

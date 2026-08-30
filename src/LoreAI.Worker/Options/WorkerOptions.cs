@@ -102,4 +102,15 @@ public sealed class WorkerOptions
     /// <summary>Nom du tag posé sur les articles de la file de lecture de la semaine (L5, lot 8).</summary>
     [Required(AllowEmptyStrings = false)]
     public string ReadingQueueTagName { get; init; } = "cette-semaine";
+
+    /// <summary>Expression cron de la veille automatique sur sujets (C4, lot 9, #50) — par défaut toutes les 6h : pas besoin du rythme 15 min du cycle Raindrop, et chaque candidat coûte un appel LLM.</summary>
+    [Required(AllowEmptyStrings = false)]
+    public string TopicWatchCronExpression { get; init; } = "0 */6 * * *";
+
+    /// <summary>
+    /// Inactif par défaut (lot 9, #50) : tant qu'aucune catégorie Miniflux de veille n'est configurée (étape
+    /// manuelle, cf. README), le job ne doit ni être planifié, ni exiger une section <c>Watch</c> valide au
+    /// démarrage — même logique que <see cref="FeedIngestionEnabled"/>.
+    /// </summary>
+    public bool TopicWatchEnabled { get; init; }
 }

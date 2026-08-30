@@ -30,4 +30,15 @@ public interface IRaindropClient : ISourceIngester
     /// plus (404) — supprimé définitivement de Raindrop, pas seulement mis à la corbeille.
     /// </summary>
     Task<RaindropSnapshot?> GetRaindropAsync(long raindropId, CancellationToken cancellationToken);
+
+    /// <summary>Crée une nouvelle collection (lot 9, #50 — provisioning d'un sujet de veille). Retourne son id.</summary>
+    Task<long> CreateCollectionAsync(string title, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Crée un nouveau raindrop directement dans <paramref name="collectionId"/> (lot 9, #50) — contrairement
+    /// à <see cref="UpdateRaindropAsync"/>, ce n'est pas une modification d'un item existant : c'est le seul
+    /// cas du projet où une source non-Raindrop (ici, une entrée de veille via Miniflux) provoque une
+    /// création dans Raindrop, jamais une modification de contenu déjà trié par l'utilisateur (ADR 0012).
+    /// </summary>
+    Task CreateRaindropAsync(string url, string title, long collectionId, IReadOnlyCollection<string> tags, string? note, CancellationToken cancellationToken);
 }
