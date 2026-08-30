@@ -270,8 +270,10 @@ Réutilise l'instance Miniflux déployée à l'étape 12. Chaque sujet a sa prop
 2. **Créer un sujet** :
 
    ```bash
-   sudo docker compose run --rm loreai-worker dotnet LoreAI.Worker.dll --add-watch-topic --name="dotnet-perf" --description="Optimisations de performance .NET, benchmarks, GC"
+   sudo docker compose run --rm loreai-worker --add-watch-topic --name="dotnet-perf" --description="Optimisations de performance .NET, benchmarks, GC"
    ```
+
+   L'image a déjà `dotnet LoreAI.Worker.dll` en `ENTRYPOINT` (`src/LoreAI.Worker/Dockerfile`) — ne pas le répéter dans la commande, sous peine de le passer en argument à lui-même.
 
    La commande crée la collection Raindrop et la catégorie Miniflux dédiées (même nom que `--name`), seed le curseur (catégorie fraîchement créée, donc vide — aucun backfill), et persiste le sujet en base. Répéter pour chaque sujet souhaité.
 3. **Ajouter les flux RSS de recherche** dans la catégorie Miniflux créée à l'étape 2 (Google News RSS `?q=...` ou équivalent), via l'UI Miniflux (`http://<ip-tailscale-de-mcm8>:5100`) — jamais dans la catégorie par défaut utilisée par le lot 7.
