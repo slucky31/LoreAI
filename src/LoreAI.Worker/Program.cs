@@ -64,25 +64,14 @@ try
 
     // Même garde que ci-dessus, pour Miniflux (lot 7, #48) : tant qu'aucune instance n'est déployée/configurée,
     // le worker continue de démarrer normalement plutôt que d'échouer sur une section Miniflux incomplète.
+    // Partagée par le connecteur RSS (lot 7), la veille (lot 9, #50) et le provisioning d'un sujet
+    // (--add-watch-topic, utilisable même si Worker__TopicWatchEnabled=false).
     var feedIngestionEnabled = builder.Configuration.GetValue("Worker:FeedIngestionEnabled", false);
-    if (feedIngestionEnabled)
+    var topicWatchEnabled = builder.Configuration.GetValue("Worker:TopicWatchEnabled", false);
+    var addWatchTopicRequested = args.Contains("--add-watch-topic");
+    if (feedIngestionEnabled || topicWatchEnabled || addWatchTopicRequested)
     {
         builder.Services.AddValidatedOptions<MinifluxOptions>(builder.Configuration, "Miniflux");
-    }
-
-    // Même garde, pour la veille automatique (lot 9, #50) : tant qu'aucune catégorie Miniflux de veille
-    // n'est configurée, le worker continue de démarrer normalement plutôt que d'échouer sur une section
-    // Watch incomplète. Indépendant de feedIngestionEnabled : la veille peut tourner sans le connecteur
-    // de lecture personnelle du lot 7, tant que Miniflux__* (transport) est configuré — mais MinifluxOptions
-    // n'est validé qu'une fois, sinon double enregistrement si les deux flags sont actifs.
-    var topicWatchEnabled = builder.Configuration.GetValue("Worker:TopicWatchEnabled", false);
-    if (topicWatchEnabled)
-    {
-        if (!feedIngestionEnabled)
-        {
-            builder.Services.AddValidatedOptions<MinifluxOptions>(builder.Configuration, "Miniflux");
-        }
-        builder.Services.AddValidatedOptions<WatchOptions>(builder.Configuration, "Watch");
     }
 
     // IDbContextFactory plutôt qu'AddDbContext : les repositories restent des singletons (inchangé),
@@ -103,6 +92,9 @@ try
     // Rôle propriétaire (pas loreai_ro, contrairement au MCP) : le Worker a déjà accès complet à la base,
     // réutilisé ici pour la comparaison au corpus de la veille (lot 9, #50).
     builder.Services.AddSingleton<ICorpusQueryRepository, CorpusQueryRepository>();
+    // Toujours enregistré (comme IToolRepository) : pas de dépendance HTTP, nécessaire à la fois au job et
+    // au mode CLI --add-watch-topic, indépendamment de Worker__TopicWatchEnabled.
+    builder.Services.AddSingleton<IWatchTopicRepository, WatchTopicRepository>();
     // DefaultNotificationPolicy expose des seuils en paramètres de constructeur ; ils étaient annoncés
     // « injectables » mais aucun appelant ne les fournissait. On les alimente depuis la configuration ici,
     // plutôt que de faire dépendre Core de Microsoft.Extensions.Options.
@@ -174,16 +166,23 @@ try
         builder.Services.AddTransient<FeedIngestionJob>();
     }
 
+    if (topicWatchEnabled || addWatchTopicRequested)
+    {
+        // Nécessaire au provisioning (--add-watch-topic) même sans le job actif.
+        builder.Services.AddHttpClient<IWatchTopicProvisioner, WatchTopicProvisioner>()
+            .AddStandardResilienceHandler();
+    }
+
     if (topicWatchEnabled)
     {
-        builder.Services.AddHttpClient<ISourceIngester, MinifluxWatchIngester>()
+        builder.Services.AddHttpClient<IMinifluxCategoryReader, MinifluxWatchIngester>()
             .AddStandardResilienceHandler();
 
         // Même cible API et même résilience que le classifieur (lot 9, #50) : appel Anthropic tool-use.
         builder.Services.AddHttpClient<ITopicWatchFilter, AnthropicTopicWatchFilter>()
             .AddStandardResilienceHandler(ClassifierResilience.Configure);
 
-        builder.Services.AddHttpClient<ITopicWatchNotifier, DiscordTopicWatchNotifier>()
+        builder.Services.AddHttpClient<IWatchDigestNotifier, DiscordWatchDigestNotifier>()
             .AddStandardResilienceHandler();
 
         builder.Services.AddTransient<TopicWatchJob>();
@@ -221,6 +220,37 @@ try
     if (args.Contains("--run-monthly-review"))
     {
         await host.Services.GetRequiredService<MonthlyReviewJob>().Invoke();
+        return;
+    }
+
+    // Provisioning d'un sujet de veille (C4, lot 9, #50, redesign) : crée la collection Raindrop et la
+    // catégorie Miniflux dédiées, seed le curseur à "0" (catégorie fraîchement créée, donc vide — sûr,
+    // jamais de backfill), persiste le sujet. Même patron que --health-check : avant host.Run(), avec les
+    // seules options nécessaires déjà validées ci-dessus (Miniflux__*, Raindrop__* toujours validé).
+    if (addWatchTopicRequested)
+    {
+        var name = GetArgValue(args, "--name=");
+        var description = GetArgValue(args, "--description=");
+        if (string.IsNullOrWhiteSpace(name) || string.IsNullOrWhiteSpace(description))
+        {
+            Log.Error("--add-watch-topic requiert --name=<nom> et --description=<description>.");
+            Environment.ExitCode = 1;
+            return;
+        }
+
+        var provisioner = host.Services.GetRequiredService<IWatchTopicProvisioner>();
+        var watchTopicRepository = host.Services.GetRequiredService<IWatchTopicRepository>();
+
+        var provisioned = await provisioner.ProvisionAsync(name, description, CancellationToken.None);
+        var topicId = await watchTopicRepository.AddAsync(provisioned with { LastMinifluxEntryId = "0" }, CancellationToken.None);
+
+        Log.Information(
+            "Sujet de veille « {Name} » créé (id {TopicId}) — collection Raindrop {CollectionId}, catégorie Miniflux {CategoryId}. " +
+            "Ajoutez maintenant les flux RSS de recherche dans cette catégorie via l'UI Miniflux.",
+            name,
+            topicId,
+            provisioned.RaindropCollectionId,
+            provisioned.MinifluxCategoryId);
         return;
     }
 
@@ -308,3 +338,7 @@ finally
 {
     Log.CloseAndFlush();
 }
+
+/// <summary>Extraction minimale d'un argument <c>--clé=valeur</c> (lot 9, #50) — pas de dépendance CLI supplémentaire pour une seule commande de provisioning.</summary>
+static string? GetArgValue(string[] args, string prefix) =>
+    args.FirstOrDefault(a => a.StartsWith(prefix, StringComparison.Ordinal))?[prefix.Length..];
