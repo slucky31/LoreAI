@@ -131,7 +131,7 @@ Aucune de ces lignes n'est un test unitaire. Toutes sont des gestes sur `mcm8`, 
 
 | # | À vérifier | Critère de réussite | Pourquoi ça compte |
 |---|---|---|---|
-| E1 | **Restauration d'une sauvegarde** | Un `pg_restore` sur une base jetable redonne un corpus complet et des curseurs cohérents | Une sauvegarde jamais restaurée n'est pas une sauvegarde. Bloqué tant que O7 (lot 11) n'existe pas |
+| E1 | ~~**Restauration d'une sauvegarde**~~ | ✅ **Fait le 2026-09-13** : restauration réelle (pgBackRest, repo1 USB) vers un répertoire jetable, instance PostgreSQL démarrée, les 4 vraies bases (`loreai`, `miniflux`, `mycomicsmanager_prod`, `mycomicsmanager_staging`) présentes et vérifiées | Une sauvegarde jamais restaurée n'est pas une sauvegarde |
 | E2 | **Healthcheck vu par Portainer** | Le conteneur `loreai-worker` affiche `healthy` | C'était l'objet même de #35 ; livré, jamais confirmé côté Portainer |
 | E3 | **Bascule en `unhealthy`** | Arrêter PostgreSQL, ou attendre 45 min sans cycle → le conteneur passe `unhealthy` | Un healthcheck qui ne passe jamais au rouge n'est pas un healthcheck. **Le seul test qui prouve que la sonde discrimine** |
 | E4 | **Démarrage sans la base** | Le worker démarre, journalise, réessaie — il ne meurt pas | Exigence explicite du lot 0 (« pas de `depends_on` vers une instance qu'il ne possède pas »). Jamais éprouvée en réel |
