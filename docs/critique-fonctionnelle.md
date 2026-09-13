@@ -126,6 +126,8 @@ Deux actifs sont exposés, et ils ne se sauvegardent pas de la même façon :
 
 C'est, de loin, le risque le plus élevé du projet aujourd'hui — devant le coût LLM.
 
+**Mise à jour 2026-09-13 :** pgBackRest était en fait déjà en place sur `pg_main` (chiffrement AES-256, WAL archiving continu) mais jamais planifié — un seul backup complet du 22 août, jamais renouvelé, aucun cron. Élargi et scaffoldé dans [`mycomicsmanager-config`](https://github.com/slucky31/mycomicsmanager-config) (config committée, l'instance n'appartient pas à LoreAI — ADR 0009) : deux dépôts chiffrés (SSD + disque USB), rétention 30j, miroir hors site vers Google Drive. Couvre les deux points ci-dessus côté base — **toutes** les bases de l'instance (`loreai`, `mycomicsmanager_prod`, `miniflux`), pas seulement `loreai`, puisque c'est un backup physique du cluster entier. Reste à faire : déployer sur `mcm8`, exécuter la restauration réelle (E1, `reste-a-tester.md`), et traiter la copie chiffrée du `.env` — toujours pas commencée.
+
 ### F10 🟠 — Le token Raindrop est partagé par six jobs sans aucun pacing
 
 [#86](https://github.com/slucky31/LoreAI/issues/86) documente une rafale observée le 2026-08-29 : 148 appels séquentiels de `ReconciliationJob` → 429, puis timeout Polly, puis ~25 × 403 (bannissement temporaire du token).
@@ -181,7 +183,7 @@ Cotation homogène avec la roadmap : **V** = valeur, **E** = effort, sur 3. Le l
 
 | # | Proposition | V | E | Pourquoi |
 |---|---|---|---|---|
-| **O7** | **Sauvegarde réelle** — `pg_dump` planifié + rotation, et sauvegarde chiffrée du `.env` hors du Pi | 3 | 1 | F9. Le seul risque non rattrapable du projet |
+| **O7** | **Sauvegarde réelle** — pgBackRest multi-dépôts (SSD + USB + Google Drive) scaffoldé, déploiement + restauration à tester sur `mcm8`, `.env` chiffré hors du Pi toujours à faire | 3 | 1 | F9. Le seul risque non rattrapable du projet |
 | **O8** | **Garde-fou budget dur** — table `LlmCalls` unifiée (job, modèle, tokens in/out/cache, coût), `ILlmBudgetGuard` consulté **avant** chaque appel, coupure des jobs LLM + une alerte au franchissement | 3 | 2 | F2. Transforme S6 d'un constat hebdomadaire en une limite. Unifie au passage les trois sources de mesure éclatées |
 | **O9** | **Limiteur de débit Raindrop partagé** — au niveau de `RaindropClient`, pas d'un job | 2 | 2 | F10. Un seul token, six appelants, des crons qui se croisent |
 | **O10** | **Journal d'identité au démarrage** ([#65](https://github.com/slucky31/LoreAI/issues/65)) — version, runtime, hôte, **et la liste des jobs réellement planifiés avec leur cron** | 3 | 1 | F1 + F15. Rend l'état de configuration lisible dans les logs, au lieu de dépendre d'un `.env` non versionné |

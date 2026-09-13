@@ -4,7 +4,7 @@
 > L'historique est dans `git log` et les Releases. La cible est dans [`roadmap-phase-3.md`](roadmap-phase-3.md) (phases 1-2 : [`roadmap.md`](roadmap.md)). Les décisions sont dans [`adr/`](adr/).
 > Ce qui ne va pas, avec les preuves : [`critique-fonctionnelle.md`](critique-fonctionnelle.md). Ce qui n'a jamais été vérifié en conditions réelles : [`reste-a-tester.md`](reste-a-tester.md).
 
-**Dernière mise à jour :** 2026-08-30 · **Version publiée :** 0.20.0
+**Dernière mise à jour :** 2026-09-13 · **Version publiée :** 0.20.0
 
 ---
 
@@ -12,8 +12,8 @@
 
 | | |
 |---|---|
-| **Lot en cours** | **Aucun.** Les lots 0 → 9 sont livrés : la roadmap des phases 1 et 2 est épuisée, hors lot 10 (déduplication, [#51](https://github.com/slucky31/LoreAI/issues/51)). Une revue fonctionnelle complète a été faite le 2026-08-30 ([`critique-fonctionnelle.md`](critique-fonctionnelle.md)) et a produit une **phase 3** ([`roadmap-phase-3.md`](roadmap-phase-3.md)) : lots 11 (exploitation), 12 (coût), 13 (écritures externes), puis 10 (dédup), 14 (boucle de retour), 15 (second cerveau). |
-| **Prochain geste** | Ouvrir le **lot 11 — Reprendre la main sur l'exploitation** : sauvegarde `pg_dump` + `.env` chiffré ([#37](https://github.com/slucky31/LoreAI/issues/37)), journal d'identité au démarrage étendu aux jobs planifiés ([#65](https://github.com/slucky31/LoreAI/issues/65)), healthcheck MCP ([#68](https://github.com/slucky31/LoreAI/issues/68)), Renovate débloqué ([#40](https://github.com/slucky31/LoreAI/issues/40)), logs `--add-watch-topic` ([#97](https://github.com/slucky31/LoreAI/issues/97)). En même temps : fermer les 5 issues livrées (#31, #35, #71, #73, #75) et les 3 périmées (#33, #36, #39). |
+| **Lot en cours** | **Lot 11 (exploitation)**, démarré par O7 (sauvegarde). Les lots 0 → 9 sont livrés : la roadmap des phases 1 et 2 est épuisée, hors lot 10 (déduplication, [#51](https://github.com/slucky31/LoreAI/issues/51)). Une revue fonctionnelle complète a été faite le 2026-08-30 ([`critique-fonctionnelle.md`](critique-fonctionnelle.md)) et a produit une **phase 3** ([`roadmap-phase-3.md`](roadmap-phase-3.md)) : lots 11 (exploitation), 12 (coût), 13 (écritures externes), puis 10 (dédup), 14 (boucle de retour), 15 (second cerveau). |
+| **Prochain geste** | **Lot 11 en cours** : sauvegarde ([#37](https://github.com/slucky31/LoreAI/issues/37)) — pgBackRest multi-dépôts (SSD + USB + Google Drive) scaffoldé dans [`mycomicsmanager-config`](https://github.com/slucky31/mycomicsmanager-config), reste à déployer sur `mcm8` et à exécuter la restauration réelle (E1) ; le `.env` chiffré hors machine n'est pas commencé. Puis : journal d'identité au démarrage étendu aux jobs planifiés ([#65](https://github.com/slucky31/LoreAI/issues/65)), healthcheck MCP ([#68](https://github.com/slucky31/LoreAI/issues/68)), Renovate débloqué ([#40](https://github.com/slucky31/LoreAI/issues/40)), logs `--add-watch-topic` ([#97](https://github.com/slucky31/LoreAI/issues/97)). En même temps : fermer les 5 issues livrées (#31, #35, #71, #73, #75) et les 3 périmées (#33, #36, #39). |
 | **Dernières décisions** (2026-08-30) | **D8** budget LLM 10 €/mois **avec garde-fou dur** dans le code (lot 12). **D9** newsletters Gmail réinjectées dans Raindrop **sous seuil** ([#94](https://github.com/slucky31/LoreAI/issues/94), lot 13). **D10** l'alerte Discord immédiate `ATester`/`Haute` est **retirée** ([#64](https://github.com/slucky31/LoreAI/issues/64), lot 12). **D11** la classification des flux RSS personnels est **retirée** ([#99](https://github.com/slucky31/LoreAI/issues/99), lot 12) — Miniflux reste lecteur humain + moteur de la veille. Détail dans [`roadmap-phase-3.md`](roadmap-phase-3.md#décisions-actées-session-du-2026-08-30). |
 | **À valider** | La règle **« un lot n'est fini que s'il est actif en production »** — proposée pour fermer l'écart livré/actif (4 des 6 derniers lots sont désactivés par défaut, état réel inconnu). Elle ralentit délibérément la livraison. |
 | **Bloqué par** | Rien. Le Pi (`mcm8`) est en ligne, le corpus est indexé (1 369 items, index frais du 2026-08-30 12:26 UTC). |
@@ -28,7 +28,7 @@
 
 Issues de la revue du 2026-08-30, par ordre de gravité — le détail et les preuves sont dans [`critique-fonctionnelle.md`](critique-fonctionnelle.md).
 
-1. **Il n'y a aucune sauvegarde.** Ni `pg_dump` de la base (1 369 items, historique de classification, curseurs — dont la perte déclenche un backfill LLM), ni copie du `.env` de `mcm8` (7 secrets qui n'existent nulle part ailleurs, dont un refresh token OAuth Google). Risque le plus élevé du projet, devant le coût.
+1. **La sauvegarde de la base est scaffoldée mais pas déployée.** pgBackRest (SSD + USB + Google Drive, rétention 30j) est committé dans `mycomicsmanager-config` mais pas encore appliqué sur `mcm8`, et la restauration n'a jamais été testée. La copie chiffrée du `.env` de `mcm8` (7 secrets qui n'existent nulle part ailleurs, dont un refresh token OAuth Google) n'est pas commencée. Risque le plus élevé du projet, devant le coût, tant que ces deux points ne sont pas clos.
 2. **Le coût LLM n'est mesuré qu'a posteriori, une fois par semaine.** Aucun code ne peut refuser un appel parce que le budget est dépassé — c'est ce qui a laissé passer le volet RSS du lot 7 à ~36 $/mois estimés (D11/#99), découvert par lecture de code.
 3. **Renovate est bloqué** par une virgule manquante dans `renovate.json:5` : aucune mise à jour de dépendance ne passe. Correctif d'un caractère.
 
