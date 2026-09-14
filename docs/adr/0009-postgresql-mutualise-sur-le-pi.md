@@ -29,7 +29,7 @@ C'est le point structurant, et il conditionne tout le reste.
 - LoreAI s'y raccorde via un **réseau Docker externe** partagé. Pas de `depends_on` vers un service que LoreAI ne possède pas : le worker doit démarrer, échouer proprement et réessayer si la base n'est pas encore disponible.
 - LoreAI obtient une **base dédiée** (`loreai`) et un **rôle dédié**, propriétaire de son seul schéma. Pas de `SUPERUSER`, pas de droit sur les bases voisines, pas de réglage au niveau du cluster.
 - Toute **extension** (`pg_trgm`, `vector`, `hstore`…) est installée par le propriétaire de l'instance, pas par le code applicatif au démarrage : `CREATE EXTENSION` requiert des droits que le rôle applicatif n'a pas, et ne doit pas avoir.
-- La **version majeure est épinglée** et devient une décision transverse : une montée de version majeure impacte tous les locataires en même temps.
+- La **version majeure est épinglée** et devient une décision transverse : une montée de version majeure impacte tous les locataires en même temps. Historique : PostgreSQL 16 au lancement de l'instance (2026-08-22), migré vers **18.6 le 2026-09-14** (dump/restore complet, voir issue [#101](https://github.com/slucky31/LoreAI/issues/101)).
 
 ### Ce que LoreAI y gagne concrètement
 

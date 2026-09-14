@@ -1,5 +1,8 @@
 # Roadmap — exploiter le contenu classé
 
+> **⚠️ Ce document couvre les phases 1 et 2 (lots 0 → 9), toutes livrées.** Il reste la référence pour les décisions **D1-D7**, les arbitrages tranchés (PostgreSQL, coût LLM, cache de prompt, Miniflux, OpenClaw) et les scénarios C/N/S/L/Q/O d'origine.
+> **La suite est dans [`roadmap-phase-3.md`](roadmap-phase-3.md)** (décisions D8-D11, lots 11 → 15, triage des issues), motivée par la [critique fonctionnelle du 2026-08-30](critique-fonctionnelle.md).
+
 ## Pourquoi ce document
 
 LoreAI ne fait aujourd'hui que la moitié du travail : il capte les nouveaux articles de « Non trié », les classe, les range, puis notifie (Discord immédiat, digest mail quotidien). Le résultat n'est qu'un **flux sortant** : une fois l'article rangé et l'email envoyé, la base ne sert plus à rien. `ArticleRepository` ne contient d'ailleurs qu'un seul `SELECT` (`GetUnsentDigestItemsAsync`) — tout le reste du schéma est en écriture seule.
@@ -355,6 +358,8 @@ Ne commence qu'une fois le lot 4 livré : les deux connecteurs ont besoin de l'e
 
 **Décision revue en cours de lot (2026-08-29)** : livré via **Miniflux auto-hébergé** plutôt que par l'ingestion RSS directe initialement prévue ici (`FeedIngester`/`System.ServiceModel.Syndication`). Miniflux gère abonnements, parsing et santé des flux, et sert aussi d'interface de lecture humaine (remplace Feedly) — couvrant en un seul déploiement les deux besoins que l'arbitrage « Miniflux auto-hébergé » ci-dessous distinguait, plutôt que de les séquencer (ingestion directe d'abord, Miniflux ensuite *si* besoin de lecture). `MinifluxIngester` (`IFeedIngester`) consomme `GET /v1/entries` de l'instance Miniflux, curseur sur l'id d'entrée Miniflux (pas de backfill automatique au premier démarrage, même choix que `GmailIngester`). Les entrées deviennent des `Item` avec `SourceType = Feed` et passent dans le pipeline de classification existant, sans jamais écrire dans Miniflux ni Raindrop (ADR 0012). PR [#87](https://github.com/slucky31/LoreAI/pull/87), déploiement documenté dans `docs/deploiement-raspberry-pi.md` (section 12).
 
+⚠️ **Amendé le 2026-08-30 — la classification des flux personnels est retirée** ([#99](https://github.com/slucky31/LoreAI/issues/99), décision **D11** de la [phase 3](roadmap-phase-3.md)). Le coût de ce volet n'avait jamais été modélisé : le tableau de coût ci-dessous ne couvre que « Non trié », borné par les sauvegardes humaines, alors qu'un abonnement RSS ne l'est pas — chiffrage a posteriori ~36 $/mois à 100 entrées/jour, contre un budget de référence de 10 €/mois, pour une valeur produite quasi nulle (aucune écriture nulle part, ADR 0012). `FeedIngestionJob`/`MinifluxIngester` sont supprimés au **lot 12**. **Le cœur du lot reste livré** : Miniflux demeure l'interface de lecture humaine (remplace Feedly) et le moteur RSS de la veille (lot 9) — même instance, même API, `Miniflux__*` inchangé.
+
 - **O6** rapport hebdomadaire mobile-friendly ([#78](https://github.com/slucky31/LoreAI/issues/78)) — sans rapport avec le connecteur RSS, embarqué ici parce que c'est le prochain lot ouvert, même raison qu'O4/S9/O5 au lot 6. Livré : `WeeklyInsightsJob` envoie désormais un digest Discord natif (embeds, deux messages actionnable/hygiène, 10 entrées + total par section) via `IWeeklyDigestNotifier`/`DiscordWeeklyDigestNotifier`, plus une pièce jointe `.md` — `MonthlyReviewJob` conserve le format narratif inchangé. PR [#88](https://github.com/slucky31/LoreAI/pull/88).
 
 #### Lot 8 — Connecteur newsletters Gmail (**C2**)
@@ -385,6 +390,8 @@ Construit sur le lot 7, comme prévu, avec la contrainte RSS-d'abord respectée 
 #### Lot 10 — Déduplication inter-sources (**C5**)
 
 Une fois trois sources actives, le même article arrive plusieurs fois. Réutilise la normalisation d'URL de N1 comme clé de rapprochement, avec un `Item` canonique et des occurrences rattachées.
+
+⚠️ **Repositionné le 2026-08-30** : numéro et contenu inchangés, mais exécuté **après** les lots de consolidation 11-13 de la [phase 3](roadmap-phase-3.md). Avec le retrait de la classification des flux personnels (D11), il ne reste que **trois** producteurs d'items classés au lieu de quatre — l'utilité du lot est à revérifier sur les doublons réellement remontés par le rapport hebdomadaire **avant** de l'attaquer.
 
 ## Arbitrages tranchés
 
