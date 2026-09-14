@@ -49,7 +49,7 @@ Cotation homogène avec [`roadmap.md`](roadmap.md) : **V** = valeur, **E** = eff
 
 | # | Scénario | V | E | Constat |
 |---|---|---|---|---|
-| O7 | **Sauvegarde réelle** — pgBackRest, repo1 chiffré sur disque USB (pas la carte SD), miroir Google Drive, rétention 30j : **déployé et restauration testée sur `mcm8` le 2026-09-13** ; `.env` chiffré hors machine reste à faire | 3 | 1 | F9 |
+| O7 | ~~**Sauvegarde réelle**~~ **Fait** — pgBackRest (repo1 USB, miroir Google Drive) et `.env`/secrets (`gpg` + Google Drive) déployés et testés sur `mcm8` (2026-09-13/14) | 3 | 1 | F9 — clos |
 | O8 | **Garde-fou budget dur** — `LlmCalls` + `ILlmBudgetGuard` avant appel | 3 | 2 | F2 |
 | O9 | **Limiteur de débit Raindrop partagé** — dans le client, pas dans un job | 2 | 2 | F10 |
 | O10 | **Journal d'identité au démarrage** — version, runtime, hôte, **jobs planifiés et leur cron** | 3 | 1 | F1, F15 |
@@ -70,7 +70,7 @@ Six lots. L'ordre est contraint : **on ne construit rien de neuf tant qu'on peut
 
 Aucune valeur fonctionnelle visible, aucun appel LLM, aucun changement de schéma. C'est le lot qui rend le reste pilotable, et c'est celui qui doit passer en premier.
 
-- **O7 — Sauvegarde** ([#37](https://github.com/slucky31/LoreAI/issues/37)) : pgBackRest était déjà en place sur `pg_main` mais jamais planifié (un seul backup complet du 22 août, jamais renouvelé — la crontab existante appelait `docker exec` sans `--user postgres` et échouait silencieusement à chaque exécution depuis le début). Élargi au cluster entier (toutes les bases de l'instance mutualisée, pas juste `loreai`) — repo1 déplacé sur disque USB plutôt que sur la carte SD (même support que les données live, sinon), `repo1-bundle=y` pour regrouper les petits fichiers (2355 → 10 par backup), miroir chiffré vers Google Drive. Config committée dans [`mycomicsmanager-config`](https://github.com/slucky31/mycomicsmanager-config), pas dans LoreAI (l'instance ne lui appartient pas, ADR 0009). **Déployé sur `mcm8` et restauration testée avec succès le 2026-09-13** (E1 : les 4 vraies bases restaurées et vérifiées). Reste seulement la copie chiffrée du `.env` de `mcm8` — un actif distinct, qui se perd différemment, non commencée. Voir F9.
+- **O7 — Sauvegarde** ([#37](https://github.com/slucky31/LoreAI/issues/37)) : pgBackRest était déjà en place sur `pg_main` mais jamais planifié (un seul backup complet du 22 août, jamais renouvelé — la crontab existante appelait `docker exec` sans `--user postgres` et échouait silencieusement à chaque exécution depuis le début). Élargi au cluster entier (toutes les bases de l'instance mutualisée, pas juste `loreai`) — repo1 déplacé sur disque USB plutôt que sur la carte SD (même support que les données live, sinon), `repo1-bundle=y` pour regrouper les petits fichiers (2355 → 10 par backup), miroir chiffré vers Google Drive. Config committée dans [`mycomicsmanager-config`](https://github.com/slucky31/mycomicsmanager-config), pas dans LoreAI (l'instance ne lui appartient pas, ADR 0009). **Déployé sur `mcm8` et restauration testée avec succès le 2026-09-13** (E1 : les 4 vraies bases restaurées et vérifiées). La copie chiffrée du `.env` de `mcm8` — un actif distinct, qui se perd différemment — est traitée le 2026-09-14 : `gpg --symmetric` + Google Drive (`secrets-backup/` dans `mycomicsmanager-config`), restauration testée. **Les deux volets de F9 sont clos.**
 - **O10 — Journal d'identité au démarrage** ([#65](https://github.com/slucky31/LoreAI/issues/65)) : version, runtime .NET, OS/architecture, hôte, **et la liste des jobs réellement planifiés avec leur expression cron**. Cette dernière partie n'est pas dans le ticket d'origine ; c'est elle qui ferme le trou F1 (« le projet ne sait pas ce qu'il fait tourner »). Code partagé dans `LoreAI.Infrastructure`, consommé par le Worker **et** le MCP — c'est le `StartupInfo` que `CLAUDE.md` décrit déjà mais qui n'a jamais été écrit (F15).
 - **O11 — Healthcheck MCP** ([#68](https://github.com/slucky31/LoreAI/issues/68)) : le mécanisme de #35 ne se transpose pas (pas de `CycleRuns` pour un serveur sans état). « En bonne santé » = le serveur répond et la connexion `loreai_ro` est vivante.
 - **O12 — Renovate** ([#40](https://github.com/slucky31/LoreAI/issues/40)) : virgule manquante ligne 5 de `renovate.json`. Vérifier ensuite que le Dependency Dashboard ([#9](https://github.com/slucky31/LoreAI/issues/9)) se repeuple.
@@ -156,7 +156,7 @@ Les 22 issues ouvertes au 2026-08-30, avec un verdict pour chacune.
 
 | Issue | Lot | Note |
 |---|---|---|
-| [#37](https://github.com/slucky31/LoreAI/issues/37) Sauvegarde | **11** | Base : pgBackRest déployé et restauration testée sur `mcm8` (2026-09-13). `.env` chiffré hors machine : toujours à faire, ne pas fermer avant |
+| [#37](https://github.com/slucky31/LoreAI/issues/37) Sauvegarde | **11** | **Fermée** — base et `.env`/secrets déployés et testés sur `mcm8` (2026-09-13/14) |
 | [#65](https://github.com/slucky31/LoreAI/issues/65) Version/env au démarrage | **11** | Étendre au **listing des jobs planifiés** — c'est ce qui ferme F1 |
 | [#68](https://github.com/slucky31/LoreAI/issues/68) Healthcheck MCP | **11** | |
 | [#40](https://github.com/slucky31/LoreAI/issues/40) Renovate cassé | **11** | Virgule manquante, `renovate.json:5` |
@@ -212,7 +212,7 @@ Les risques de [`roadmap.md`](roadmap.md#risques-et-points-de-vigilance) restent
 | **L7 étape 2 casse l'arbitrage du cache de prompt** — les exemples grossissent le préfixe | C'est aussi une opportunité (franchir enfin le seuil de 4 096 tokens). À traiter avec la mesure du lot 12 en main. Ne pas faire L7-2 avant que #34 soit tranchée |
 | **Le retrait de l'alerte immédiate (D10) rouvre le trou « rien ne se perd »** | Contrairement à l'analyse d'août, le filet existe désormais : file de lecture hebdomadaire (L1/L5) et compte-rendu de cycle, tous deux livrés. Si le manque se fait sentir, `INotificationPolicy` est réintroductible — mais on attend le manque, on ne l'anticipe pas |
 | **La règle « un lot fini = un lot actif » ralentit la livraison** | C'est l'objectif. Le rythme actuel produit des lots que personne n'active — et donc de la valeur nulle malgré le travail fait |
-| **La sauvegarde n'est pas testée** | Une restauration réelle est **dans** le périmètre du lot 11, pas un « à faire plus tard ». Une sauvegarde jamais restaurée n'est pas une sauvegarde |
+| ~~**La sauvegarde n'est pas testée**~~ | **Résolu** (2026-09-13/14) : restauration réelle testée pour la base (E1) et pour le `.env`/secrets, les deux dans le périmètre du lot 11 |
 
 ## Questions ouvertes
 
